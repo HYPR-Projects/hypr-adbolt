@@ -282,6 +282,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .app-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .header-user{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-dim)}
 .header-user-avatar{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border)}
+.header-user-initials{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:0.65rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .header-user-name{font-weight:500;color:var(--text)}
 .btn-signout{background:none;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font);font-size:0.72rem;cursor:pointer;padding:4px 10px;border-radius:var(--radius-xs);transition:border-color 0.2s,color 0.2s}
 .btn-signout:hover{color:var(--error);border-color:var(--error)}
@@ -335,6 +336,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
       <div class="header-brand"><div class="header-logo">H</div><h1>Creative Smart Bulk</h1></div>
       <div class="header-user" id="headerUser">
         <img class="header-user-avatar" id="headerAvatar" src="" alt="">
+        <div class="header-user-initials" id="headerInitials" style="display:none"></div>
         <span class="header-user-name" id="headerName"></span>
         <button class="btn-signout" onclick="doSignOut()">Sair</button>
       </div>
@@ -508,8 +510,12 @@ async function handleLoggedIn(user){
   }
   currentUser=user;
   const meta=user.user_metadata||{};
-  document.getElementById('headerName').textContent=meta.full_name||meta.name||user.email;
-  document.getElementById('headerAvatar').src=meta.avatar_url||meta.picture||'';
+  const name=meta.full_name||meta.name||user.email;
+  document.getElementById('headerName').textContent=name;
+  const avatarEl=document.getElementById('headerAvatar');
+  const avatarUrl=meta.avatar_url||meta.picture||'';
+  if(avatarUrl){avatarEl.src=avatarUrl;avatarEl.style.display=''}
+  else{avatarEl.style.display='none';const ini=document.getElementById('headerInitials');if(ini){ini.textContent=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();ini.style.display='flex'}}
   document.getElementById('login-screen').style.display='none';
   document.getElementById('appMain').style.display='';
   document.getElementById('themeToggle').style.display='';
