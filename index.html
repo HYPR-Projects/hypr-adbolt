@@ -1696,8 +1696,8 @@ async function handleHTML5Zip(zipFile,zip){
   }
 
   if(!hasClickTag){
-    // Inject clickTag + click overlay before </body>
-    // Note: split </script> to avoid HTML parser closing our main script block
+    // Inject clickTag + click overlay before closing body
+    // Note: split script tags to avoid HTML parser interference
     const scOpen='<scr'+'ipt>';const scClose='</scr'+'ipt>';
     const clickInjection=`
 ${scOpen}var clickTag = "https://www.example.com";${scClose}
