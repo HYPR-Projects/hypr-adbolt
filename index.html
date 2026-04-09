@@ -496,17 +496,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
           <label class="option-label" for="inputAmazonMarketplace">Marketplace</label>
           <div class="option-input">
             <select id="inputAmazonMarketplace" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:0.8rem;padding:9px 12px;outline:none;appearance:none;cursor:pointer">
-              <option value="Brazil">Brazil</option>
-              <option value="United States">United States</option>
-              <option value="Mexico">Mexico</option>
-              <option value="United Kingdom">United Kingdom</option>
-              <option value="Germany">Germany</option>
-              <option value="France">France</option>
-              <option value="Spain">Spain</option>
-              <option value="Italy">Italy</option>
-              <option value="Japan">Japan</option>
-              <option value="Canada">Canada</option>
-              <option value="Australia">Australia</option>
+              <option value="BR">BR (Brazil)</option>
+              <option value="US">US (United States)</option>
+              <option value="MX">MX (Mexico)</option>
+              <option value="UK">UK (United Kingdom)</option>
+              <option value="DE">DE (Germany)</option>
+              <option value="FR">FR (France)</option>
+              <option value="ES">ES (Spain)</option>
+              <option value="IT">IT (Italy)</option>
+              <option value="JP">JP (Japan)</option>
+              <option value="CA">CA (Canada)</option>
+              <option value="AU">AU (Australia)</option>
+              <option value="IN">IN (India)</option>
+              <option value="NL">NL (Netherlands)</option>
+              <option value="SE">SE (Sweden)</option>
             </select>
           </div>
         </div>
@@ -1053,10 +1056,10 @@ function genSA(d,brand,pixel){const h=['Creative Name','HTML or JS Code','Size',
 
 function genXandr(d,pixel,pol){const pv=pol?'Yes; non-EU':'No';return{headers:['Creative Name','Secure Content','Size','Trackers','External Identifier','Political Declaration'],rows:d.placements.map(p=>[p.placementName,p.jsTag,p.dimensions,p.isSurvey?'':(pixel||''),'',pv]),type:'xlsx',colWidths:[{wch:40},{wch:60},{wch:12},{wch:60},{wch:20},{wch:20}]}}
 
-const AMAZON_MARKETPLACE_LANG={'Brazil':'Portuguese','United States':'English','Mexico':'Spanish','United Kingdom':'English','Germany':'German','France':'French','Spain':'Spanish','Italy':'Italian','Japan':'Japanese','Canada':'English','Australia':'English'};
+const AMAZON_MARKETPLACE_LANG={'BR':'Portuguese','US':'English','MX':'Spanish','UK':'English','DE':'German','FR':'French','ES':'Spanish','IT':'Italian','JP':'Japanese','CA':'English','AU':'English','IN':'English','NL':'Dutch','SA':'Arabic','SE':'Swedish','TR':'Turkish','AE':'English'};
 function genAmazonDSP(d){
   const advId=document.getElementById('inputAmazonAdvId')?.value?.trim()||'';
-  const marketplace=document.getElementById('inputAmazonMarketplace')?.value||'Brazil';
+  const marketplace=document.getElementById('inputAmazonMarketplace')?.value||'BR';
   const lang=AMAZON_MARKETPLACE_LANG[marketplace]||'Portuguese';
   const h=['Advertiser ID*','Creative Template*','Name*','Marketplace*','Language*','Creative ID','External ID','Size*','Tag Source*','Click-through destination*','Third party-impression URL','AdChoices location','Additional html'];
   const rows=d.placements.filter(p=>p.type!=='video').map(p=>[advId,'Third-party Display',p.placementName,marketplace,lang,'','',p.dimensions,p.jsTag,'Links to another website','','','']);
