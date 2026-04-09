@@ -1654,10 +1654,11 @@ function bulkSetField(field){
 
 function bulkAddTracker(){
   const ids=getSelectedAssetIds();if(!ids.length)return;
-  const val=prompt(`Pixel URL pra adicionar em ${ids.length} asset(s):`);
+  const val=prompt(`Pixel URL ou tag pra adicionar em ${ids.length} asset(s):`);
   if(!val?.trim())return;
-  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.includes(val.trim()))e.trackers.push(val.trim())});
-  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s)`,'success');
+  const url=extractTrackerUrl(val);
+  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.includes(url))e.trackers.push(url)});
+  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s)${url!==val.trim()?' (URL extraída da tag)':''}`,'success');
 }
 
 function showFindReplace(){
@@ -1821,14 +1822,28 @@ document.getElementById('assetsTableBody').addEventListener('click',async e=>{
   const cb=e.target.closest('.asset-cb');if(cb)setTimeout(updateAssetsBulkBar,0);
 });
 // Tracker add on Enter
+// Extract tracker URL from HTML tags or return as-is if already a URL
+function extractTrackerUrl(raw){
+  const t=raw.trim();
+  if(!t.startsWith('<'))return t; // Already a URL
+  // Try data-3rd-tracker attribute (DV tags)
+  let m=t.match(/data-3rd-tracker=["']([^"']+)/);if(m)return m[1];
+  // Try src= from script tags  
+  m=t.match(/src=["']([^"']+\.js[^"']*)/);if(m)return m[1];
+  // Try any https URL in the tag
+  m=t.match(/(https?:\/\/[^\s"'<>]+)/);if(m)return m[1];
+  return t; // Fallback: return as-is
+}
+
 document.getElementById('assetsTableBody').addEventListener('keydown',e=>{
   const addInput=e.target.closest('[data-tracker-add]');
   if(addInput&&e.key==='Enter'){
     e.preventDefault();
-    const url=addInput.value.trim();if(!url)return;
+    const raw=addInput.value.trim();if(!raw)return;
+    const url=extractTrackerUrl(raw);
     const id=parseInt(addInput.dataset.trackerAdd);
     const entry=assetEntries.find(a=>a.id===id);
-    if(entry){entry.trackers.push(url);renderAssetsTable()}
+    if(entry){entry.trackers.push(url);renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
   }
 });
 document.getElementById('assetsSelectAll').addEventListener('change',e=>{
