@@ -306,6 +306,17 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .assets-filter-select-btn{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--accent);font-family:var(--font);font-size:0.72rem;font-weight:500;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background 0.2s}
 .assets-filter-select-btn:hover{background:var(--accent-glow)}
 
+/* Tracker chips */
+.tracker-cell{min-width:200px}
+.tracker-chips{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+.tracker-chip{display:inline-flex;align-items:center;gap:3px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:2px 4px 2px 6px;font-family:var(--mono);font-size:0.68rem;color:var(--text-dim);max-width:180px}
+.tracker-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tracker-chip-rm{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;flex-shrink:0}
+.tracker-chip-rm:hover{color:var(--error)}
+.tracker-add-input{background:transparent;border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--mono);font-size:0.7rem;padding:3px 6px;width:100px;outline:none;min-width:60px;flex:1}
+.tracker-add-input:focus{border-color:var(--accent)}
+.tracker-add-input::placeholder{color:var(--text-muted);font-size:0.65rem}
+
 /* Bulk action bar */
 .assets-bulk-bar{background:var(--accent);color:var(--text-on-accent);border-radius:var(--radius-sm);padding:10px 16px;margin-top:12px;display:flex;align-items:center;gap:10px;font-size:0.78rem;font-weight:500;animation:slideUp 0.2s ease}
 .assets-bulk-bar button{background:rgba(255,255,255,0.18);color:var(--text-on-accent);border:none;border-radius:var(--radius-xs);padding:5px 12px;font-family:var(--font);font-size:0.74rem;font-weight:500;cursor:pointer;transition:background 0.2s;white-space:nowrap}
@@ -892,7 +903,7 @@ async function activateXandrAssets(token){
           languageId:langId,
           brandId:brandId?parseInt(brandId):null,
           sla,
-          creatives:[{name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,tracker:a.tracker}]
+          creatives:[{name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,trackers:a.trackers}]
         };
         const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-xandr-asset',{
           method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)
@@ -926,7 +937,7 @@ async function activateDV360Assets(token){
         const base64=await fileToBase64(file);
         const body={
           advertiserId,
-          creatives:[{name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,tracker:a.tracker}]
+          creatives:[{name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,trackers:a.trackers}]
         };
         const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-dv360-asset',{
           method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)
@@ -1495,7 +1506,7 @@ async function handleAssetFiles(files){
       dimensions:`${dims.w}x${dims.h}`,w:dims.w,h:dims.h,
       duration:dims.duration||0,
       size:file.size,thumb,
-      landingPage:'',tracker:'',
+      landingPage:'',trackers:[],
       compressed:false,compressedFile:null
     };
     assetEntries.push(entry);
@@ -1541,7 +1552,7 @@ function renderAssetsTable(){
       <td><input class="asset-input mono" style="width:80px" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}"></td>
       <td><span class="asset-weight-badge ${wc}">${formatBytes(sz)}${a.compressed?' ⚡':''}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(a.landingPage)}" data-field="landingPage" data-id="${a.id}" placeholder="https://..."></td>
-      <td><input class="asset-input mono" style="width:160px" value="${esc(a.tracker)}" data-field="tracker" data-id="${a.id}" placeholder="Pixel URL"></td>
+      <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>`<span class="tracker-chip"><span title="${esc(t)}">${esc(t)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL"></div></td>
       <td class="asset-actions">
         <button class="asset-action-btn" title="Duplicar" data-dup="${a.id}">⧉</button>
         <button class="asset-action-btn danger" title="Remover" data-rm="${a.id}">✕</button>
@@ -1557,7 +1568,7 @@ function updateAssetsBulkBar(){
   bar.style.display='flex';bar.className='assets-bulk-bar';
   bar.innerHTML=`<span class="assets-bulk-count">${selected.length} selecionado(s)</span>
     <button onclick="bulkSetField('landingPage')">Landing Page</button>
-    <button onclick="bulkSetField('tracker')">Tracker</button>
+    <button onclick="bulkAddTracker()">+ Tracker</button>
     <button onclick="showFindReplace()">Find & Replace</button>
     <button onclick="bulkDuplicate()">Duplicar</button>
     <button onclick="bulkRemove()">Remover</button>
@@ -1568,11 +1579,19 @@ function getSelectedAssetIds(){return[...document.querySelectorAll('.asset-cb:ch
 
 function bulkSetField(field){
   const ids=getSelectedAssetIds();if(!ids.length)return;
-  const labels={landingPage:'Landing Page',tracker:'Impression Tracker'};
+  const labels={landingPage:'Landing Page'};
   const val=prompt(`${labels[field]} pra ${ids.length} asset(s):`);
   if(val===null)return;
   ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e)e[field]=val});
   renderAssetsTable();
+}
+
+function bulkAddTracker(){
+  const ids=getSelectedAssetIds();if(!ids.length)return;
+  const val=prompt(`Pixel URL pra adicionar em ${ids.length} asset(s):`);
+  if(!val?.trim())return;
+  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.includes(val.trim()))e.trackers.push(val.trim())});
+  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s)`,'success');
 }
 
 function showFindReplace(){
@@ -1696,11 +1715,25 @@ document.getElementById('assetsTableBody').addEventListener('input',e=>{
   if(entry&&field)entry[field]=inp.value;
 });
 document.getElementById('assetsTableBody').addEventListener('click',e=>{
+  // Tracker chip remove
+  const chipRm=e.target.closest('[data-tracker-rm]');
+  if(chipRm){const id=parseInt(chipRm.dataset.trackerRm),ti=parseInt(chipRm.dataset.ti);const entry=assetEntries.find(a=>a.id===id);if(entry){entry.trackers.splice(ti,1);renderAssetsTable()};return}
   const dup=e.target.closest('[data-dup]');
-  if(dup){const id=parseInt(dup.dataset.dup);const orig=assetEntries.find(a=>a.id===id);if(orig){assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',landingPage:''});renderAssetsTable()};return}
+  if(dup){const id=parseInt(dup.dataset.dup);const orig=assetEntries.find(a=>a.id===id);if(orig){assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',trackers:[...orig.trackers],landingPage:''});renderAssetsTable()};return}
   const rm=e.target.closest('[data-rm]');
   if(rm){const id=parseInt(rm.dataset.rm);assetEntries=assetEntries.filter(a=>a.id!==id);renderAssetsTable();updateVisibility();if(!assetEntries.length){document.getElementById('assetsUploadZone').classList.remove('has-files');document.getElementById('assetsContent').style.display='none'};return}
   const cb=e.target.closest('.asset-cb');if(cb)setTimeout(updateAssetsBulkBar,0);
+});
+// Tracker add on Enter
+document.getElementById('assetsTableBody').addEventListener('keydown',e=>{
+  const addInput=e.target.closest('[data-tracker-add]');
+  if(addInput&&e.key==='Enter'){
+    e.preventDefault();
+    const url=addInput.value.trim();if(!url)return;
+    const id=parseInt(addInput.dataset.trackerAdd);
+    const entry=assetEntries.find(a=>a.id===id);
+    if(entry){entry.trackers.push(url);renderAssetsTable()}
+  }
 });
 document.getElementById('assetsSelectAll').addEventListener('change',e=>{
   document.querySelectorAll('.asset-cb').forEach(c=>c.checked=e.target.checked);updateAssetsBulkBar();
