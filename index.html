@@ -6,7 +6,7 @@
 <title>HYPR Creative Smart Bulk</title>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -61,7 +61,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 /* ── Mode Switcher ── */
 .mode-switcher{display:flex;gap:4px;margin-bottom:36px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px}
-.mode-btn{flex:1;padding:10px 16px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--text-dim);font-family:var(--font);font-size:0.82rem;font-weight:500;cursor:pointer;transition:background 0.2s,color 0.2s}
+.mode-btn{flex:1;padding:10px 16px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--text-dim);font-size:0.82rem;font-weight:500;cursor:pointer;transition:background 0.2s,color 0.2s}
 .mode-btn.active{background:var(--accent);color:var(--text-on-accent)}
 .mode-btn:not(.active):hover{background:var(--bg-card-hover);color:var(--text)}
 
@@ -115,11 +115,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 /* ── Survey ── */
 .survey-types{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
-.survey-type-btn{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;cursor:pointer;font-family:var(--font);font-size:0.78rem;font-weight:500;color:var(--text-dim);transition:border-color 0.2s,background 0.2s,color 0.2s;text-align:center}
+.survey-type-btn{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;cursor:pointer;font-size:0.78rem;font-weight:500;color:var(--text-dim);transition:border-color 0.2s,background 0.2s,color 0.2s;text-align:center}
 .survey-type-btn:hover{border-color:var(--border-active);color:var(--text)}
 .survey-type-btn.active{border-color:var(--accent);background:var(--accent-glow);color:var(--text)}
 .survey-custom-wrap{margin-bottom:14px}
-.survey-custom-wrap input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:0.8rem;padding:8px 12px;outline:none}
+.survey-custom-wrap input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.8rem;padding:8px 12px;outline:none}
 .survey-custom-wrap input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 .survey-entries{display:flex;flex-direction:column;gap:10px}
 .survey-entry{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px}
@@ -127,19 +127,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .survey-entry-title{font-weight:600;font-size:0.85rem}
 .survey-entry-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:15px;padding:0 4px}
 .survey-entry-remove:hover{color:var(--error)}
-.survey-field-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
-.survey-field-row:last-child{margin-bottom:0}
-.survey-field-label{font-size:0.72rem;font-weight:500;color:var(--text-muted);min-width:65px;padding-top:8px}
-.survey-field-input{flex:1}
-.survey-field-input input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:0.75rem;padding:7px 10px;outline:none}
-.survey-field-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 .survey-size-pills{display:flex;gap:4px}
 .survey-size-pill{background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--radius-xs);padding:5px 12px;font-family:var(--mono);font-size:0.73rem;cursor:pointer;color:var(--text-dim);transition:border-color 0.2s,background 0.2s,color 0.2s}
 .survey-size-pill:hover{border-color:var(--border-active);color:var(--text)}
 .survey-size-pill.active{border-color:var(--accent);background:var(--accent-glow);color:var(--text)}
-.survey-field-status{font-size:0.7rem;color:var(--success);font-weight:500;margin-top:3px}
-.survey-field-status.loading{color:var(--text-muted)}
-.survey-field-status.error{color:var(--error)}
 
 /* Survey URL rows */
 .survey-url-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:6px}
@@ -209,7 +200,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 /* ── Generate ── */
 .generate-wrap{text-align:center;margin:36px 0 20px;opacity:0;transform:translateY(8px);transition:opacity 0.35s,transform 0.35s}
 .generate-wrap.revealed{opacity:1;transform:translateY(0)}
-.btn-generate{background:var(--accent);color:var(--text-on-accent);border:none;border-radius:var(--radius);padding:14px 48px;font-size:1rem;font-weight:600;font-family:var(--font);cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
+.btn-generate{background:var(--accent);color:var(--text-on-accent);border:none;border-radius:var(--radius);padding:14px 48px;font-size:1rem;font-weight:600;cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
 .btn-generate::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,var(--shimmer) 50%,transparent 60%);transform:translateX(-100%);transition:transform 0.6s}
 .btn-generate:hover::after{transform:translateX(100%)}
 .btn-generate:hover{background:var(--accent-hover);transform:translateY(-1px)}
@@ -229,7 +220,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .result-info{display:flex;align-items:center;gap:12px}
 .result-dsp{font-weight:600;font-size:0.92rem}
 .result-details{font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)}
-.btn-download{background:transparent;color:var(--success);border:1px solid var(--success);border-radius:var(--radius-sm);padding:7px 18px;font-size:0.8rem;font-weight:500;font-family:var(--font);cursor:pointer;transition:background 0.2s,color 0.2s}
+.btn-download{background:transparent;color:var(--success);border:1px solid var(--success);border-radius:var(--radius-sm);padding:7px 18px;font-size:0.8rem;font-weight:500;cursor:pointer;transition:background 0.2s,color 0.2s}
 .btn-download:hover{background:var(--success);color:var(--bg)}
 .btn-download.downloaded{background:var(--success);color:var(--bg);border-color:var(--success);pointer-events:none}
 
@@ -260,7 +251,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 @media(max-width:640px){
   .dsp-grid{grid-template-columns:1fr}.info-grid{grid-template-columns:1fr}.survey-types{grid-template-columns:repeat(2,1fr)}
-  .option-row,.survey-field-row{flex-direction:column}.option-label,.survey-field-label{min-width:unset;padding-top:0}
+  .option-row{flex-direction:column}.option-label{min-width:unset;padding-top:0}
 }
 
 /* ── Assets Mode ── */
@@ -283,7 +274,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .asset-thumb{width:48px;height:36px;border-radius:var(--radius-xs);object-fit:cover;background:var(--bg);border:1px solid var(--border)}
 .asset-thumb-video{position:relative}
 .asset-thumb-video::after{content:'▶';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;background:rgba(0,0,0,0.35);border-radius:var(--radius-xs)}
-.asset-input{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font);font-size:0.76rem;padding:5px 8px;width:100%;outline:none;transition:border-color 0.2s}
+.asset-input{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-size:0.76rem;padding:5px 8px;width:100%;outline:none;transition:border-color 0.2s}
 .asset-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow)}
 .asset-input.mono{font-family:var(--mono);font-size:0.72rem}
 .asset-name-input{min-width:180px}
@@ -306,10 +297,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 /* Bulk action bar */
 .assets-filter-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;margin-top:14px}
-.assets-filter-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font);font-size:0.78rem;padding:7px 10px 7px 30px;outline:none;transition:border-color 0.2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:8px center}
+.assets-filter-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-size:0.78rem;padding:7px 10px 7px 30px;outline:none;transition:border-color 0.2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:8px center}
 .assets-filter-input:focus{border-color:var(--accent)}
 .assets-filter-count{font-size:0.72rem;color:var(--text-muted);white-space:nowrap}
-.assets-filter-select-btn{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--accent);font-family:var(--font);font-size:0.72rem;font-weight:500;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background 0.2s}
+.assets-filter-select-btn{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--accent);font-size:0.72rem;font-weight:500;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background 0.2s}
 .assets-filter-select-btn:hover{background:var(--accent-glow)}
 
 /* Tracker chips */
@@ -325,7 +316,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 
 /* Bulk action bar */
 .assets-bulk-bar{background:var(--accent);color:var(--text-on-accent);border-radius:var(--radius-sm);padding:10px 16px;margin-top:12px;display:flex;align-items:center;gap:10px;font-size:0.78rem;font-weight:500;animation:slideUp 0.2s ease}
-.assets-bulk-bar button{background:rgba(255,255,255,0.18);color:var(--text-on-accent);border:none;border-radius:var(--radius-xs);padding:5px 12px;font-family:var(--font);font-size:0.74rem;font-weight:500;cursor:pointer;transition:background 0.2s;white-space:nowrap}
+.assets-bulk-bar button{background:rgba(255,255,255,0.18);color:var(--text-on-accent);border:none;border-radius:var(--radius-xs);padding:5px 12px;font-size:0.74rem;font-weight:500;cursor:pointer;transition:background 0.2s;white-space:nowrap}
 .assets-bulk-bar button:hover{background:rgba(255,255,255,0.3)}
 .assets-bulk-count{opacity:0.85}
 
@@ -336,7 +327,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .fr-modal label{font-size:0.75rem;color:var(--text-dim);margin-bottom:4px;display:block}
 .fr-modal input{width:100%;margin-bottom:12px}
 .fr-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
-.fr-modal-actions button{padding:8px 16px;border-radius:var(--radius-sm);font-family:var(--font);font-size:0.8rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);transition:background 0.2s}
+.fr-modal-actions button{padding:8px 16px;border-radius:var(--radius-sm);font-size:0.8rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);transition:background 0.2s}
 .fr-modal-actions button.primary{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent)}
 
 /* ── Login Screen ── */
@@ -345,10 +336,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .login-card{background:var(--login-card-bg);border:1px solid var(--border);border-radius:24px;padding:48px 52px;text-align:center;max-width:420px;width:92%;box-shadow:var(--login-card-shadow),var(--login-card-inset);backdrop-filter:blur(40px) saturate(1.4);-webkit-backdrop-filter:blur(40px) saturate(1.4);animation:scaleIn 0.4s ease 0.1s both}
 .login-brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:24px}
 .login-brand-logo{width:38px;height:38px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:var(--text-on-accent)}
-.login-brand h2{font-size:1.2rem;font-weight:600;letter-spacing:-0.3px;color:var(--text)}
+.login-brand h1{font-size:1.2rem;font-weight:600;letter-spacing:-0.3px;color:var(--text)}
 .login-sub{font-size:0.85rem;color:var(--login-sub-color);line-height:1.6;margin-bottom:32px}
 .login-divider{width:48px;height:1.5px;background:var(--border-active);margin:0 auto 24px;border-radius:1px}
-.login-btn{width:100%;padding:13px;background:var(--google-btn-bg);color:var(--text);border:1px solid var(--google-btn-border);border-radius:var(--radius-sm);cursor:pointer;font-size:0.88rem;font-weight:500;font-family:var(--font);transition:opacity 0.2s,background 0.2s;display:flex;align-items:center;justify-content:center;gap:10px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.login-btn{width:100%;padding:13px;background:var(--google-btn-bg);color:var(--text);border:1px solid var(--google-btn-border);border-radius:var(--radius-sm);cursor:pointer;font-size:0.88rem;font-weight:500;transition:opacity 0.2s,background 0.2s;display:flex;align-items:center;justify-content:center;gap:10px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .login-btn:hover:not(:disabled){background:var(--accent-glow);border-color:var(--accent)}
 .login-btn:disabled{opacity:0.5;cursor:not-allowed}
 .login-error{background:var(--login-error-bg);border:1px solid var(--login-error-border);border-radius:var(--radius-sm);padding:12px 16px;font-size:0.8rem;color:var(--error);margin-top:14px;display:none;line-height:1.5}
@@ -363,13 +354,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .header-user-avatar{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border)}
 .header-user-initials{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:0.65rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .header-user-name{font-weight:500;color:var(--text)}
-.btn-signout{background:none;border:1px solid var(--border);color:var(--text-muted);font-family:var(--font);font-size:0.72rem;cursor:pointer;padding:4px 10px;border-radius:var(--radius-xs);transition:border-color 0.2s,color 0.2s}
+.btn-signout{background:none;border:1px solid var(--border);color:var(--text-muted);font-size:0.72rem;cursor:pointer;padding:4px 10px;border-radius:var(--radius-xs);transition:border-color 0.2s,color 0.2s}
 .btn-signout:hover{color:var(--error);border-color:var(--error)}
 
 /* ── Activate DSPs ── */
 .activate-wrap{text-align:center;margin:12px 0 24px;opacity:0;transform:translateY(8px);transition:opacity 0.35s,transform 0.35s}
 .activate-wrap.revealed{opacity:1;transform:translateY(0)}
-.btn-activate{background:var(--success);color:var(--text-on-success);border:none;border-radius:var(--radius);padding:12px 36px;font-size:0.92rem;font-weight:600;font-family:var(--font);cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
+.btn-activate{background:var(--success);color:var(--text-on-success);border:none;border-radius:var(--radius);padding:12px 36px;font-size:0.92rem;font-weight:600;cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
 .btn-activate:hover{filter:brightness(1.1);transform:translateY(-1px)}
 .btn-activate:disabled{opacity:0.35;cursor:not-allowed;transform:none}
 .btn-activate.loading{pointer-events:none}
@@ -405,7 +396,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 <!-- ═══ LOGIN SCREEN ═══ -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-brand"><div class="login-brand-logo">H</div><h2>Creative Smart Bulk</h2></div>
+    <div class="login-brand"><div class="login-brand-logo">H</div><h1 class="login-title">Creative Smart Bulk</h1></div>
     <div class="login-sub">Geração e ativação de criativos nas DSPs.<br>Acesso restrito à equipe HYPR°.</div>
     <div class="login-divider"></div>
     <div id="login-form">
@@ -480,7 +471,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
       <button class="survey-type-btn" data-type="Intenção">Intenção</button>
       <button class="survey-type-btn" data-type="Preferência">Preferência</button>
     </div>
-    <div class="survey-custom-wrap"><input type="text" id="surveyCustomType" placeholder="Outro tipo — pressione Enter pra adicionar"></div>
+    <div class="survey-custom-wrap"><input type="text" id="surveyCustomType" placeholder="Outro tipo — pressione Enter pra adicionar" aria-label="Tipo de survey customizado"></div>
     <div class="survey-entries" id="surveyEntries"></div>
   </div>
 
@@ -499,7 +490,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     <div id="assetsContent" style="display:none">
       <div id="assetsBulkBar" style="display:none"></div>
       <div class="assets-filter-row" id="assetsFilterRow">
-        <input type="text" class="assets-filter-input" id="assetsFilter" placeholder="Filtrar por nome...">
+        <input type="text" class="assets-filter-input" id="assetsFilter" placeholder="Filtrar por nome..." aria-label="Filtrar assets por nome">
         <span class="assets-filter-count" id="assetsFilterCount"></span>
         <button class="assets-filter-select-btn" id="assetsFilterSelect" title="Selecionar apenas os filtrados">Selecionar filtrados</button>
       </div>
@@ -507,7 +498,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
         <table class="assets-table">
           <thead>
             <tr>
-              <th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll"></th>
+              <th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll" aria-label="Selecionar todos os assets"></th>
               <th></th>
               <th>Nome</th>
               <th>Tipo</th>
@@ -1563,6 +1554,11 @@ function readFileDimensions(file,type){
   });
 }
 
+function bindAssetFileInput(){
+  document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetInput([...e.target.files]);e.target.value=''});
+}
+const ASSET_FILE_INPUT_HTML='<input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Upload de assets">';
+
 function generateThumb(file,type){
   return new Promise(resolve=>{
     if(type==='display'){
@@ -1628,10 +1624,9 @@ async function handleAssetFiles(files){
   const label=[dc?`${dc} display`:null,vc?`${vc} video`:null].filter(Boolean).join(' + ');
   zone.classList.add('has-files');
   zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>
-    <input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Adicionar mais assets">`;
-  // Rebind file input
-  document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetInput([...e.target.files]);e.target.value=''});
-  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div><input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Upload de assets">`;document.getElementById('assetsFileInput').addEventListener('change',ev=>{if(ev.target.files.length)handleAssetInput([...ev.target.files]);ev.target.value=''});document.getElementById('assetsContent').style.display='none';updateVisibility()});
+    ${ASSET_FILE_INPUT_HTML}`;
+  bindAssetFileInput();
+  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
   document.getElementById('assetsContent').style.display='';
   renderAssetsTable();updateVisibility();
   toast(`${files.length} asset(s) adicionado(s)`,'success');
@@ -1899,7 +1894,7 @@ const assetsZone=document.getElementById('assetsUploadZone');
 assetsZone.addEventListener('dragover',e=>{e.preventDefault();assetsZone.classList.add('dragover')});
 assetsZone.addEventListener('dragleave',()=>assetsZone.classList.remove('dragover'));
 assetsZone.addEventListener('drop',e=>{e.preventDefault();assetsZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleAssetInput([...e.dataTransfer.files])});
-document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetInput([...e.target.files]);e.target.value=''});
+bindAssetFileInput();
 
 setMode('tags');
 initAuth();
