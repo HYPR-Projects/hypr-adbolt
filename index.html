@@ -206,7 +206,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .btn-generate.asset-mode{background:var(--success)}
 .btn-generate.asset-mode:hover{filter:brightness(1.1)}
 .btn-generate.done::after{display:none}
-.generate-wrap.sticky-cta{position:sticky;bottom:0;z-index:var(--z-fixed);background:var(--bg);padding:16px 0 20px;margin:0;border-top:1px solid var(--border)}
+.generate-wrap.sticky-cta{position:fixed;bottom:0;left:0;right:0;z-index:var(--z-fixed);background:var(--bg);padding:16px 0;margin:0;border-top:1px solid var(--border);text-align:center}
 
 /* ── Results ── */
 .results{margin-top:24px;opacity:0;transform:translateY(12px);transition:opacity 0.4s,transform 0.4s;pointer-events:none}
