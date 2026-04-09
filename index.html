@@ -186,9 +186,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .option-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 
 /* ── Custom checkbox ── */
-.custom-cb{appearance:none;border:1.5px solid var(--border);background:var(--bg-input);cursor:pointer;position:relative;flex-shrink:0}
+.custom-cb{appearance:none;width:16px;height:16px;border:1.5px solid var(--border);border-radius:3px;background:var(--bg-input);cursor:pointer;position:relative;flex-shrink:0}
 .custom-cb:checked{background:var(--accent);border-color:var(--accent)}
-.custom-cb:checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-on-accent);font-weight:700}
+.custom-cb:checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-on-accent);font-weight:700;font-size:11px}
 .checkbox-row{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;padding:6px 0}
 .checkbox-row input[type="checkbox"]{width:16px;height:16px;border-radius:var(--radius-cb)}
 .checkbox-row input[type="checkbox"]:checked::after{font-size:11px}
@@ -297,6 +297,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .asset-action-btn{background:var(--bg);border:1px solid var(--border);color:var(--text-dim);width:26px;height:26px;border-radius:var(--radius-xs);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:border-color 0.2s,color 0.2s}
 .asset-action-btn:hover{border-color:var(--accent);color:var(--accent)}
 .asset-action-btn.danger:hover{border-color:var(--error);color:var(--error)}
+
+/* Bulk action bar */
+.assets-filter-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;margin-top:14px}
+.assets-filter-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--font);font-size:0.78rem;padding:7px 10px 7px 30px;outline:none;transition:border-color 0.2s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:8px center}
+.assets-filter-input:focus{border-color:var(--accent)}
+.assets-filter-count{font-size:0.72rem;color:var(--text-muted);white-space:nowrap}
+.assets-filter-select-btn{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--accent);font-family:var(--font);font-size:0.72rem;font-weight:500;padding:5px 10px;cursor:pointer;white-space:nowrap;transition:background 0.2s}
+.assets-filter-select-btn:hover{background:var(--accent-glow)}
 
 /* Bulk action bar */
 .assets-bulk-bar{background:var(--accent);color:var(--text-on-accent);border-radius:var(--radius-sm);padding:10px 16px;margin-top:12px;display:flex;align-items:center;gap:10px;font-size:0.78rem;font-weight:500;animation:slideUp 0.2s ease}
@@ -461,6 +469,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     </div>
     <div id="assetsContent" style="display:none">
       <div id="assetsBulkBar" style="display:none"></div>
+      <div class="assets-filter-row" id="assetsFilterRow">
+        <input type="text" class="assets-filter-input" id="assetsFilter" placeholder="Filtrar por nome...">
+        <span class="assets-filter-count" id="assetsFilterCount"></span>
+        <button class="assets-filter-select-btn" id="assetsFilterSelect" title="Selecionar apenas os filtrados">Selecionar filtrados</button>
+      </div>
       <div class="assets-table-wrap">
         <table class="assets-table">
           <thead>
@@ -1512,7 +1525,11 @@ function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFix
 
 function renderAssetsTable(){
   const tbody=document.getElementById('assetsTableBody');
-  tbody.innerHTML=assetEntries.map((a,i)=>{
+  const filterVal=(document.getElementById('assetsFilter')?.value||'').toLowerCase();
+  const filtered=filterVal?assetEntries.filter(a=>a.name.toLowerCase().includes(filterVal)):assetEntries;
+  const countEl=document.getElementById('assetsFilterCount');
+  if(countEl)countEl.textContent=filterVal?`${filtered.length}/${assetEntries.length}`:'';
+  tbody.innerHTML=filtered.map((a,i)=>{
     const sz=a.compressedFile?a.compressedFile.size:a.size;
     const wc=getWeightClass(a);
     const thumbHtml=a.thumb?`<img src="${a.thumb}" class="asset-thumb${a.type==='video'?' asset-thumb-video':''}" alt="">`:'-';
@@ -1658,6 +1675,19 @@ async function handleAssetInput(fileList){
   if(regularFiles.length)await handleAssetFiles(regularFiles);
   else toast('Nenhum arquivo válido encontrado no ZIP','error');
 }
+
+// Assets filter
+document.getElementById('assetsFilter').addEventListener('input',()=>renderAssetsTable());
+document.getElementById('assetsFilterSelect').addEventListener('click',()=>{
+  const filterVal=(document.getElementById('assetsFilter')?.value||'').toLowerCase();
+  if(!filterVal){toast('Digite algo no filtro primeiro','error');return}
+  // Uncheck all, then check only filtered
+  document.querySelectorAll('.asset-cb').forEach(c=>c.checked=false);
+  const filtered=assetEntries.filter(a=>a.name.toLowerCase().includes(filterVal));
+  filtered.forEach(a=>{const cb=document.querySelector(`.asset-cb[data-id="${a.id}"]`);if(cb)cb.checked=true});
+  updateAssetsBulkBar();
+  toast(`${filtered.length} asset(s) selecionado(s)`,'success');
+});
 
 document.getElementById('assetsTableBody').addEventListener('input',e=>{
   const inp=e.target.closest('.asset-input');if(!inp)return;
