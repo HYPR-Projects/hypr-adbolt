@@ -152,6 +152,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .dsp-card-expandable .dsp-card.selected{border-radius:var(--radius-sm) var(--radius-sm) 0 0}
 .dsp-card-check{position:absolute;top:7px;right:7px;width:17px;height:17px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(0.5);transition:opacity 0.25s,transform 0.25s}
 .dsp-card.selected .dsp-card-check{opacity:1;transform:scale(1)}
+.dsp-card.selected:hover .dsp-card-check{background:var(--error)}
+.dsp-card.selected:hover .dsp-card-check::after{content:'✕';position:absolute;font-size:9px}
 .dsp-card-name{font-weight:600;font-size:0.9rem;margin-bottom:2px}
 .dsp-card-sub{font-size:0.7rem;color:var(--text-muted)}
 .dsp-card.dsp-unavailable{opacity:0.45;pointer-events:none;position:relative}
@@ -216,6 +218,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .result-info{display:flex;align-items:center;gap:12px}
 .result-dsp{font-weight:600;font-size:0.92rem}
 .result-details,.act-detail{font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)}
+.act-actions{display:flex;align-items:center;gap:10px}
+.btn-copy-ids{background:var(--bg);border:1px solid var(--border);color:var(--text-dim);font-size:0.7rem;padding:3px 8px;border-radius:var(--radius-xs);cursor:pointer;white-space:nowrap;transition:border-color 0.2s,color 0.2s}
+.btn-copy-ids:hover{border-color:var(--accent);color:var(--accent)}
 .btn-download{background:transparent;color:var(--success);border:1px solid var(--success);border-radius:var(--radius-sm);padding:7px 18px;font-size:0.8rem;font-weight:500;cursor:pointer;transition:background 0.2s,color 0.2s}
 .btn-download:hover{background:var(--success);color:var(--bg)}
 .btn-download.downloaded{background:var(--success);color:var(--bg);border-color:var(--success);pointer-events:none}
@@ -429,6 +434,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
       <span class="upload-icon">📄</span>
       <div class="upload-text">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></div>
       <div class="upload-format">.xlsx .csv</div>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px">Exporte as tags do Campaign Manager (Trafficking → Export Tags)</div>
       <div class="upload-filename" id="uploadFilename"></div>
       <div class="upload-meta" id="uploadMeta"></div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" aria-label="Upload de arquivo de tags CM360">
@@ -447,7 +453,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
   <div class="panel" data-step="1s" id="sectionSurveys">
     <div class="panel-header">
       <div class="panel-num" id="panelNumSurveys">2</div>
-      <div><div class="panel-title">Surveys</div><div class="panel-subtitle">Configure pesquisas Typeform pra Brand Lift Study</div></div>
+      <div><div class="panel-title">Surveys</div><div class="panel-subtitle">Selecione o tipo de pesquisa e cole as URLs do Typeform</div></div>
     </div>
     <div class="survey-types" id="surveyTypes">
       <button class="survey-type-btn" data-type="Awareness">Awareness</button>
@@ -491,7 +497,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
               <th>Size</th>
               <th>Peso</th>
               <th>Landing Page</th>
-              <th>Impression Tracker</th>
+              <th>Tracker</th>
               <th></th>
             </tr>
           </thead>
@@ -990,14 +996,20 @@ async function activateDV360Assets(token){
 
 function renderActivationResults(results){
   const container=document.getElementById('activationCards');
-  container.innerHTML=results.map((r,i)=>`
-    <div class="activation-card" style="animation-delay:${i*120}ms">
+  container.innerHTML=results.map((r,i)=>{
+    const ids=(r.results||[]).filter(x=>x.success&&x.creativeId).map(x=>x.creativeId);
+    const copyBtn=ids.length?`<button class="btn-copy-ids" onclick="navigator.clipboard.writeText('${ids.join('\\n')}');this.textContent='Copiado ✓';setTimeout(()=>this.textContent='Copiar IDs',1500)">Copiar IDs</button>`:'';
+    return `<div class="activation-card" style="animation-delay:${i*120}ms">
       <div class="act-info">
         <span class="act-dsp">${r.dsp}</span>
         <span class="act-status ${r.status}">${r.status==='success'?'Ativado':r.status==='partial'?'Parcial':r.status==='pending'?'Em breve':'Erro'}</span>
       </div>
-      <span class="act-detail">${r.detail||''}</span>
-    </div>`).join('');
+      <div class="act-actions">
+        ${copyBtn}
+        <span class="act-detail">${r.detail||''}</span>
+      </div>
+    </div>`;
+  }).join('');
   document.getElementById('activationResults').classList.add('visible');
   setTimeout(()=>document.getElementById('activationResults').scrollIntoView({behavior:'smooth',block:'nearest'}),200);
 }
@@ -1092,6 +1104,9 @@ function updateOptions(){
   });
   document.getElementById('pixelSyncRow').classList.toggle('visible',hasSA&&hasXandr&&showPixels);
   if(!(hasSA&&hasXandr))document.getElementById('syncPixels').checked=false;
+  // Hide entire options panel if no config-needing DSP is selected
+  const hasAnyConfig=hasXandr||hasDV360||hasAmazon||hasSA;
+  document.getElementById('sectionOptions').style.display=hasAnyConfig?'':'none';
 }
 function syncPixelFields(e){document.getElementById(e.target.id==='pixel_stackadapt'?'pixel_xandr':'pixel_stackadapt').value=e.target.value}
 function onSyncPixelChange(){const sa=document.getElementById('pixel_stackadapt'),x=document.getElementById('pixel_xandr');if(document.getElementById('syncPixels').checked){if(sa.value&&!x.value)x.value=sa.value;else if(x.value&&!sa.value)sa.value=x.value;sa.addEventListener('input',syncPixelFields);x.addEventListener('input',syncPixelFields)}else{sa.removeEventListener('input',syncPixelFields);x.removeEventListener('input',syncPixelFields)}}
