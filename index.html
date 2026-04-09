@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HYPR Creative Smart Bulk</title>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<script>(function(){document.documentElement.setAttribute('data-theme',localStorage.getItem('hypr-theme')||'dark');})()</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px}
+
+[data-theme="dark"]{
+  --bg:#08080d;--bg-card:#111118;--bg-card-hover:#191924;--bg-input:#0c0c14;
+  --bg-section:#0e0e15;--border:#1c1c2c;--border-active:#3b3b5c;
+  --text:#e4e4ed;--text-dim:#7a7a8e;--text-muted:#6a6a80;
+  --accent:#6c5ce7;--accent-glow:rgba(108,92,231,0.12);--accent-hover:#7d6ff0;
+  --success:#2edbd6;--success-glow:rgba(0,206,201,0.10);--error:#e17055;
+  --text-on-accent:#fff;--text-on-success:#0a0a0f;
+  --shadow-card:0 1px 3px rgba(0,0,0,0.3);--shimmer:rgba(255,255,255,0.1);
+  --divider:rgba(108,92,231,0.15);
+}
+[data-theme="light"]{
+  --bg:#f3f3f7;--bg-card:#ffffff;--bg-card-hover:#f0f0f5;--bg-input:#f8f8fb;
+  --bg-section:#fafafc;--border:#e0e0e8;--border-active:#b0b0c8;
+  --text:#1a1a2e;--text-dim:#5a5a6e;--text-muted:#6e6e82;
+  --accent:#5a4bd6;--accent-glow:rgba(90,75,214,0.08);--accent-hover:#6c5ce7;
+  --success:#007a75;--success-glow:rgba(0,122,117,0.06);--error:#d45a40;
+  --text-on-accent:#fff;--text-on-success:#fff;
+  --shadow-card:0 1px 4px rgba(0,0,0,0.06);--shimmer:rgba(255,255,255,0.18);
+  --divider:rgba(90,75,214,0.10);
+}
+:root{
+  --radius:12px;--radius-sm:8px;--radius-xs:5px;--radius-cb:4px;
+  --font:'DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;
+  --z-local:2;--z-fixed:50;--z-overlay:100;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+.app{max-width:880px;margin:0 auto;padding:48px 24px 80px}
+
+/* ── Header ── */
+.header{margin-bottom:28px}
+.header-brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.header-logo{width:34px;height:34px;background:var(--accent);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--text-on-accent)}
+.header h1{font-size:1.4rem;font-weight:600;letter-spacing:-0.3px}
+.header p{color:var(--text-dim);font-size:0.85rem;margin-top:4px}
+
+/* ── Mode Switcher ── */
+.mode-switcher{display:flex;gap:4px;margin-bottom:36px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px}
+.mode-btn{flex:1;padding:10px 16px;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--text-dim);font-family:var(--font);font-size:0.82rem;font-weight:500;cursor:pointer;transition:background 0.2s,color 0.2s}
+.mode-btn.active{background:var(--accent);color:var(--text-on-accent)}
+.mode-btn:not(.active):hover{background:var(--bg-card-hover);color:var(--text)}
+
+/* ── Panel (main visual container for each section) ── */
+.panel{background:var(--bg-section);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;margin-bottom:24px;transition:opacity 0.4s,transform 0.4s}
+.panel[data-step]{opacity:0;transform:translateY(16px);pointer-events:none}
+.panel[data-step].revealed{opacity:1;transform:translateY(0);pointer-events:auto}
+.panel-header{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.panel-num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:0.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.panel-num.done{background:var(--success);color:var(--text-on-success)}
+.panel-title{font-size:0.92rem;font-weight:600;letter-spacing:-0.2px}
+.panel-subtitle{font-size:0.75rem;color:var(--text-muted);margin-top:1px}
+.panel-divider{height:1px;background:linear-gradient(90deg,var(--divider),transparent);margin:24px 0}
+
+/* ── Upload ── */
+.upload-zone{border:1.5px dashed var(--border);border-radius:var(--radius-sm);padding:40px 24px;text-align:center;cursor:pointer;transition:border-color 0.25s,background 0.25s;background:var(--bg-card);position:relative}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:var(--accent-glow)}
+.upload-zone.has-file{border-color:var(--success);background:var(--success-glow);border-style:solid}
+.upload-zone.processing{border-color:var(--accent);border-style:solid;animation:pulse-border 1.2s ease infinite}
+@keyframes pulse-border{0%,100%{border-color:var(--accent)}50%{border-color:var(--accent-hover);box-shadow:0 0 12px var(--accent-glow)}}
+.upload-icon{font-size:2rem;margin-bottom:8px;display:block}
+.upload-text{font-size:0.88rem;color:var(--text-dim)}
+.upload-text strong{color:var(--accent)}
+.upload-format{display:inline-block;font-family:var(--mono);font-size:0.68rem;color:var(--text-muted);border:1px solid var(--border);border-radius:var(--radius-xs);padding:2px 8px;margin-top:8px}
+.upload-filename{font-family:var(--mono);font-size:0.82rem;color:var(--success);margin-top:8px}
+.upload-meta{font-size:0.78rem;color:var(--text-dim);margin-top:2px}
+.upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.upload-clear{position:absolute;top:10px;right:10px;background:var(--bg);border:1px solid var(--border);color:var(--text-dim);width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;z-index:var(--z-local)}
+.upload-clear:hover{border-color:var(--error);color:var(--error)}
+
+/* ── Extracted Info ── */
+.extracted-info{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-top:16px;opacity:0;transform:translateY(8px);transition:opacity 0.4s,transform 0.4s}
+.extracted-info.visible{opacity:1;transform:translateY(0)}
+.extracted-info h3{font-size:0.8rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.extracted-info h3::before{content:'✓';width:18px;height:18px;border-radius:50%;background:var(--success);color:var(--text-on-success);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.info-item{background:var(--bg);border-radius:var(--radius-xs);padding:10px 12px}
+.info-item-label{font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:3px}
+.info-item-value{font-size:0.85rem;font-weight:500}
+.info-item-value.mono{font-family:var(--mono);font-size:0.8rem}
+
+/* ── Tables ── */
+.placements-table-wrap{overflow-x:auto;margin-top:12px}
+.placements-table{width:100%;border-collapse:collapse;font-size:0.78rem}
+.placements-table th{text-align:left;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);padding:6px 8px;border-bottom:1px solid var(--border);font-weight:500}
+.placements-table td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-family:var(--mono);font-size:0.75rem}
+.placements-table tr:last-child td{border-bottom:none}
+.placements-table tbody tr{opacity:0;animation:fadeRow 0.3s ease forwards}
+@keyframes fadeRow{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+.dim-badge{background:var(--accent-glow);color:var(--accent);padding:2px 8px;border-radius:var(--radius-xs);font-size:0.7rem;font-weight:500;display:inline-block}
+
+/* ── Survey ── */
+.survey-types{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
+.survey-type-btn{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;cursor:pointer;font-family:var(--font);font-size:0.78rem;font-weight:500;color:var(--text-dim);transition:border-color 0.2s,background 0.2s,color 0.2s;text-align:center}
+.survey-type-btn:hover{border-color:var(--border-active);color:var(--text)}
+.survey-type-btn.active{border-color:var(--accent);background:var(--accent-glow);color:var(--text)}
+.survey-custom-wrap{margin-bottom:14px}
+.survey-custom-wrap input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:0.8rem;padding:8px 12px;outline:none}
+.survey-custom-wrap input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.survey-entries{display:flex;flex-direction:column;gap:10px}
+.survey-entry{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px}
+.survey-entry-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.survey-entry-title{font-weight:600;font-size:0.85rem}
+.survey-entry-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:15px;padding:0 4px}
+.survey-entry-remove:hover{color:var(--error)}
+.survey-field-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px}
+.survey-field-row:last-child{margin-bottom:0}
+.survey-field-label{font-size:0.72rem;font-weight:500;color:var(--text-muted);min-width:65px;padding-top:8px}
+.survey-field-input{flex:1}
+.survey-field-input input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:0.75rem;padding:7px 10px;outline:none}
+.survey-field-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.survey-size-pills{display:flex;gap:4px}
+.survey-size-pill{background:var(--bg-input);border:1.5px solid var(--border);border-radius:var(--radius-xs);padding:5px 12px;font-family:var(--mono);font-size:0.73rem;cursor:pointer;color:var(--text-dim);transition:border-color 0.2s,background 0.2s,color 0.2s}
+.survey-size-pill:hover{border-color:var(--border-active);color:var(--text)}
+.survey-size-pill.active{border-color:var(--accent);background:var(--accent-glow);color:var(--text)}
+.survey-field-status{font-size:0.7rem;color:var(--success);font-weight:500;margin-top:3px}
+.survey-field-status.loading{color:var(--text-muted)}
+.survey-field-status.error{color:var(--error)}
+
+/* Survey URL rows */
+.survey-url-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:var(--radius-sm);margin-bottom:6px}
+.survey-url-info{display:flex;align-items:center;gap:8px;flex:1;min-width:0;overflow:hidden}
+.survey-url-title{font-size:0.78rem;font-family:var(--mono);color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.survey-url-title.loading{color:var(--text-muted);font-style:italic}
+.survey-url-variant{font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:var(--radius-xs);background:var(--success-glow);color:var(--success);white-space:nowrap;flex-shrink:0}
+.survey-url-variant.ctrl{background:var(--accent-glow);color:var(--accent)}
+.survey-url-remove{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:2px 4px;flex-shrink:0}
+.survey-url-remove:hover{color:var(--error)}
+.survey-add-row{display:flex;align-items:center;gap:10px;margin-top:4px}
+.survey-add-input{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:0.75rem;padding:7px 10px;outline:none}
+.survey-add-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+
+/* ── DSP Cards ── */
+.dsp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start}
+.dsp-card-expandable{display:flex;flex-direction:column}
+.dsp-card{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:18px 14px;cursor:pointer;transition:border-color 0.2s,background 0.2s;text-align:center;user-select:none;position:relative;overflow:hidden}
+.dsp-card:hover{border-color:var(--border-active);background:var(--bg-card-hover)}
+.dsp-card.selected{border-color:var(--accent);background:var(--accent-glow)}
+.dsp-card-expandable .dsp-card.selected{border-radius:var(--radius-sm) var(--radius-sm) 0 0}
+.dsp-card-check{position:absolute;top:7px;right:7px;width:17px;height:17px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(0.5);transition:opacity 0.25s,transform 0.25s}
+.dsp-card.selected .dsp-card-check{opacity:1;transform:scale(1)}
+.dsp-card-name{font-weight:600;font-size:0.9rem;margin-bottom:2px}
+.dsp-card-sub{font-size:0.7rem;color:var(--text-muted)}
+
+/* ── Pixel input ── */
+.dsp-pixel-input{max-height:0;overflow:hidden;opacity:0;transition:max-height 0.3s ease,opacity 0.25s ease,padding 0.3s ease;background:var(--bg-card);border:1.5px solid var(--accent);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);padding:0 12px}
+.dsp-pixel-input.visible{max-height:100px;opacity:1;padding:10px 12px}
+.dsp-pixel-input label{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:5px}
+.dsp-pixel-input label small{display:inline;font-weight:400;text-transform:none;letter-spacing:0}
+.pixel-field{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:var(--mono);font-size:0.75rem;padding:7px 10px;outline:none;transition:border-color 0.2s,box-shadow 0.2s}
+.pixel-field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.pixel-sync-row{max-height:0;overflow:hidden;opacity:0;transition:max-height 0.3s,opacity 0.25s;margin-top:6px}
+.pixel-sync-row.visible{max-height:50px;opacity:1}
+
+/* ── Options ── */
+.option-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.option-row:last-child{margin-bottom:0}
+.option-label{font-size:0.82rem;font-weight:500;min-width:155px;padding-top:8px}
+.option-label small{display:block;font-weight:400;color:var(--text-muted);font-size:0.7rem;margin-top:2px}
+.option-input{flex:1}
+.option-input input[type="text"]{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:0.8rem;padding:9px 12px;outline:none;transition:border-color 0.2s,box-shadow 0.2s}
+.option-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+
+/* ── Custom checkbox ── */
+.custom-cb{appearance:none;border:1.5px solid var(--border);background:var(--bg-input);cursor:pointer;position:relative;flex-shrink:0}
+.custom-cb:checked{background:var(--accent);border-color:var(--accent)}
+.custom-cb:checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-on-accent);font-weight:700}
+.checkbox-row{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.82rem;padding:6px 0}
+.checkbox-row input[type="checkbox"]{width:16px;height:16px;border-radius:var(--radius-cb)}
+.checkbox-row input[type="checkbox"]:checked::after{font-size:11px}
+
+/* ── Focus visibility ── */
+.theme-toggle:focus-visible,.upload-clear:focus-visible,.btn-generate:focus-visible,.btn-download:focus-visible,.dsp-card:focus-visible,.mode-btn:focus-visible,.survey-type-btn:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+.custom-cb:focus-visible,.assign-cb:focus-visible{outline:none;box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
+
+/* ── Assignment ── */
+.assignment-wrap{margin-top:14px;max-height:0;overflow:hidden;opacity:0;transition:max-height 0.4s,opacity 0.35s,padding 0.4s;padding:0}
+.assignment-wrap.visible{max-height:800px;opacity:1;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-top:14px}
+.assignment-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.assign-cb{width:15px;height:15px;border-radius:var(--radius-cb);vertical-align:middle}
+.assign-cb:checked::after{font-size:9px}
+.assign-col-header{text-align:center!important;min-width:75px}
+.assign-col-cb{text-align:center!important}
+
+/* ── Generate ── */
+.generate-wrap{text-align:center;margin:36px 0 20px;opacity:0;transform:translateY(8px);transition:opacity 0.35s,transform 0.35s}
+.generate-wrap.revealed{opacity:1;transform:translateY(0)}
+.btn-generate{background:var(--accent);color:var(--text-on-accent);border:none;border-radius:var(--radius);padding:14px 48px;font-size:1rem;font-weight:600;font-family:var(--font);cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
+.btn-generate::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,var(--shimmer) 50%,transparent 60%);transform:translateX(-100%);transition:transform 0.6s}
+.btn-generate:hover::after{transform:translateX(100%)}
+.btn-generate:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-generate:disabled{opacity:0.35;cursor:not-allowed;transform:none}
+.btn-generate:disabled::after{display:none}
+.btn-generate.done{background:var(--success)}
+.btn-generate.done::after{display:none}
+
+/* ── Results ── */
+.results{margin-top:24px;opacity:0;transform:translateY(12px);transition:opacity 0.4s,transform 0.4s;pointer-events:none}
+.results.visible{opacity:1;transform:translateY(0);pointer-events:auto}
+.result-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;opacity:0;animation:slideUp 0.35s ease forwards}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.result-card:hover{border-color:var(--border-active)}
+.result-info{display:flex;align-items:center;gap:12px}
+.result-dsp{font-weight:600;font-size:0.92rem}
+.result-details{font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)}
+.btn-download{background:transparent;color:var(--success);border:1px solid var(--success);border-radius:var(--radius-sm);padding:7px 18px;font-size:0.8rem;font-weight:500;font-family:var(--font);cursor:pointer;transition:background 0.2s,color 0.2s}
+.btn-download:hover{background:var(--success);color:var(--bg)}
+.btn-download.downloaded{background:var(--success);color:var(--bg);border-color:var(--success);pointer-events:none}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--bg-card);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:var(--radius);font-size:0.82rem;z-index:var(--z-overlay);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);white-space:nowrap;display:flex;align-items:center;gap:10px}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.error{border-color:var(--error)}
+.toast.success{border-color:var(--success)}
+.toast-dismiss{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 0 0 4px;line-height:1}
+
+/* ── Misc ── */
+@keyframes pixel-flash{0%{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}100%{border-color:var(--border);box-shadow:none}}
+.pixel-field.flash{animation:pixel-flash 0.8s ease}
+.placement-name{display:flex;gap:2px;max-width:320px;overflow:hidden;font-family:var(--mono);font-size:0.75rem}
+.placement-name-start{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.placement-name-end{white-space:nowrap;flex-shrink:0;color:var(--text-dim)}
+.section-label{font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin:0 0 10px 0}
+
+/* ── Theme Toggle ── */
+.theme-toggle{position:fixed;top:16px;right:16px;z-index:var(--z-fixed);background:var(--bg-card);border:1px solid var(--border);border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1;padding:0}
+.theme-toggle:hover{border-color:var(--border-active);background:var(--bg-card-hover)}
+.theme-toggle .icon-sun{display:none}.theme-toggle .icon-moon{display:block}
+[data-theme="light"] .theme-toggle .icon-sun{display:block}
+[data-theme="light"] .theme-toggle .icon-moon{display:none}
+
+/* ── Light shadows ── */
+[data-theme="light"] .panel,[data-theme="light"] .upload-zone,[data-theme="light"] .dsp-card,[data-theme="light"] .dsp-pixel-input,[data-theme="light"] .extracted-info,[data-theme="light"] .result-card,[data-theme="light"] .toast,[data-theme="light"] .survey-entry,[data-theme="light"] .mode-switcher{box-shadow:var(--shadow-card)}
+
+@media(max-width:640px){
+  .dsp-grid{grid-template-columns:1fr}.info-grid{grid-template-columns:1fr}.survey-types{grid-template-columns:repeat(2,1fr)}
+  .option-row,.survey-field-row{flex-direction:column}.option-label,.survey-field-label{min-width:unset;padding-top:0}
+}
+
+/* ── Auth Bar ── */
+.auth-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:20px;min-height:36px}
+.auth-user{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-dim)}
+.auth-avatar{width:26px;height:26px;border-radius:50%;border:1px solid var(--border)}
+.auth-name{font-weight:500;color:var(--text)}
+.btn-auth{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 16px;font-family:var(--font);font-size:0.8rem;font-weight:500;color:var(--text);cursor:pointer;transition:border-color 0.2s,background 0.2s;display:flex;align-items:center;gap:8px}
+.btn-auth:hover{border-color:var(--border-active);background:var(--bg-card-hover)}
+.btn-auth svg{width:16px;height:16px}
+.btn-signout{background:none;border:none;color:var(--text-muted);font-family:var(--font);font-size:0.72rem;cursor:pointer;padding:2px 6px;border-radius:var(--radius-xs)}
+.btn-signout:hover{color:var(--error)}
+
+/* ── Activate DSPs ── */
+.activate-wrap{text-align:center;margin:12px 0 24px;opacity:0;transform:translateY(8px);transition:opacity 0.35s,transform 0.35s}
+.activate-wrap.revealed{opacity:1;transform:translateY(0)}
+.btn-activate{background:var(--success);color:var(--text-on-success);border:none;border-radius:var(--radius);padding:12px 36px;font-size:0.92rem;font-weight:600;font-family:var(--font);cursor:pointer;transition:background 0.2s,transform 0.2s;position:relative;overflow:hidden}
+.btn-activate:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.btn-activate:disabled{opacity:0.35;cursor:not-allowed;transform:none}
+.btn-activate.loading{pointer-events:none}
+.btn-activate.done{background:var(--accent)}
+
+/* ── Activation Results ── */
+.activation-results{margin-top:16px;opacity:0;transform:translateY(8px);transition:opacity 0.4s,transform 0.4s}
+.activation-results.visible{opacity:1;transform:translateY(0)}
+.activation-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;opacity:0;animation:slideUp 0.35s ease forwards}
+.activation-card .act-info{display:flex;align-items:center;gap:10px}
+.activation-card .act-dsp{font-weight:600;font-size:0.88rem}
+.activation-card .act-status{font-family:var(--mono);font-size:0.75rem;padding:3px 10px;border-radius:var(--radius-xs);font-weight:500}
+.act-status.success{background:var(--success-glow);color:var(--success)}
+.act-status.partial{background:var(--accent-glow);color:var(--accent)}
+.act-status.error{background:rgba(225,112,85,0.1);color:var(--error)}
+.act-status.pending{background:var(--accent-glow);color:var(--text-muted)}
+.act-detail{font-size:0.75rem;color:var(--text-dim);font-family:var(--mono)}
+.act-login-hint{text-align:center;font-size:0.78rem;color:var(--text-muted);margin-top:8px}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" aria-label="Alternar tema"><span class="icon-sun">☀️</span><span class="icon-moon">🌙</span></button>
+<main class="app">
+  <header class="header">
+    <div class="header-brand"><div class="header-logo">H</div><h1>Creative Smart Bulk</h1></div>
+    <p>Templates prontos pra bulk upload de criativos e surveys nas DSPs.</p>
+  </header>
+
+  <!-- ═══ AUTH BAR ═══ -->
+  <div class="auth-bar" id="authBar">
+    <div id="authLoading" style="font-size:0.75rem;color:var(--text-muted)">Carregando...</div>
+    <div id="authLoggedOut" style="display:none">
+      <button class="btn-auth" id="btnGoogleLogin" onclick="signInWithGoogle()">
+        <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Entrar com Google
+      </button>
+    </div>
+    <div id="authLoggedIn" style="display:none">
+      <div class="auth-user">
+        <img class="auth-avatar" id="authAvatar" src="" alt="">
+        <span class="auth-name" id="authName"></span>
+        <button class="btn-signout" onclick="signOut()">Sair</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="mode-switcher" id="modeSwitcher">
+    <button class="mode-btn active" data-mode="tags">Tags CM360</button>
+    <button class="mode-btn" data-mode="surveys">Surveys</button>
+    <button class="mode-btn" data-mode="both">Tags + Surveys</button>
+  </div>
+
+  <!-- ═══ PANEL 1A: TAGS ═══ -->
+  <div class="panel revealed" data-step="1" id="sectionTags">
+    <div class="panel-header">
+      <div class="panel-num" id="panelNumTags">1</div>
+      <div><div class="panel-title">Tags CM360</div><div class="panel-subtitle">Upload do arquivo de tags exportado do Campaign Manager</div></div>
+    </div>
+    <div class="upload-zone" id="uploadZone">
+      <span class="upload-icon">📄</span>
+      <div class="upload-text">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></div>
+      <div class="upload-format">.xlsx .csv</div>
+      <div class="upload-filename" id="uploadFilename"></div>
+      <div class="upload-meta" id="uploadMeta"></div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" aria-label="Upload de arquivo de tags CM360">
+      <button class="upload-clear" id="uploadClear" style="display:none" aria-label="Remover arquivo">✕</button>
+    </div>
+    <div class="extracted-info" id="extractedInfo">
+      <h3>Dados extraídos</h3>
+      <div class="info-grid" id="infoGrid"></div>
+      <div class="placements-table-wrap">
+        <table class="placements-table"><thead><tr><th>#</th><th>Placement Name</th><th>Size</th><th>Click URL</th></tr></thead><tbody id="placementsBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PANEL 1B: SURVEYS ═══ -->
+  <div class="panel" data-step="1s" id="sectionSurveys">
+    <div class="panel-header">
+      <div class="panel-num" id="panelNumSurveys">2</div>
+      <div><div class="panel-title">Surveys</div><div class="panel-subtitle">Configure pesquisas Typeform pra Brand Lift Study</div></div>
+    </div>
+    <div class="survey-types" id="surveyTypes">
+      <button class="survey-type-btn" data-type="Awareness">Awareness</button>
+      <button class="survey-type-btn" data-type="Associação">Associação</button>
+      <button class="survey-type-btn" data-type="Atitude">Atitude</button>
+      <button class="survey-type-btn" data-type="Favoritismo">Favoritismo</button>
+      <button class="survey-type-btn" data-type="Intenção">Intenção</button>
+      <button class="survey-type-btn" data-type="Preferência">Preferência</button>
+    </div>
+    <div class="survey-custom-wrap"><input type="text" id="surveyCustomType" placeholder="Outro tipo — pressione Enter pra adicionar"></div>
+    <div class="survey-entries" id="surveyEntries"></div>
+  </div>
+
+  <!-- ═══ PANEL 2: DSPs ═══ -->
+  <div class="panel" data-step="2" id="sectionDsp">
+    <div class="panel-header">
+      <div class="panel-num" id="panelNumDsp">3</div>
+      <div><div class="panel-title">DSPs de destino</div><div class="panel-subtitle">Selecione onde os criativos serão enviados</div></div>
+    </div>
+    <div class="dsp-grid" id="dspGrid">
+      <div class="dsp-card" data-dsp="dv360" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-name">DV360</div><div class="dsp-card-sub">CSV · Third-Party Tags</div></div>
+      <div class="dsp-card-expandable">
+        <div class="dsp-card" data-dsp="stackadapt" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-name">StackAdapt</div><div class="dsp-card-sub">XLSX · New Creatives</div></div>
+        <div class="dsp-pixel-input" id="pixelWrap_stackadapt"><label for="pixel_stackadapt">Impression Pixel <small>(só tags)</small></label><input type="text" id="pixel_stackadapt" class="pixel-field" placeholder="Cole a URL ou tag do pixel"></div>
+      </div>
+      <div class="dsp-card-expandable">
+        <div class="dsp-card" data-dsp="xandr" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-name">Xandr</div><div class="dsp-card-sub">XLSX · Third-Party Creative</div></div>
+        <div class="dsp-pixel-input" id="pixelWrap_xandr"><label for="pixel_xandr">Impression Pixel <small>(só tags)</small></label><input type="text" id="pixel_xandr" class="pixel-field" placeholder="Cole a URL ou tag do pixel"></div>
+      </div>
+    </div>
+    <div class="pixel-sync-row" id="pixelSyncRow">
+      <label class="checkbox-row" style="padding:4px 0;font-size:0.78rem"><input type="checkbox" class="custom-cb" id="syncPixels"> Usar mesmo pixel para StackAdapt e Xandr</label>
+    </div>
+    <div class="assignment-wrap" id="assignmentSection">
+      <div class="assignment-header">
+        <span class="section-label" style="margin-bottom:0">Atribuição por DSP</span>
+        <label class="checkbox-row" style="padding:0;font-size:0.78rem"><input type="checkbox" class="custom-cb" id="replicateAll" checked> Replicar todos</label>
+      </div>
+      <div class="placements-table-wrap" id="assignmentTableWrap" style="display:none">
+        <table class="placements-table"><thead id="assignmentHead"></thead><tbody id="assignmentBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PANEL 3: CONFIG ═══ -->
+  <div class="panel" data-step="3" id="sectionOptions">
+    <div class="panel-header">
+      <div class="panel-num" id="panelNumConfig">4</div>
+      <div><div class="panel-title">Configurações</div><div class="panel-subtitle">Marca e declarações da campanha</div></div>
+    </div>
+    <div id="optionsContent">
+      <div class="option-row" id="optBrandRow">
+        <label class="option-label" for="inputBrand">Marca (Sponsored By)<small>Extraída automaticamente</small></label>
+        <div class="option-input"><input type="text" id="inputBrand" placeholder="Será preenchido ao fazer upload"></div>
+      </div>
+      <div class="option-row" id="optPoliticalRow" style="display:none">
+        <label class="checkbox-row"><input type="checkbox" class="custom-cb" id="inputPolitical"> Creative é político (Xandr Political Declaration = "Yes; non-EU")</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="generate-wrap" id="generateWrap">
+    <button class="btn-generate" id="btnGenerate" disabled>Gerar Templates</button>
+  </div>
+
+  <div class="results" id="results">
+    <h2 class="section-label">Downloads prontos</h2>
+    <div id="resultCards"></div>
+  </div>
+
+  <!-- ═══ ATIVAÇÃO NAS DSPs ═══ -->
+  <div class="activate-wrap" id="activateWrap">
+    <button class="btn-activate" id="btnActivate" disabled onclick="activateInDsps()">Ativar nas DSPs</button>
+    <div class="act-login-hint" id="activateLoginHint" style="display:none">Faça login com Google pra ativar direto nas DSPs</div>
+  </div>
+  <div class="activation-results" id="activationResults">
+    <h2 class="section-label">Ativação nas DSPs</h2>
+    <div id="activationCards"></div>
+  </div>
+</main>
+<div class="toast" id="toast" role="alert" aria-live="assertive"><span id="toastMsg"></span><button class="toast-dismiss" id="toastDismiss" aria-label="Fechar">✕</button></div>
+
+<script>
+const TYPEFORM_PROXY='https://adfnabuwzmojxbhcpdpe.supabase.co/functions/v1/typeform-proxy';
+const SUPABASE_URL='https://adfnabuwzmojxbhcpdpe.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZm5hYnV3em1vanhiaGNwZHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MTcxODcsImV4cCI6MjA5MTA5MzE4N30.sU9EZAnQ2mClIsMwfccR5__nbTYnfzkt3IvP-llxpno';
+const STACKADAPT_EXCLUDED_SIZES=new Set(['336x280']);
+const SURVEY_SIZES=['300x600','300x250','320x480'];
+
+// ── Supabase Auth ──
+const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+let currentUser=null;
+
+async function initAuth(){
+  const{data:{session}}=await supabase.auth.getSession();
+  if(session?.user)setUser(session.user);
+  else showAuthState('loggedOut');
+  supabase.auth.onAuthStateChange((_event,session)=>{
+    if(session?.user)setUser(session.user);
+    else{currentUser=null;showAuthState('loggedOut');updateActivateBtn()}
+  });
+}
+
+function setUser(user){
+  currentUser=user;
+  const meta=user.user_metadata||{};
+  document.getElementById('authName').textContent=meta.full_name||meta.name||user.email;
+  document.getElementById('authAvatar').src=meta.avatar_url||meta.picture||'';
+  showAuthState('loggedIn');
+  updateActivateBtn();
+}
+
+function showAuthState(state){
+  document.getElementById('authLoading').style.display='none';
+  document.getElementById('authLoggedOut').style.display=state==='loggedOut'?'flex':'none';
+  document.getElementById('authLoggedIn').style.display=state==='loggedIn'?'flex':'none';
+}
+
+async function signInWithGoogle(){
+  const{error}=await supabase.auth.signInWithOAuth({
+    provider:'google',
+    options:{redirectTo:window.location.origin+window.location.pathname}
+  });
+  if(error)toast('Erro no login: '+error.message,'error');
+}
+
+async function signOut(){
+  await supabase.auth.signOut();
+  currentUser=null;
+  showAuthState('loggedOut');
+  updateActivateBtn();
+}
+
+function updateActivateBtn(){
+  const wrap=document.getElementById('activateWrap');
+  const btn=document.getElementById('btnActivate');
+  const hint=document.getElementById('activateLoginHint');
+  const hasResults=document.getElementById('results').classList.contains('visible');
+  if(!hasResults){wrap.classList.remove('revealed');return}
+  wrap.classList.add('revealed');
+  if(!currentUser){
+    btn.disabled=true;
+    hint.style.display='block';
+  }else{
+    btn.disabled=!selectedDsps.size;
+    hint.style.display='none';
+  }
+}
+
+// ── Ativação nas DSPs ──
+async function activateInDsps(){
+  if(!currentUser){toast('Faça login primeiro','error');return}
+  const btn=document.getElementById('btnActivate');
+  btn.disabled=true;btn.classList.add('loading');btn.textContent='Ativando...';
+
+  const{data:{session}}=await supabase.auth.getSession();
+  if(!session){toast('Sessão expirada, faça login novamente','error');btn.disabled=false;btn.classList.remove('loading');btn.textContent='Ativar nas DSPs';return}
+
+  const token=session.access_token;
+  const results=[];
+
+  // Xandr
+  if(selectedDsps.has('xandr')&&generatedFiles.xandr){
+    results.push(await activateXandr(token));
+  }
+  // DV360 (Fase 2 - placeholder)
+  if(selectedDsps.has('dv360')&&generatedFiles.dv360){
+    results.push({dsp:'DV360',status:'pending',detail:'Integração em desenvolvimento (Fase 2)'});
+  }
+  // StackAdapt (Fase 3 - placeholder)
+  if(selectedDsps.has('stackadapt')&&generatedFiles.stackadapt){
+    results.push({dsp:'StackAdapt',status:'pending',detail:'Integração em desenvolvimento (Fase 3)'});
+  }
+
+  renderActivationResults(results);
+  btn.textContent='Ativar nas DSPs';btn.classList.remove('loading');btn.disabled=false;
+  btn.classList.add('done');setTimeout(()=>btn.classList.remove('done'),2000);
+}
+
+async function activateXandr(token){
+  try{
+    const hasTags=currentMode!=='surveys'&&parsedData;
+    const hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;
+    const tagPlacements=hasTags?getPlacementsForDsp('xandr'):[];
+    const surveyPl=hasSurveys?getSurveyPlacements():[];
+    const allPlacements=[...tagPlacements,...surveyPl];
+
+    if(!allPlacements.length)return{dsp:'Xandr',status:'error',detail:'Nenhum criativo pra ativar'};
+
+    const pixel=getPixelForDsp('xandr');
+    const pol=document.getElementById('inputPolitical').checked;
+
+    const body={
+      advertiserId:7392214,
+      campaignName:parsedData?.campaignName||'Survey',
+      advertiserName:parsedData?.advertiserName||'',
+      trackingPixel:pixel,
+      isPolitical:pol,
+      creatives:allPlacements.map(p=>({
+        name:p.placementName,
+        dimensions:p.dimensions,
+        jsTag:p.jsTag,
+        clickUrl:p.clickUrl||''
+      }))
+    };
+
+    const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-xandr',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify(body)
+    });
+
+    const data=await res.json();
+    if(!res.ok)return{dsp:'Xandr',status:'error',detail:data.error||'Erro na requisição'};
+
+    return{
+      dsp:'Xandr',
+      status:data.status,
+      detail:`${data.success}/${data.total} criativos criados`,
+      results:data.results
+    };
+  }catch(err){
+    return{dsp:'Xandr',status:'error',detail:err.message||'Erro de conexão'};
+  }
+}
+
+function renderActivationResults(results){
+  const container=document.getElementById('activationCards');
+  container.innerHTML=results.map((r,i)=>`
+    <div class="activation-card" style="animation-delay:${i*120}ms">
+      <div class="act-info">
+        <span class="act-dsp">${r.dsp}</span>
+        <span class="act-status ${r.status}">${r.status==='success'?'Ativado':r.status==='partial'?'Parcial':r.status==='pending'?'Em breve':'Erro'}</span>
+      </div>
+      <span class="act-detail">${r.detail||''}</span>
+    </div>`).join('');
+  document.getElementById('activationResults').classList.add('visible');
+  setTimeout(()=>document.getElementById('activationResults').scrollIntoView({behavior:'smooth',block:'nearest'}),200);
+}
+
+let currentMode='tags',parsedData=null,selectedDsps=new Set(),generatedFiles={},placementAssignment={};
+let surveyEntries=[],surveyIdCounter=0;
+
+function esc(s){const e=document.createElement('span');e.textContent=s;return e.innerHTML}
+function cleanCR(s){return s.replace(/_x000d_/gi,'').replace(/\r/g,'')}
+function toggleTheme(){const n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('hypr-theme',n)}
+
+let toastTimer=null;
+function toast(msg,type=''){const el=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;el.className='toast '+type;clearTimeout(toastTimer);requestAnimationFrame(()=>el.classList.add('show'));if(type!=='error')toastTimer=setTimeout(()=>el.classList.remove('show'),3200)}
+
+// ── Mode ──
+function setMode(mode){
+  currentMode=mode;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===mode));
+  const showTags=mode==='tags'||mode==='both', showSurveys=mode==='surveys'||mode==='both';
+  const tagPanel=document.getElementById('sectionTags'), surveyPanel=document.getElementById('sectionSurveys');
+  tagPanel.style.display=showTags?'':'none'; tagPanel.classList.toggle('revealed',showTags);
+  surveyPanel.style.display=showSurveys?'':'none'; surveyPanel.classList.toggle('revealed',showSurveys);
+  // Renumber panels dynamically
+  const nums = [];
+  if(showTags) nums.push('panelNumTags');
+  if(showSurveys) nums.push('panelNumSurveys');
+  nums.push('panelNumDsp','panelNumConfig');
+  nums.forEach((id,i)=>{const el=document.getElementById(id);if(el)el.textContent=i+1;});
+  updateVisibility();
+}
+
+function updateVisibility(){
+  const hasTags=currentMode!=='surveys'&&!!parsedData;
+  const hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;
+  const hasContent=hasTags||hasSurveys;
+  const hasDsp=selectedDsps.size>0;
+  const sDsp=document.getElementById('sectionDsp'),sOpt=document.getElementById('sectionOptions'),gen=document.getElementById('generateWrap');
+  if(hasContent){setTimeout(()=>sDsp.classList.add('revealed'),100)}
+  else{[sDsp,sOpt].forEach(s=>s.classList.remove('revealed'));gen.classList.remove('revealed')}
+  if(hasContent&&hasDsp){sOpt.classList.add('revealed');setTimeout(()=>gen.classList.add('revealed'),80)}
+  else{sOpt.classList.remove('revealed');gen.classList.remove('revealed')}
+  updateGenerateBtn();
+  // Update panel nums to done
+  document.getElementById('panelNumTags').classList.toggle('done',hasTags);
+  const surveyNum=document.getElementById('panelNumSurveys');
+  if(surveyNum)surveyNum.classList.toggle('done',hasSurveys);
+  document.getElementById('panelNumDsp').classList.toggle('done',hasDsp);
+}
+
+// ── DSP Selection ──
+function toggleDsp(card){const d=card.dataset.dsp;card.classList.toggle('selected');selectedDsps.has(d)?selectedDsps.delete(d):selectedDsps.add(d);updateOptions();updateAssignment();updateVisibility()}
+function updateOptions(){
+  const hasSA=selectedDsps.has('stackadapt'),hasXandr=selectedDsps.has('xandr');
+  document.getElementById('optBrandRow').style.display=hasSA?'flex':'none';
+  document.getElementById('optPoliticalRow').style.display=hasXandr?'flex':'none';
+  const showPixels=currentMode!=='surveys';
+  ['stackadapt','xandr'].forEach(dsp=>{
+    const wrap=document.getElementById(`pixelWrap_${dsp}`),field=document.getElementById(`pixel_${dsp}`);
+    const shouldShow=selectedDsps.has(dsp)&&showPixels,wasHidden=!wrap.classList.contains('visible');
+    wrap.classList.toggle('visible',shouldShow);
+    if(shouldShow&&wasHidden&&field.value){field.classList.remove('flash');void field.offsetWidth;field.classList.add('flash')}
+  });
+  document.getElementById('pixelSyncRow').classList.toggle('visible',hasSA&&hasXandr&&showPixels);
+  if(!(hasSA&&hasXandr))document.getElementById('syncPixels').checked=false;
+}
+function syncPixelFields(e){document.getElementById(e.target.id==='pixel_stackadapt'?'pixel_xandr':'pixel_stackadapt').value=e.target.value}
+function onSyncPixelChange(){const sa=document.getElementById('pixel_stackadapt'),x=document.getElementById('pixel_xandr');if(document.getElementById('syncPixels').checked){if(sa.value&&!x.value)x.value=sa.value;else if(x.value&&!sa.value)sa.value=x.value;sa.addEventListener('input',syncPixelFields);x.addEventListener('input',syncPixelFields)}else{sa.removeEventListener('input',syncPixelFields);x.removeEventListener('input',syncPixelFields)}}
+function getPixelForDsp(dsp){const raw=document.getElementById(`pixel_${dsp}`)?.value?.trim()||'';if(raw.startsWith('<')){const m=raw.match(/src=["']([^"']+)["']/);return m?m[1]:raw}return raw}
+function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;document.getElementById('btnGenerate').disabled=!((hasTags||hasSurveys)&&selectedDsps.size>0)}
+
+// ── Assignment ──
+function updateAssignment(){const s=document.getElementById('assignmentSection'),dsps=[...selectedDsps];if(dsps.length<2||!parsedData||currentMode==='surveys'){s.classList.remove('visible');return}s.classList.add('visible');const r=document.getElementById('replicateAll').checked;document.getElementById('assignmentTableWrap').style.display=r?'none':'block';if(!r)renderAssignmentTable(dsps)}
+function onReplicateChange(){const r=document.getElementById('replicateAll').checked;document.getElementById('assignmentTableWrap').style.display=r?'none':'block';if(!r&&parsedData){placementAssignment={};renderAssignmentTable([...selectedDsps])}}
+function renderAssignmentTable(dsps){
+  if(!parsedData)return;const labels={dv360:'DV360',stackadapt:'StackAdapt',xandr:'Xandr'};
+  parsedData.placements.forEach((_,i)=>{dsps.forEach(d=>{const k=`${d}_${i}`;if(placementAssignment[k]===undefined)placementAssignment[k]=(d==='dv360')})});
+  document.getElementById('assignmentHead').innerHTML=`<tr><th>#</th><th>Placement</th><th>Size</th>${dsps.map(d=>`<th class="assign-col-header">${labels[d]}</th>`).join('')}</tr>`;
+  document.getElementById('assignmentBody').innerHTML=parsedData.placements.map((p,i)=>`<tr style="animation-delay:${i*40}ms"><td>${i+1}</td><td>${smartName(p.placementName)}</td><td><span class="dim-badge">${esc(p.dimensions)}</span></td>${dsps.map(d=>{const k=`${d}_${i}`;return`<td class="assign-col-cb"><input type="checkbox" class="custom-cb assign-cb" data-key="${k}" ${placementAssignment[k]?'checked':''}></td>`}).join('')}</tr>`).join('')}
+function getPlacementsForDsp(dsp){if(!parsedData)return[];const r=document.getElementById('replicateAll');if(selectedDsps.size<2||!r||r.checked)return parsedData.placements;return parsedData.placements.filter((_,i)=>placementAssignment[`${dsp}_${i}`]!==false)}
+
+// ── File Upload ──
+const uploadZone=document.getElementById('uploadZone'),fileInput=document.getElementById('fileInput'),uploadClear=document.getElementById('uploadClear');
+uploadZone.addEventListener('dragover',e=>{e.preventDefault();uploadZone.classList.add('dragover')});
+uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0])});
+fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0])});
+uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
+
+function clearUpload(){parsedData=null;placementAssignment={};fileInput.value='';uploadZone.classList.remove('has-file','processing');uploadClear.style.display='none';document.getElementById('uploadFilename').textContent='';document.getElementById('uploadMeta').textContent='';document.getElementById('extractedInfo').classList.remove('visible');document.getElementById('results').classList.remove('visible');document.getElementById('assignmentSection').classList.remove('visible');updateVisibility()}
+
+function handleFile(file){
+  if(!file.name.match(/\.(xlsx?|csv)$/i)){toast(`"${file.name.split('.').pop()}" não é suportado. Use .xlsx ou .csv.`,'error');return}
+  uploadZone.classList.add('processing');
+  const reader=new FileReader();
+  reader.onload=function(e){
+    uploadZone.classList.remove('processing');
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});const ws=wb.Sheets[wb.SheetNames.includes('Tags')?'Tags':wb.SheetNames[0]];
+      const result=parseCM360(XLSX.utils.sheet_to_json(ws,{header:1,defval:''}));
+      if(!result){toast('Estrutura CM360 não identificada.','error');return}
+      parsedData=result;uploadZone.classList.add('has-file');uploadClear.style.display='flex';
+      document.getElementById('uploadFilename').textContent=file.name;
+      document.getElementById('uploadMeta').textContent=`${result.placements.length} placements · ${result.campaignName}`;
+      document.getElementById('inputBrand').value=result.brandName;
+      renderExtractedInfo(result);placementAssignment={};updateAssignment();updateVisibility();
+      toast(`${result.placements.length} placements extraídos`,'success');
+    }catch(err){console.error(err);toast('Erro: '+err.message,'error')}
+  };reader.readAsArrayBuffer(file);
+}
+
+// ── Parser ──
+function parseCM360(rows){
+  let headerIdx=-1,colMap={};
+  for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c||'').trim().toLowerCase());if(r.some(c=>c==='placement id')&&r.some(c=>c==='dimensions')&&r.some(c=>c==='placement name')){headerIdx=i;r.forEach((v,j)=>{if(v)colMap[v]=j});break}}
+  if(headerIdx===-1)return null;
+  let advertiserName='',campaignName='';
+  const skip=new Set(['contract information','advertiser id','advertiser name','campaign id','campaign name','placement id','placement external id','site','placement name','placement compatibility','dimensions','start date','end date','trafficking instructions/notes']);
+  for(let i=0;i<headerIdx;i++){const row=rows[i];for(let j=0;j<row.length;j++){const v=String(row[j]||'').trim();if(!v)continue;let fv='';for(let k=j+1;k<row.length;k++){const c=String(row[k]||'').trim();if(!c)continue;if(skip.has(c.toLowerCase()))continue;fv=c;break}if(v==='Advertiser Name'&&fv)advertiserName=fv;else if(v==='Campaign Name'&&fv)campaignName=fv}}
+  if(!advertiserName&&colMap['advertiser name']!==undefined){const r=rows[headerIdx+1];if(r)advertiserName=String(r[colMap['advertiser name']]||'').trim()}
+  if(!campaignName&&colMap['campaign name']!==undefined){const r=rows[headerIdx+1];if(r)campaignName=String(r[colMap['campaign name']]||'').trim()}
+  const placements=[];
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const row=rows[i],pid=String(row[colMap['placement id']]||'').trim();if(!pid)continue;
+    const dim=String(row[colMap['dimensions']]||'').trim(),pn=String(row[colMap['placement name']]||'').trim(),anr=String(row[colMap['advertiser name']]||'').trim();
+    let jt='';if(colMap['javascript tag']!==undefined)jt=String(row[colMap['javascript tag']]||'').trim();if(!jt&&colMap['iframes/javascript tag']!==undefined)jt=String(row[colMap['iframes/javascript tag']]||'').trim();jt=cleanCR(jt);
+    let cu='';if(colMap['internal redirect tag']!==undefined){for(const l of cleanCR(String(row[colMap['internal redirect tag']]||'')).split('\n')){const t=l.trim();if(t.startsWith('https://ad.doubleclick.net/ddm/jump/')){cu=t;break}}}
+    if(!cu&&jt){const m=jt.match(/data-dcm-placement='([^']+)'/);if(m)cu=`https://ad.doubleclick.net/ddm/jump/${m[1]};sz=${dim};dc_tdv=1`}
+    if(!advertiserName&&anr)advertiserName=anr;
+    placements.push({placementId:pid,placementName:pn,dimensions:dim,jsTag:jt,clickUrl:cu})}
+  if(!placements.length)return null;
+  return{advertiserName,campaignName,brandName:extractBrand(advertiserName,campaignName),placements}}
+function extractBrand(a,c){let b=a;const m=b.match(/^PUB_[A-Z]+_[A-Z]{2,4}_(.+)$/i);if(m)b=m[1];if(!b||b.length<2){const p=c.match(/\|\s*(.+)/);if(p)b=p[1].trim()}return b||a}
+
+function renderExtractedInfo(d){
+  document.getElementById('infoGrid').innerHTML=`<div class="info-item"><div class="info-item-label">Advertiser</div><div class="info-item-value">${esc(d.advertiserName)}</div></div><div class="info-item"><div class="info-item-label">Campaign</div><div class="info-item-value">${esc(d.campaignName)}</div></div><div class="info-item"><div class="info-item-label">Marca</div><div class="info-item-value" style="color:var(--accent)">${esc(d.brandName)}</div></div><div class="info-item"><div class="info-item-label">Placements</div><div class="info-item-value mono">${d.placements.length} creatives</div></div>`;
+  document.getElementById('placementsBody').innerHTML=d.placements.map((p,i)=>`<tr style="animation-delay:${i*60}ms"><td>${i+1}</td><td>${smartName(p.placementName)}</td><td><span class="dim-badge">${esc(p.dimensions)}</span></td><td>${p.clickUrl?'✓':'—'}</td></tr>`).join('');
+  document.getElementById('extractedInfo').classList.add('visible')}
+function smartName(name){
+  if(name.length<50)return`<span title="${esc(name)}">${esc(name)}</span>`;
+  const parts=name.split('|');
+  if(parts.length<3)return`<span class="placement-name" title="${esc(name)}"><span class="placement-name-start">${esc(name)}</span></span>`;
+  return`<span class="placement-name" title="${esc(name)}"><span class="placement-name-start">${esc(parts.slice(0,2).join('|'))}|…</span><span class="placement-name-end">|${esc(parts.slice(-2).join('|'))}</span></span>`}
+
+// ── Surveys ──
+// Each entry: {id, type, size, urls: [{url, formId, title, variant}]}
+function addSurveyEntry(type){surveyEntries.push({id:++surveyIdCounter,type,size:'300x600',urls:[]});renderSurveyEntries();updateVisibility()}
+function removeSurveyEntry(id){surveyEntries=surveyEntries.filter(s=>s.id!==id);const types=new Set(surveyEntries.map(s=>s.type));document.querySelectorAll('.survey-type-btn').forEach(b=>b.classList.toggle('active',types.has(b.dataset.type)));renderSurveyEntries();updateVisibility()}
+function removeSurveyUrl(entryId,urlIdx){const entry=surveyEntries.find(s=>s.id===entryId);if(entry){entry.urls.splice(urlIdx,1);renderSurveyEntries();updateVisibility()}}
+
+function detectVariant(title){
+  const t=(title||'').toLowerCase();
+  if(t.includes('controle')||t.includes('control'))return'Controle';
+  if(t.includes('exposto')||t.includes('exposed'))return'Exposto';
+  return''}
+
+function renderSurveyEntries(){
+  document.getElementById('surveyEntries').innerHTML=surveyEntries.map(s=>`
+    <div class="survey-entry" data-id="${s.id}">
+      <div class="survey-entry-header"><div class="survey-entry-title">${esc(s.type)}</div><button class="survey-entry-remove" data-remove="${s.id}" aria-label="Remover">✕</button></div>
+      ${s.urls.map((u,i)=>`<div class="survey-url-row">
+        <div class="survey-url-info"><span class="survey-url-title ${u.title?'':'loading'}">${u.title?esc(u.title):'Buscando...'}</span>${u.variant?`<span class="survey-url-variant ${u.variant==='Controle'?'ctrl':''}">${esc(u.variant)}</span>`:''}</div>
+        <button class="survey-url-remove" data-remove-url="${s.id}_${i}" aria-label="Remover URL">✕</button>
+      </div>`).join('')}
+      <div class="survey-add-row">
+        <input type="text" class="survey-add-input" data-entry-id="${s.id}" placeholder="Cole a URL do Typeform e pressione Enter">
+        <div class="survey-size-pills">${SURVEY_SIZES.map(sz=>`<button class="survey-size-pill${s.size===sz?' active':''}" data-field="size" data-id="${s.id}" data-val="${sz}">${sz}</button>`).join('')}</div>
+      </div>
+    </div>`).join('')}
+
+async function addSurveyUrl(entryId,url){
+  const entry=surveyEntries.find(s=>s.id===entryId);if(!entry)return;
+  const formId=extractFormId(url);
+  if(!formId){toast('URL do Typeform inválida','error');return}
+  if(entry.urls.some(u=>u.formId===formId)){toast('Esse form já foi adicionado','error');return}
+  const urlObj={url,formId,title:'',variant:''};
+  entry.urls.push(urlObj);
+  renderSurveyEntries();updateVisibility();
+  try{
+    const title=await fetchTypeformTitle(formId);
+    urlObj.title=title;urlObj.variant=detectVariant(title);
+    renderSurveyEntries();
+    // Auto-fill Sponsored By
+    const brandField=document.getElementById('inputBrand');
+    if(brandField&&!brandField.value.trim()&&title){
+      const parts=title.replace(/\s+/g,'_').split('_');
+      const hyprIdx=parts.findIndex(p=>p.toUpperCase()==='HYPR');
+      if(hyprIdx>=0&&parts.length>hyprIdx+2){
+        const skip=new Set(['survey','brand','promo','effective']);
+        let start=hyprIdx+1;
+        while(start<parts.length&&skip.has(parts[start].toLowerCase()))start++;
+        if(start<parts.length){
+          const typeWords=new Set(['awareness','associacao','associação','atitude','favoritismo','intencao','intenção','preferencia','preferência','exposto','controle','intent','consideration']);
+          const clientParts=[];
+          for(let i=start;i<parts.length;i++){if(typeWords.has(parts[i].toLowerCase()))break;clientParts.push(parts[i])}
+          if(clientParts.length)brandField.value=clientParts.join(' ');}}}
+  }catch(err){urlObj.title='Erro ao buscar';renderSurveyEntries()}}
+
+function extractFormId(url){if(!url)return null;const m=url.match(/typeform\.com\/to\/([a-zA-Z0-9]+)/);if(m)return m[1];if(/^[a-zA-Z0-9]{4,12}$/.test(url.trim()))return url.trim();return null}
+async function fetchTypeformTitle(formId){const res=await fetch(`${TYPEFORM_PROXY}?form_id=${formId}`);if(!res.ok)throw new Error(`API ${res.status}`);const data=await res.json();return data.title||formId}
+
+function buildIframe(formId,size){const[w,h]=size.split('x');return`<iframe src="https://form.typeform.com/to/${formId}" width="${w}" height="${h}" frameborder="0" style="border:0;" allowfullscreen></iframe>`}
+
+function getSurveyPlacements(){
+  const placements=[];
+  for(const s of surveyEntries){
+    for(const u of s.urls){
+      if(!u.formId)continue;
+      placements.push({placementName:u.title||`Survey_${s.type}`,dimensions:s.size,jsTag:buildIframe(u.formId,s.size),clickUrl:'https://hypr.mobi',isSurvey:true})}}
+  return placements}
+
+
+// ── Generate ──
+function generate(){
+  const hasTags=currentMode!=='surveys'&&parsedData,hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;
+  if(!hasTags&&!hasSurveys||!selectedDsps.size)return;
+  const btn=document.getElementById('btnGenerate'),br=document.getElementById('inputBrand').value.trim(),pol=document.getElementById('inputPolitical').checked;
+  generatedFiles={};const cards=[],surveyPl=hasSurveys?getSurveyPlacements():[];
+
+  if(selectedDsps.has('dv360')){const tp=hasTags?getPlacementsForDsp('dv360'):[],all=[...tp,...surveyPl];if(all.length){generatedFiles.dv360=genDV360({placements:all});cards.push({dsp:'DV360',ext:'csv',count:all.length})}}
+  if(selectedDsps.has('stackadapt')){const tp=hasTags?getPlacementsForDsp('stackadapt'):[],px=getPixelForDsp('stackadapt'),all=[...tp,...surveyPl];if(all.length){const r=genSA({placements:all,brandName:parsedData?.brandName||''},br,px);generatedFiles.stackadapt=r;cards.push({dsp:'StackAdapt',ext:'xlsx',count:r.count??r.rows.length})}}
+  if(selectedDsps.has('xandr')){const tp=hasTags?getPlacementsForDsp('xandr'):[],px=getPixelForDsp('xandr'),all=[...tp,...surveyPl];if(all.length){generatedFiles.xandr=genXandr({placements:all},px,pol);cards.push({dsp:'Xandr',ext:'xlsx',count:all.length})}}
+
+  if(!cards.length){toast('Nenhum criativo pra gerar','error');return}
+  renderResults(cards);
+  updateActivateBtn();
+  btn.textContent='Templates gerados ✓';btn.classList.add('done');
+  setTimeout(()=>{btn.textContent='Regenerar Templates';btn.classList.remove('done')},2000);
+  setTimeout(()=>document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'}),200);
+  toast(`${cards.length} template(s) gerado(s)`,'success')}
+
+function genDV360(d){return{headers:['Creative name','Dimensions (width x height)','Third-party tag','Landing page URL (Optional)','Expanding direction','Expands on hover ("Yes" or "No")','Requires HTML5 ("Yes" or "No")','Requires MRAID ("Yes" or "No")','Campaign Manager 360 Tracking Placement ID','Requires ping for attribution ("Yes" or "No")','Integration code (Optional)','Notes (Optional)'],rows:d.placements.map(p=>{const[w,h]=p.dimensions.split('x');return[p.placementName,`${w} x ${h}`,p.jsTag,p.clickUrl,'','','','','','','','']}),type:'csv'}}
+
+function genSA(d,brand,pixel){const h=['Creative Name','HTML or JS Code','Size','Click URL','Sponsored By','Paid By','Impression Tracking URLs'],f=d.placements.filter(p=>!STACKADAPT_EXCLUDED_SIZES.has(p.dimensions));if(f.length<d.placements.length)toast(`StackAdapt: ${d.placements.length-f.length} removido(s) (336x280)`,'error');return{headers:h,rows:f.map(p=>[p.placementName,p.jsTag,p.dimensions,p.clickUrl,brand||d.brandName,'',p.isSurvey?'':(pixel?`"${pixel}"`:'')]),type:'xlsx',count:f.length,colWidths:[{wch:40},{wch:60},{wch:12},{wch:50},{wch:20},{wch:12},{wch:60}]}}
+
+function genXandr(d,pixel,pol){const pv=pol?'Yes; non-EU':'No';return{headers:['Creative Name','Secure Content','Size','Trackers','External Identifier','Political Declaration'],rows:d.placements.map(p=>[p.placementName,p.jsTag,p.dimensions,p.isSurvey?'':(pixel||''),'',pv]),type:'xlsx',colWidths:[{wch:40},{wch:60},{wch:12},{wch:60},{wch:20},{wch:20}]}}
+
+// ── Downloads ──
+function downloadFile(dsp){const f=generatedFiles[dsp];if(!f)return;const s=(parsedData?.campaignName||'Survey').replace(/[^a-zA-Z0-9]/g,'_').substring(0,40),l={dv360:'DV360',stackadapt:'StackAdapt',xandr:'Xandr'}[dsp]||dsp,ext=f.type==='csv'?'csv':'xlsx';f.type==='csv'?dlCSV(f,`${l}_${s}.${ext}`):dlXLSX(f,`${l}_${s}.${ext}`)}
+function dlCSV(f,fn){const c=[f.headers,...f.rows].map(r=>r.map(v=>{const s=String(v||'');return(s.includes(',')||s.includes('"')||s.includes('\n'))?'"'+s.replace(/"/g,'""')+'"':s}).join(',')).join('\n');dl(new Blob([c],{type:'text/csv;charset=utf-8;'}),fn)}
+function dlXLSX(f,fn){const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet([...(f.instructionRows||[]),f.headers,...f.rows]);ws['!cols']=f.colWidths||[];XLSX.utils.book_append_sheet(wb,ws,f.sheetName||'Sheet1');dl(new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),fn)}
+function dl(blob,fn){const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:fn});document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href)}
+function renderResults(cards){document.getElementById('resultCards').innerHTML=cards.map((c,i)=>`<div class="result-card" style="animation-delay:${i*120}ms"><div class="result-info"><div class="result-dsp">${c.dsp}</div><div class="result-details">${c.count} creatives · .${c.ext}</div></div><button class="btn-download" data-dsp="${c.dsp.toLowerCase()}">Download</button></div>`).join('');document.getElementById('results').classList.add('visible')}
+
+// ── Events ──
+document.getElementById('modeSwitcher').addEventListener('click',e=>{const btn=e.target.closest('.mode-btn');if(btn)setMode(btn.dataset.mode)});
+document.getElementById('dspGrid').addEventListener('click',e=>{const card=e.target.closest('.dsp-card[data-dsp]');if(card&&!e.target.closest('.dsp-pixel-input'))toggleDsp(card)});
+document.getElementById('dspGrid').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const card=e.target.closest('.dsp-card[data-dsp]');if(card){e.preventDefault();toggleDsp(card)}}});
+document.getElementById('assignmentBody').addEventListener('change',e=>{if(e.target.classList.contains('assign-cb'))placementAssignment[e.target.dataset.key]=e.target.checked});
+document.getElementById('resultCards').addEventListener('click',e=>{const btn=e.target.closest('.btn-download[data-dsp]');if(btn){downloadFile(btn.dataset.dsp);btn.textContent='✓ Baixado';btn.classList.add('downloaded');setTimeout(()=>{btn.textContent='Download';btn.classList.remove('downloaded')},1500)}});
+document.getElementById('surveyTypes').addEventListener('click',e=>{const btn=e.target.closest('.survey-type-btn');if(!btn)return;const type=btn.dataset.type;if(btn.classList.contains('active')){surveyEntries=surveyEntries.filter(s=>s.type!==type);btn.classList.remove('active');renderSurveyEntries();updateVisibility()}else{btn.classList.add('active');addSurveyEntry(type)}});
+document.getElementById('surveyCustomType').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.value.trim()){addSurveyEntry(e.target.value.trim());e.target.value=''}});
+let debounceTimers={};
+// Survey entries: Enter to add URL, click to remove URL/entry, click size pills
+document.getElementById('surveyEntries').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){const inp=e.target.closest('.survey-add-input');if(inp&&inp.value.trim()){addSurveyUrl(parseInt(inp.dataset.entryId),inp.value.trim());inp.value=''}}});
+document.getElementById('surveyEntries').addEventListener('click',e=>{
+  // Size pills
+  const pill=e.target.closest('.survey-size-pill');
+  if(pill){const id=parseInt(pill.dataset.id),entry=surveyEntries.find(s=>s.id===id);if(entry){entry.size=pill.dataset.val;pill.parentElement.querySelectorAll('.survey-size-pill').forEach(p=>p.classList.toggle('active',p.dataset.val===entry.size))}return}
+  // Remove URL
+  const rmUrl=e.target.closest('[data-remove-url]');
+  if(rmUrl){const[eid,idx]=rmUrl.dataset.removeUrl.split('_');removeSurveyUrl(parseInt(eid),parseInt(idx));return}
+  // Remove entry
+  const rmEntry=e.target.closest('[data-remove]');
+  if(rmEntry)removeSurveyEntry(parseInt(rmEntry.dataset.remove));
+});
+document.getElementById('toastDismiss').addEventListener('click',()=>document.getElementById('toast').classList.remove('show'));
+document.getElementById('themeToggle').addEventListener('click',toggleTheme);
+document.getElementById('syncPixels').addEventListener('change',onSyncPixelChange);
+document.getElementById('replicateAll').addEventListener('change',onReplicateChange);
+document.getElementById('btnGenerate').addEventListener('click',generate);
+setMode('tags');
+initAuth();
+</script>
+</body>
+</html>
