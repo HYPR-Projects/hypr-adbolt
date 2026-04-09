@@ -691,7 +691,9 @@ async function activateDV360(token){
         name:p.placementName,
         dimensions:p.dimensions,
         jsTag:p.jsTag,
-        clickUrl:p.clickUrl||''
+        clickUrl:p.clickUrl||'',
+        type:p.type||'display',
+        vastTag:p.vastTag||''
       }))
     };
 
@@ -820,7 +822,7 @@ uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
 function clearUpload(){parsedData=null;placementAssignment={};fileInput.value='';uploadZone.classList.remove('has-file','processing');uploadClear.style.display='none';document.getElementById('uploadFilename').textContent='';document.getElementById('uploadMeta').textContent='';document.getElementById('extractedInfo').classList.remove('visible');document.getElementById('results').classList.remove('visible');document.getElementById('assignmentSection').classList.remove('visible');updateVisibility()}
 
 function handleFile(file){
-  if(!file.name.match(/\.(xlsx?|csv)$/i)){toast(`"${file.name.split('.').pop()}" não é suportado. Use .xlsx ou .csv.`,'error');return}
+  if(!file.name.match(/\.(xlsx?|csv|xls)$/i)){toast(`"${file.name.split('.').pop()}" não é suportado. Use .xlsx, .xls ou .csv.`,'error');return}
   uploadZone.classList.add('processing');
   const reader=new FileReader();
   reader.onload=function(e){
@@ -842,7 +844,7 @@ function handleFile(file){
 // ── Parser ──
 function parseCM360(rows){
   let headerIdx=-1,colMap={};
-  for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c||'').trim().toLowerCase());if(r.some(c=>c==='placement id')&&r.some(c=>c==='dimensions')&&r.some(c=>c==='placement name')){headerIdx=i;r.forEach((v,j)=>{if(v)colMap[v]=j});break}}
+  for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c||'').trim().toLowerCase());if(r.some(c=>c==='placement id')&&r.some(c=>c==='placement name')){headerIdx=i;r.forEach((v,j)=>{if(v)colMap[v]=j});break}}
   if(headerIdx===-1)return null;
   let advertiserName='',campaignName='';
   const skip=new Set(['contract information','advertiser id','advertiser name','campaign id','campaign name','placement id','placement external id','site','placement name','placement compatibility','dimensions','start date','end date','trafficking instructions/notes']);
@@ -853,18 +855,54 @@ function parseCM360(rows){
   for(let i=headerIdx+1;i<rows.length;i++){
     const row=rows[i],pid=String(row[colMap['placement id']]||'').trim();if(!pid)continue;
     const dim=String(row[colMap['dimensions']]||'').trim(),pn=String(row[colMap['placement name']]||'').trim(),anr=String(row[colMap['advertiser name']]||'').trim();
-    let jt='';if(colMap['javascript tag']!==undefined)jt=String(row[colMap['javascript tag']]||'').trim();if(!jt&&colMap['iframes/javascript tag']!==undefined)jt=String(row[colMap['iframes/javascript tag']]||'').trim();jt=cleanCR(jt);
-    let cu='';if(colMap['internal redirect tag']!==undefined){for(const l of cleanCR(String(row[colMap['internal redirect tag']]||'')).split('\n')){const t=l.trim();if(t.startsWith('https://ad.doubleclick.net/ddm/jump/')){cu=t;break}}}
-    if(!cu&&jt){const m=jt.match(/data-dcm-placement='([^']+)'/);if(m)cu=`https://ad.doubleclick.net/ddm/jump/${m[1]};sz=${dim};dc_tdv=1`}
+    const compat=colMap['placement compatibility']!==undefined?String(row[colMap['placement compatibility']]||'').trim().toLowerCase():'';
+    const isVideo=compat.includes('video')||compat.includes('in-stream');
+
+    let jt='',vastTag='',placementType='display';
+
+    if(isVideo){
+      placementType='video';
+      // Prefer VAST 4.0 > 3.0 > 2.0
+      const vastCols=['vast 4.0 pre-fetch tag','vast 3.0 pre-fetch tag','vast 2.0 pre-fetch tag'];
+      for(const vc of vastCols){if(colMap[vc]!==undefined){const v=cleanCR(String(row[colMap[vc]]||'').trim());if(v){vastTag=v;break}}}
+      // Fallback: check if any column has a VAST-like URL
+      if(!vastTag){for(let c=0;c<row.length;c++){const v=String(row[c]||'').trim();if(v.includes('/pfadx/')||v.includes('/vast/')||(v.includes('dcmt=text/xml'))){vastTag=cleanCR(v);break}}}
+      jt=vastTag;
+    }else{
+      if(colMap['javascript tag']!==undefined)jt=String(row[colMap['javascript tag']]||'').trim();
+      if(!jt&&colMap['iframes/javascript tag']!==undefined)jt=String(row[colMap['iframes/javascript tag']]||'').trim();
+      jt=cleanCR(jt);
+    }
+
+    // Extract dimensions — for video, parse from placement name if dim is N/A or empty
+    let finalDim=dim;
+    if(!finalDim||finalDim==='N/A'||finalDim==='0x0'){
+      const dm=pn.match(/(\d{2,4})x(\d{2,4})/);if(dm)finalDim=dm[0];
+      else if(isVideo){
+        const resDm=pn.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
+        if(resDm)finalDim=`${resDm[1]}x${resDm[2]}`;
+        else finalDim='0x0';
+      }
+    }
+
+    let cu='';
+    if(!isVideo){
+      if(colMap['internal redirect tag']!==undefined){for(const l of cleanCR(String(row[colMap['internal redirect tag']]||'')).split('\n')){const t=l.trim();if(t.startsWith('https://ad.doubleclick.net/ddm/jump/')){cu=t;break}}}
+      if(!cu&&jt){const m=jt.match(/data-dcm-placement='([^']+)'/);if(m)cu=`https://ad.doubleclick.net/ddm/jump/${m[1]};sz=${finalDim};dc_tdv=1`}
+    }
+
     if(!advertiserName&&anr)advertiserName=anr;
-    placements.push({placementId:pid,placementName:pn,dimensions:dim,jsTag:jt,clickUrl:cu})}
+    placements.push({placementId:pid,placementName:pn,dimensions:finalDim,jsTag:jt,clickUrl:cu,type:placementType,vastTag:isVideo?vastTag:''})}
   if(!placements.length)return null;
-  return{advertiserName,campaignName,brandName:extractBrand(advertiserName,campaignName),placements}}
+  const hasVideo=placements.some(p=>p.type==='video'),hasDisplay=placements.some(p=>p.type==='display');
+  const contentType=hasVideo&&hasDisplay?'mixed':hasVideo?'video':'display';
+  return{advertiserName,campaignName,brandName:extractBrand(advertiserName,campaignName),placements,contentType}}
 function extractBrand(a,c){let b=a;const m=b.match(/^PUB_[A-Z]+_[A-Z]{2,4}_(.+)$/i);if(m)b=m[1];if(!b||b.length<2){const p=c.match(/\|\s*(.+)/);if(p)b=p[1].trim()}return b||a}
 
 function renderExtractedInfo(d){
-  document.getElementById('infoGrid').innerHTML=`<div class="info-item"><div class="info-item-label">Advertiser</div><div class="info-item-value">${esc(d.advertiserName)}</div></div><div class="info-item"><div class="info-item-label">Campaign</div><div class="info-item-value">${esc(d.campaignName)}</div></div><div class="info-item"><div class="info-item-label">Marca</div><div class="info-item-value" style="color:var(--accent)">${esc(d.brandName)}</div></div><div class="info-item"><div class="info-item-label">Placements</div><div class="info-item-value mono">${d.placements.length} creatives</div></div>`;
-  document.getElementById('placementsBody').innerHTML=d.placements.map((p,i)=>`<tr style="animation-delay:${i*60}ms"><td>${i+1}</td><td>${smartName(p.placementName)}</td><td><span class="dim-badge">${esc(p.dimensions)}</span></td><td>${p.clickUrl?'✓':'—'}</td></tr>`).join('');
+  const typeLabel=d.contentType==='video'?'Video':d.contentType==='mixed'?'Display + Video':'Display';
+  document.getElementById('infoGrid').innerHTML=`<div class="info-item"><div class="info-item-label">Advertiser</div><div class="info-item-value">${esc(d.advertiserName)}</div></div><div class="info-item"><div class="info-item-label">Campaign</div><div class="info-item-value">${esc(d.campaignName)}</div></div><div class="info-item"><div class="info-item-label">Marca</div><div class="info-item-value" style="color:var(--accent)">${esc(d.brandName)}</div></div><div class="info-item"><div class="info-item-label">Placements</div><div class="info-item-value mono">${d.placements.length} creatives · ${typeLabel}</div></div>`;
+  document.getElementById('placementsBody').innerHTML=d.placements.map((p,i)=>`<tr style="animation-delay:${i*60}ms"><td>${i+1}</td><td>${smartName(p.placementName)}</td><td><span class="dim-badge">${esc(p.dimensions)}</span></td><td>${p.type==='video'?'<span style="color:var(--accent);font-size:0.72rem">VAST</span>':p.clickUrl?'✓':'—'}</td></tr>`).join('');
   document.getElementById('extractedInfo').classList.add('visible')}
 function smartName(name){
   if(name.length<50)return`<span title="${esc(name)}">${esc(name)}</span>`;
@@ -959,7 +997,21 @@ function generate(){
   setTimeout(()=>document.getElementById('results').scrollIntoView({behavior:'smooth',block:'nearest'}),200);
   toast(`${cards.length} template(s) gerado(s)`,'success')}
 
-function genDV360(d){return{headers:['Creative name','Dimensions (width x height)','Third-party tag','Landing page URL (Optional)','Expanding direction','Expands on hover ("Yes" or "No")','Requires HTML5 ("Yes" or "No")','Requires MRAID ("Yes" or "No")','Campaign Manager 360 Tracking Placement ID','Requires ping for attribution ("Yes" or "No")','Integration code (Optional)','Notes (Optional)'],rows:d.placements.map(p=>{const[w,h]=p.dimensions.split('x');return[p.placementName,`${w} x ${h}`,p.jsTag,p.clickUrl,'','','','','','','','']}),type:'csv'}}
+function genDV360(d){
+  const display=d.placements.filter(p=>p.type!=='video');
+  const video=d.placements.filter(p=>p.type==='video');
+  const files={};
+  if(display.length){
+    files.display={headers:['Creative name','Dimensions (width x height)','Third-party tag','Landing page URL (Optional)','Expanding direction','Expands on hover ("Yes" or "No")','Requires HTML5 ("Yes" or "No")','Requires MRAID ("Yes" or "No")','Campaign Manager 360 Tracking Placement ID','Requires ping for attribution ("Yes" or "No")','Integration code (Optional)','Notes (Optional)'],rows:display.map(p=>{const[w,h]=p.dimensions.split('x');return[p.placementName,`${w} x ${h}`,p.jsTag,p.clickUrl,'','','','','','','','']}),type:'csv'};
+  }
+  if(video.length){
+    files.video={headers:['Creative name','VAST tag URL','Integration code (Optional)','Notes (Optional)'],rows:video.map(p=>[p.placementName,p.vastTag||p.jsTag,'','']),type:'csv'};
+  }
+  // Return combined for backwards compat
+  const allRows=[];const allHeaders=['Creative name','Dimensions (width x height)','Third-party tag','VAST tag URL','Landing page URL (Optional)','Type','Expanding direction','Expands on hover ("Yes" or "No")','Requires HTML5 ("Yes" or "No")','Requires MRAID ("Yes" or "No")','Campaign Manager 360 Tracking Placement ID','Requires ping for attribution ("Yes" or "No")','Integration code (Optional)','Notes (Optional)'];
+  display.forEach(p=>{const[w,h]=p.dimensions.split('x');allRows.push([p.placementName,`${w} x ${h}`,p.jsTag,'',p.clickUrl,'display','','','','','','','',''])});
+  video.forEach(p=>allRows.push([p.placementName,'','',p.vastTag||p.jsTag,'','video','','','','','','','','']));
+  return{headers:allHeaders,rows:allRows,type:'csv',files,displayCount:display.length,videoCount:video.length}}
 
 function genSA(d,brand,pixel){const h=['Creative Name','HTML or JS Code','Size','Click URL','Sponsored By','Paid By','Impression Tracking URLs'],f=d.placements.filter(p=>!STACKADAPT_EXCLUDED_SIZES.has(p.dimensions));if(f.length<d.placements.length)toast(`StackAdapt: ${d.placements.length-f.length} removido(s) (336x280)`,'error');return{headers:h,rows:f.map(p=>[p.placementName,p.jsTag,p.dimensions,p.clickUrl,brand||d.brandName,'',p.isSurvey?'':(pixel?`"${pixel}"`:'')]),type:'xlsx',count:f.length,colWidths:[{wch:40},{wch:60},{wch:12},{wch:50},{wch:20},{wch:12},{wch:60}]}}
 
