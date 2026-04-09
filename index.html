@@ -958,8 +958,9 @@ function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&currentMode!
   const btnGen=document.getElementById('btnGenerate');const btnAct=document.getElementById('btnActivate');const dlCard=document.getElementById('actionDownload');const actCard=document.getElementById('actionActivate');
   if(btnGen)btnGen.disabled=!ready;if(btnAct)btnAct.disabled=!ready;
   // In assets mode, hide download card (no templates to download)
-  if(dlCard)dlCard.style.display=hasAssets?'none':'';
-  if(actCard&&hasAssets){actCard.style.gridColumn=hasAssets?'1 / -1':''}}
+  const isAssetMode=currentMode==='assets';
+  if(dlCard)dlCard.style.display=isAssetMode?'none':'';
+  if(actCard)actCard.style.gridColumn=isAssetMode?'1 / -1':''}
 // ── Assignment ──
 function updateAssignment(){const s=document.getElementById('assignmentSection'),dsps=[...selectedDsps];if(dsps.length<2||!parsedData||currentMode==='surveys'){s.classList.remove('visible');return}s.classList.add('visible');const r=document.getElementById('replicateAll').checked;document.getElementById('assignmentTableWrap').style.display=r?'none':'block';if(!r)renderAssignmentTable(dsps)}
 function onReplicateChange(){const r=document.getElementById('replicateAll').checked;document.getElementById('assignmentTableWrap').style.display=r?'none':'block';if(!r&&parsedData){placementAssignment={};renderAssignmentTable([...selectedDsps])}}
