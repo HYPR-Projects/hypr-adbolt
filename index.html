@@ -475,6 +475,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
           </div>
         </div>
       </div>
+      <div class="panel-divider" id="dv360ConfigDivider" style="display:none"></div>
+      <div id="dv360ConfigSection" style="display:none">
+        <div style="margin-bottom:14px"><span class="section-label">Configuração DV360</span></div>
+        <div class="option-row">
+          <label class="option-label" for="inputDV360AdvId">Advertiser ID<small>ID do advertiser no DV360. Default: 1426474713</small></label>
+          <div class="option-input"><input type="text" id="inputDV360AdvId" placeholder="1426474713" value="1426474713" style="font-family:var(--mono)"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -596,9 +604,9 @@ async function activateInDsps(){
   if(selectedDsps.has('xandr')&&generatedFiles.xandr){
     results.push(await activateXandr(token));
   }
-  // DV360 (Fase 2 - placeholder)
+  // DV360 (Fase 2)
   if(selectedDsps.has('dv360')&&generatedFiles.dv360){
-    results.push({dsp:'DV360',status:'pending',detail:'Integração em desenvolvimento (Fase 2)'});
+    results.push(await activateDV360(token));
   }
   // StackAdapt (Fase 3 - placeholder)
   if(selectedDsps.has('stackadapt')&&generatedFiles.stackadapt){
@@ -665,6 +673,48 @@ async function activateXandr(token){
   }
 }
 
+async function activateDV360(token){
+  try{
+    const hasTags=currentMode!=='surveys'&&parsedData;
+    const hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;
+    const tagPlacements=hasTags?getPlacementsForDsp('dv360'):[];
+    const surveyPl=hasSurveys?getSurveyPlacements():[];
+    const allPlacements=[...tagPlacements,...surveyPl];
+
+    if(!allPlacements.length)return{dsp:'DV360',status:'error',detail:'Nenhum criativo pra ativar'};
+
+    const body={
+      advertiserId:document.getElementById('inputDV360AdvId')?.value?.trim()||'1426474713',
+      campaignName:parsedData?.campaignName||'Survey',
+      advertiserName:parsedData?.advertiserName||'',
+      creatives:allPlacements.map(p=>({
+        name:p.placementName,
+        dimensions:p.dimensions,
+        jsTag:p.jsTag,
+        clickUrl:p.clickUrl||''
+      }))
+    };
+
+    const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-dv360',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify(body)
+    });
+
+    const data=await res.json();
+    if(!res.ok)return{dsp:'DV360',status:'error',detail:data.error||'Erro na requisição'};
+
+    return{
+      dsp:'DV360',
+      status:data.status,
+      detail:`${data.success}/${data.total} criativos criados`,
+      results:data.results
+    };
+  }catch(err){
+    return{dsp:'DV360',status:'error',detail:err.message||'Erro de conexão'};
+  }
+}
+
 function renderActivationResults(results){
   const container=document.getElementById('activationCards');
   container.innerHTML=results.map((r,i)=>`
@@ -727,11 +777,13 @@ function updateVisibility(){
 // ── DSP Selection ──
 function toggleDsp(card){const d=card.dataset.dsp;card.classList.toggle('selected');selectedDsps.has(d)?selectedDsps.delete(d):selectedDsps.add(d);updateOptions();updateAssignment();updateVisibility()}
 function updateOptions(){
-  const hasSA=selectedDsps.has('stackadapt'),hasXandr=selectedDsps.has('xandr');
+  const hasSA=selectedDsps.has('stackadapt'),hasXandr=selectedDsps.has('xandr'),hasDV360=selectedDsps.has('dv360');
   document.getElementById('optBrandRow').style.display=hasSA?'flex':'none';
   document.getElementById('optPoliticalRow').style.display=hasXandr?'flex':'none';
   document.getElementById('xandrAuditDivider').style.display=hasXandr?'':'none';
   document.getElementById('xandrAuditSection').style.display=hasXandr?'':'none';
+  document.getElementById('dv360ConfigDivider').style.display=hasDV360?'':'none';
+  document.getElementById('dv360ConfigSection').style.display=hasDV360?'':'none';
   const showPixels=currentMode!=='surveys';
   ['stackadapt','xandr'].forEach(dsp=>{
     const wrap=document.getElementById(`pixelWrap_${dsp}`),field=document.getElementById(`pixel_${dsp}`);
