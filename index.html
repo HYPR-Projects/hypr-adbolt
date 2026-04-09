@@ -456,8 +456,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
     <div class="assets-upload-zone" id="assetsUploadZone">
       <span class="upload-icon">🎨</span>
       <div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div>
-      <div class="upload-format">JPG · PNG · GIF · MP4</div>
-      <input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm" multiple aria-label="Upload de assets">
+      <div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>
+      <input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Upload de assets">
     </div>
     <div id="assetsContent" style="display:none">
       <div id="assetsBulkBar" style="display:none"></div>
@@ -1492,10 +1492,10 @@ async function handleAssetFiles(files){
   const label=[dc?`${dc} display`:null,vc?`${vc} video`:null].filter(Boolean).join(' + ');
   zone.classList.add('has-files');
   zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>
-    <input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm" multiple aria-label="Adicionar mais assets">`;
+    <input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Adicionar mais assets">`;
   // Rebind file input
-  document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetFiles([...e.target.files]);e.target.value=''});
-  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4</div><input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm" multiple aria-label="Upload de assets">`;document.getElementById('assetsFileInput').addEventListener('change',ev=>{if(ev.target.files.length)handleAssetFiles([...ev.target.files]);ev.target.value=''});document.getElementById('assetsContent').style.display='none';updateVisibility()});
+  document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetInput([...e.target.files]);e.target.value=''});
+  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div><input type="file" id="assetsFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.mov,.webm,.zip" multiple aria-label="Upload de assets">`;document.getElementById('assetsFileInput').addEventListener('change',ev=>{if(ev.target.files.length)handleAssetInput([...ev.target.files]);ev.target.value=''});document.getElementById('assetsContent').style.display='none';updateVisibility()});
   document.getElementById('assetsContent').style.display='';
   renderAssetsTable();updateVisibility();
   toast(`${files.length} asset(s) adicionado(s)`,'success');
@@ -1617,6 +1617,48 @@ async function bulkCompress(){
 }
 
 // Assets table event delegation
+// ── ZIP Extraction ──
+async function extractZipToFiles(zipFile){
+  const buf=await zipFile.arrayBuffer();
+  const zip=await JSZip.loadAsync(buf);
+  const files=[];
+  const validExts=new Set(['jpg','jpeg','png','gif','mp4','mov','webm']);
+  for(const [path,entry] of Object.entries(zip.files)){
+    if(entry.dir)continue;
+    // Skip macOS artifacts and hidden files
+    if(path.includes('__MACOSX')||path.includes('.DS_Store')||path.startsWith('.')||path.includes('/._'))continue;
+    const fileName=path.split('/').pop();
+    if(!fileName)continue;
+    const ext=fileName.split('.').pop().toLowerCase();
+    if(!validExts.has(ext))continue;
+    // Build a meaningful name from folder path
+    const parts=path.split('/').filter(p=>p&&p!==fileName);
+    // Skip the root zip folder name if it's the only parent
+    const folderPrefix=parts.length>1?parts.slice(1).join('_')+'_':parts.length===1&&parts[0]!==fileName?parts[0]+'_':'';
+    const blob=await entry.async('blob');
+    const mimeMap={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',mp4:'video/mp4',mov:'video/quicktime',webm:'video/webm'};
+    const file=new File([blob],folderPrefix+fileName,{type:mimeMap[ext]||'application/octet-stream'});
+    files.push(file);
+  }
+  return files;
+}
+
+async function handleAssetInput(fileList){
+  const zipFiles=[];const regularFiles=[];
+  for(const f of fileList){
+    if(f.name.toLowerCase().endsWith('.zip'))zipFiles.push(f);
+    else regularFiles.push(f);
+  }
+  // Extract ZIPs first
+  for(const zf of zipFiles){
+    toast(`Extraindo ${zf.name}...`,'');
+    const extracted=await extractZipToFiles(zf);
+    regularFiles.push(...extracted);
+  }
+  if(regularFiles.length)await handleAssetFiles(regularFiles);
+  else toast('Nenhum arquivo válido encontrado no ZIP','error');
+}
+
 document.getElementById('assetsTableBody').addEventListener('input',e=>{
   const inp=e.target.closest('.asset-input');if(!inp)return;
   const id=parseInt(inp.dataset.id),field=inp.dataset.field;
@@ -1636,8 +1678,8 @@ document.getElementById('assetsSelectAll').addEventListener('change',e=>{
 const assetsZone=document.getElementById('assetsUploadZone');
 assetsZone.addEventListener('dragover',e=>{e.preventDefault();assetsZone.classList.add('dragover')});
 assetsZone.addEventListener('dragleave',()=>assetsZone.classList.remove('dragover'));
-assetsZone.addEventListener('drop',e=>{e.preventDefault();assetsZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleAssetFiles([...e.dataTransfer.files])});
-document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetFiles([...e.target.files]);e.target.value=''});
+assetsZone.addEventListener('drop',e=>{e.preventDefault();assetsZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleAssetInput([...e.dataTransfer.files])});
+document.getElementById('assetsFileInput').addEventListener('change',e=>{if(e.target.files.length)handleAssetInput([...e.target.files]);e.target.value=''});
 
 setMode('tags');
 initAuth();
