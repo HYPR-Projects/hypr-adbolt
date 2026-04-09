@@ -465,7 +465,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
         </div>
         <div class="option-row">
           <label class="option-label" for="inputXandrBrandUrl">Brand URL<small>URL do site da marca pra validação da auditoria</small></label>
-          <div class="option-input"><input type="text" id="inputXandrBrandUrl" placeholder="https://www.marca.com.br" value="https://hypr.mobi"></div>
+          <div class="option-input"><input type="text" id="inputXandrBrandUrl" placeholder="https://www.marca.com.br"></div>
         </div>
         <div class="option-row">
           <label class="option-label" for="inputXandrSla">Tipo de auditoria<small>Prioritária pode ter custo adicional</small></label>
@@ -791,6 +791,9 @@ function setMode(mode){
   const tagPanel=document.getElementById('sectionTags'), surveyPanel=document.getElementById('sectionSurveys');
   tagPanel.style.display=showTags?'':'none'; tagPanel.classList.toggle('revealed',showTags);
   surveyPanel.style.display=showSurveys?'':'none'; surveyPanel.classList.toggle('revealed',showSurveys);
+  // Auto-fill Brand URL for survey mode
+  const brandUrlField=document.getElementById('inputXandrBrandUrl');
+  if(brandUrlField&&!brandUrlField.value.trim()&&showSurveys&&!showTags)brandUrlField.value='https://hypr.mobi';
   // Renumber panels dynamically
   const nums = [];
   if(showTags) nums.push('panelNumTags');
