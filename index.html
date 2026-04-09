@@ -297,6 +297,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
 .asset-action-btn{background:var(--bg);border:1px solid var(--border);color:var(--text-dim);width:26px;height:26px;border-radius:var(--radius-xs);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:border-color 0.2s,color 0.2s}
 .asset-action-btn:hover{border-color:var(--accent);color:var(--accent)}
 .asset-action-btn.danger:hover{border-color:var(--error);color:var(--error)}
+.asset-size-warn{font-size:12px;margin-left:3px;vertical-align:middle;cursor:help}
+.asset-size-ok{font-size:11px;margin-left:3px;color:var(--success);vertical-align:middle}
+.asset-resize-btn{background:rgba(255,180,0,0.12);border:1px solid rgba(255,180,0,0.3);color:#e6a700;font-family:var(--mono);font-size:0.65rem;padding:1px 5px;border-radius:var(--radius-xs);cursor:pointer;margin-left:3px;vertical-align:middle;white-space:nowrap;transition:background 0.2s}
+.asset-resize-btn:hover{background:rgba(255,180,0,0.25)}
 
 /* Bulk action bar */
 .assets-filter-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;margin-top:14px}
@@ -1434,6 +1438,55 @@ document.getElementById('btnGenerate').addEventListener('click',generate);
 let assetEntries=[];let assetIdCounter=0;
 const ASSET_DSP_LIMITS={xandr:{display:400*1024,video:Infinity},dv360:{display:10*1024*1024,video:Infinity},stackadapt:{display:2*1024*1024,video:Infinity},amazondsp:{display:200*1024,video:Infinity}};
 const DISPLAY_EXTS=new Set(['jpg','jpeg','png','gif']);
+const IAB_SIZES=new Set(['120x600','160x600','200x200','250x250','300x50','300x250','300x600','320x50','320x100','320x480','336x280','468x60','480x320','728x90','768x1024','970x90','970x250','1024x768','1080x1920','1920x1080']);
+
+function isIABSize(dim){return IAB_SIZES.has(dim)}
+
+function getSizeSuggestion(w,h){
+  // Find closest IAB size by aspect ratio + area similarity
+  let best=null,bestScore=Infinity;
+  IAB_SIZES.forEach(s=>{
+    const[sw,sh]=s.split('x').map(Number);
+    const arDiff=Math.abs((w/h)-(sw/sh));
+    const areaDiff=Math.abs(w*h-sw*sh)/(w*h);
+    const score=arDiff*2+areaDiff;
+    if(score<bestScore){bestScore=score;best=s}
+  });
+  return best;
+}
+
+async function resizeAssetImage(entry,newW,newH){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement('canvas');c.width=newW;c.height=newH;
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img,0,0,newW,newH);
+      c.toBlob(blob=>{
+        const ext=entry.originalFile.name.split('.').pop().toLowerCase();
+        const mimeMap={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif'};
+        const mime=mimeMap[ext]||'image/jpeg';
+        const newFile=new File([blob],entry.originalFile.name,{type:mime});
+        entry.file=newFile;
+        entry.compressedFile=newFile;
+        entry.size=newFile.size;
+        entry.w=newW;entry.h=newH;
+        entry.dimensions=`${newW}x${newH}`;
+        // Regenerate thumb
+        const tc=document.createElement('canvas'),tctx=tc.getContext('2d');
+        const s=Math.min(96/newW,72/newH,1);
+        tc.width=newW*s;tc.height=newH*s;
+        tctx.drawImage(img,0,0,tc.width,tc.height);
+        entry.thumb=tc.toDataURL('image/jpeg',0.7);
+        entry.resized=true;
+        URL.revokeObjectURL(img.src);
+        resolve(true);
+      },entry.originalFile.type==='image/png'?'image/png':'image/jpeg',0.9);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(img.src);resolve(false)};
+    img.src=URL.createObjectURL(entry.originalFile);
+  });
+}
 const VIDEO_EXTS=new Set(['mp4','mov','webm']);
 
 function getAssetType(file){const ext=file.name.split('.').pop().toLowerCase();if(DISPLAY_EXTS.has(ext))return'display';if(VIDEO_EXTS.has(ext))return'video';return null}
@@ -1549,7 +1602,7 @@ function renderAssetsTable(){
       <td>${thumbHtml}</td>
       <td><input class="asset-input asset-name-input" value="${esc(a.name)}" data-field="name" data-id="${a.id}"></td>
       <td><span class="asset-type-badge ${a.type}">${a.type}</span></td>
-      <td><input class="asset-input mono" style="width:80px" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}"></td>
+      <td style="white-space:nowrap"><input class="asset-input mono" style="width:75px;display:inline-block;vertical-align:middle" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}">${a.type==='display'&&!isIABSize(a.dimensions)?`<span class="asset-size-warn" title="Size fora do padrão IAB. Sugestão: ${getSizeSuggestion(a.w,a.h)}">⚠️</span>${!a.resized?`<button class="asset-resize-btn" data-resize="${a.id}" data-suggest="${getSizeSuggestion(a.w,a.h)}" title="Redimensionar pra ${getSizeSuggestion(a.w,a.h)}">${getSizeSuggestion(a.w,a.h)}</button>`:''}`:(a.resized?'<span class="asset-size-ok" title="Redimensionado">✓</span>':'')}</td>
       <td><span class="asset-weight-badge ${wc}">${formatBytes(sz)}${a.compressed?' ⚡':''}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(a.landingPage)}" data-field="landingPage" data-id="${a.id}" placeholder="https://..."></td>
       <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>`<span class="tracker-chip"><span title="${esc(t)}">${esc(t)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL"></div></td>
@@ -1714,7 +1767,37 @@ document.getElementById('assetsTableBody').addEventListener('input',e=>{
   const entry=assetEntries.find(a=>a.id===id);
   if(entry&&field)entry[field]=inp.value;
 });
-document.getElementById('assetsTableBody').addEventListener('click',e=>{
+document.getElementById('assetsTableBody').addEventListener('change',e=>{
+  const inp=e.target.closest('.asset-input[data-field="dimensions"]');if(!inp)return;
+  const id=parseInt(inp.dataset.id);
+  const entry=assetEntries.find(a=>a.id===id);
+  if(!entry||entry.type!=='display')return;
+  const m=inp.value.match(/^(\d+)x(\d+)$/);
+  if(m){
+    const nw=parseInt(m[1]),nh=parseInt(m[2]);
+    if(nw!==entry.w||nh!==entry.h){
+      resizeAssetImage(entry,nw,nh).then(ok=>{
+        if(ok){renderAssetsTable();toast(`${entry.name} redimensionado pra ${nw}x${nh}`,'success')}
+      });
+    }
+  }
+});
+document.getElementById('assetsTableBody').addEventListener('click',async e=>{
+  // Resize button
+  const resizeBtn=e.target.closest('[data-resize]');
+  if(resizeBtn){
+    const id=parseInt(resizeBtn.dataset.resize);
+    const suggest=resizeBtn.dataset.suggest;
+    const entry=assetEntries.find(a=>a.id===id);
+    if(entry&&suggest){
+      const[nw,nh]=suggest.split('x').map(Number);
+      resizeBtn.textContent='...';resizeBtn.disabled=true;
+      const ok=await resizeAssetImage(entry,nw,nh);
+      if(ok){renderAssetsTable();toast(`${entry.name} redimensionado pra ${suggest}`,'success')}
+      else toast('Erro ao redimensionar','error');
+    }
+    return;
+  }
   // Tracker chip remove
   const chipRm=e.target.closest('[data-tracker-rm]');
   if(chipRm){const id=parseInt(chipRm.dataset.trackerRm),ti=parseInt(chipRm.dataset.ti);const entry=assetEntries.find(a=>a.id===id);if(entry){entry.trackers.splice(ti,1);renderAssetsTable()};return}
