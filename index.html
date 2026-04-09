@@ -622,6 +622,13 @@ function updateActivateBtn(){
 // ── Ativação nas DSPs ──
 async function activateInDsps(){
   if(!currentUser){toast('Faça login primeiro','error');return}
+
+  // Validações obrigatórias antes de ativar
+  if(selectedDsps.has('xandr')){
+    const brandUrl=document.getElementById('inputXandrBrandUrl').value.trim();
+    if(!brandUrl){toast('Preencha a Brand URL na seção Auditoria Xandr','error');document.getElementById('inputXandrBrandUrl').focus();return}
+  }
+
   const btn=document.getElementById('btnActivate');
   btn.disabled=true;btn.classList.add('loading');btn.textContent='Ativando...';
 
