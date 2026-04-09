@@ -465,6 +465,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:1
           <label class="option-label" for="inputXandrLandingPage">Landing page URL<small>URL do site da marca pra validação da auditoria</small></label>
           <div class="option-input"><input type="text" id="inputXandrLandingPage" placeholder="https://www.marca.com.br"></div>
         </div>
+        <div class="option-row">
+          <label class="option-label" for="inputXandrSla">Tipo de auditoria<small>Prioritária pode ter custo adicional</small></label>
+          <div class="option-input">
+            <select id="inputXandrSla" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:0.8rem;padding:9px 12px;outline:none;appearance:none;cursor:pointer">
+              <option value="0">Padrão (~24h)</option>
+              <option value="2">Prioritária (~2h)</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -616,6 +625,7 @@ async function activateXandr(token){
     const langId=parseInt(document.getElementById('inputXandrLang').value)||8;
     const brandId=document.getElementById('inputXandrBrandId').value.trim();
     const landingPage=document.getElementById('inputXandrLandingPage').value.trim();
+    const sla=parseInt(document.getElementById('inputXandrSla').value)||0;
 
     const body={
       advertiserId:7392214,
@@ -626,6 +636,7 @@ async function activateXandr(token){
       languageId:langId,
       brandId:brandId?parseInt(brandId):null,
       landingPageUrl:landingPage||null,
+      sla:sla,
       creatives:allPlacements.map(p=>({
         name:p.placementName,
         dimensions:p.dimensions,
