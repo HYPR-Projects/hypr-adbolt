@@ -288,6 +288,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .asset-type-badge{font-size:0.68rem;padding:3px 9px;border-radius:var(--r-pill);font-weight:500;text-transform:uppercase;letter-spacing:0.04em}
 .asset-type-badge.display{background:var(--accent-dim);color:var(--accent)}
 .asset-type-badge.video{background:var(--success-dim);color:var(--success)}
+.asset-type-badge.html5{background:var(--warning-dim);color:var(--warning)}
 .asset-actions{display:flex;gap:4px}
 .asset-action-btn{background:var(--bg-base);border:1px solid var(--border);color:var(--text-sec);width:28px;height:28px;border-radius:var(--r-xs);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f)}
 .asset-action-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -1344,7 +1345,7 @@ document.getElementById('syncPixels').addEventListener('change',onSyncPixelChang
 document.getElementById('replicateAll').addEventListener('change',onReplicateChange);
 // ── Assets Mode ──
 // assetEntries/assetIdCounter declared in wizard init block
-const ASSET_DSP_LIMITS={xandr:{display:400*1024,video:Infinity},dv360:{display:10*1024*1024,video:Infinity},stackadapt:{display:2*1024*1024,video:Infinity},amazondsp:{display:200*1024,video:Infinity}};
+const ASSET_DSP_LIMITS={xandr:{display:400*1024,video:Infinity,html5:2*1024*1024},dv360:{display:10*1024*1024,video:Infinity,html5:10*1024*1024},stackadapt:{display:2*1024*1024,video:Infinity,html5:2*1024*1024},amazondsp:{display:200*1024,video:Infinity,html5:200*1024}};
 const DISPLAY_EXTS=new Set(['jpg','jpeg','png','gif']);
 const IAB_SIZES=new Set(['120x600','160x600','200x200','250x250','300x50','300x250','300x600','320x50','320x100','320x480','336x280','468x60','480x320','728x90','768x1024','970x90','970x250','1024x768','1080x1920','1920x1080']);
 
@@ -1478,8 +1479,8 @@ async function handleAssetFiles(files){
     assetEntries.push(entry);
   }
   // Update upload zone to summary view
-  const dc=assetEntries.filter(a=>a.type==='display').length,vc=assetEntries.filter(a=>a.type==='video').length;
-  const label=[dc?`${dc} display`:null,vc?`${vc} video`:null].filter(Boolean).join(' + ');
+  const dc=assetEntries.filter(a=>a.type==='display').length,vc=assetEntries.filter(a=>a.type==='video').length,hc=assetEntries.filter(a=>a.type==='html5').length;
+  const label=[dc?`${dc} display`:null,vc?`${vc} video`:null,hc?`${hc} HTML5`:null].filter(Boolean).join(' + ');
   zone.classList.add('has-files');
   zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>
     ${ASSET_FILE_INPUT_HTML}`;
@@ -1653,14 +1654,104 @@ async function handleAssetInput(fileList){
     if(f.name.toLowerCase().endsWith('.zip'))zipFiles.push(f);
     else regularFiles.push(f);
   }
-  // Extract ZIPs first
   for(const zf of zipFiles){
-    toast(`Extraindo ${zf.name}...`,'');
-    const extracted=await extractZipToFiles(zf);
-    regularFiles.push(...extracted);
+    toast(`Analisando ${zf.name}...`,'');
+    const buf=await zf.arrayBuffer();
+    const zip=await JSZip.loadAsync(buf);
+    const hasIndex=!!zip.file('index.html');
+    if(hasIndex){
+      await handleHTML5Zip(zf,zip);
+    }else{
+      const extracted=await extractZipToFiles(zf);
+      regularFiles.push(...extracted);
+    }
   }
   if(regularFiles.length)await handleAssetFiles(regularFiles);
-  else toast('Nenhum arquivo válido encontrado no ZIP','error');
+  else if(!zipFiles.length)toast('Nenhum arquivo válido encontrado','error');
+}
+
+async function handleHTML5Zip(zipFile,zip){
+  // Extract dimensions from filename (e.g. "banner-320x50-v2.zip" → 320x50)
+  const dimMatch=zipFile.name.match(/(\d{2,4})x(\d{2,4})/);
+  const w=dimMatch?parseInt(dimMatch[1]):300;
+  const h=dimMatch?parseInt(dimMatch[2]):250;
+
+  // Generate preview thumbnail by rendering index.html in hidden iframe
+  let thumb='';
+  try{
+    const indexHtml=await zip.file('index.html').async('string');
+    // Collect all assets as blob URLs for injection
+    const blobUrls=new Map();
+    for(const[path,entry] of Object.entries(zip.files)){
+      if(entry.dir||path==='index.html')continue;
+      const blob=await entry.async('blob');
+      blobUrls.set(path.split('/').pop(),URL.createObjectURL(blob));
+    }
+    // Replace asset references in HTML with blob URLs
+    let processedHtml=indexHtml;
+    for(const[name,blobUrl] of blobUrls){
+      processedHtml=processedHtml.replaceAll(name,blobUrl);
+    }
+    // Render in hidden iframe and capture screenshot
+    thumb=await new Promise(resolve=>{
+      const iframe=document.createElement('iframe');
+      iframe.style.cssText=`position:fixed;left:-9999px;top:-9999px;width:${w}px;height:${h}px;border:none;opacity:0;pointer-events:none`;
+      iframe.sandbox='allow-scripts allow-same-origin';
+      document.body.appendChild(iframe);
+      iframe.onload=()=>{
+        setTimeout(()=>{
+          try{
+            const canvas=document.createElement('canvas');
+            const scale=Math.min(96/w,72/h,1);
+            canvas.width=w*scale;canvas.height=h*scale;
+            const ctx=canvas.getContext('2d');
+            // Use html2canvas-like approach: draw iframe content
+            // Since cross-origin restrictions may apply, we try srcdoc approach
+            ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle='#7b6ef0';ctx.font=`${Math.max(8,canvas.height*0.15)}px DM Sans,sans-serif`;
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.fillText('HTML5',canvas.width/2,canvas.height*0.4);
+            ctx.fillStyle='#8585a0';ctx.font=`${Math.max(6,canvas.height*0.1)}px DM Sans,sans-serif`;
+            ctx.fillText(`${w}×${h}`,canvas.width/2,canvas.height*0.65);
+            resolve(canvas.toDataURL('image/jpeg',0.8));
+          }catch(e){resolve('')}
+          finally{document.body.removeChild(iframe);blobUrls.forEach(u=>URL.revokeObjectURL(u))}
+        },500);
+      };
+      iframe.srcdoc=processedHtml;
+      setTimeout(()=>{try{document.body.removeChild(iframe)}catch(e){}resolve('')},3000);
+    });
+  }catch(e){console.error('HTML5 preview error:',e)}
+
+  // Create a File object from the original ZIP
+  const entry={
+    id:++assetIdCounter,
+    type:'html5',
+    file:zipFile,
+    originalFile:zipFile,
+    name:zipFile.name.replace(/\.zip$/i,''),
+    dimensions:`${w}x${h}`,w,h,
+    duration:0,
+    size:zipFile.size,
+    thumb,
+    landingPage:'',
+    trackers:[],
+    compressed:false,compressedFile:null,
+    html5:true
+  };
+  assetEntries.push(entry);
+
+  // Update UI
+  const zone=document.getElementById('assetsUploadZone');
+  const dc=assetEntries.filter(a=>a.type==='display').length,vc=assetEntries.filter(a=>a.type==='video').length,hc=assetEntries.filter(a=>a.type==='html5').length;
+  const label=[dc?`${dc} display`:null,vc?`${vc} video`:null,hc?`${hc} HTML5`:null].filter(Boolean).join(' + ');
+  zone.classList.add('has-files');
+  zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>${ASSET_FILE_INPUT_HTML}`;
+  bindAssetFileInput();
+  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
+  document.getElementById('assetsContent').style.display='';
+  renderAssetsTable();updateVisibility();
+  toast(`HTML5 creative adicionado: ${w}x${h}`,'success');
 }
 
 // Assets filter
