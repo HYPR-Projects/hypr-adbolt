@@ -1079,25 +1079,43 @@ async function dlAmazonDSP(f,fn){
     const buf=await res.arrayBuffer();
     const zip=await JSZip.loadAsync(buf);
 
-    // Find the correct sheet file for THIRD-PARTY DISPLAY
-    // From workbook.xml.rels: rId4 -> worksheets/sheet4.xml
     const sheetFile='xl/worksheets/sheet4.xml';
+    const ssFile='xl/sharedStrings.xml';
     const sheetXml=await zip.file(sheetFile).async('string');
-
-    // Parse the XML
-    const parser=new DOMParser();
-    const doc=parser.parseFromString(sheetXml,'application/xml');
+    const ssXml=await zip.file(ssFile).async('string');
     const nsUri='http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+    // Parse sharedStrings.xml to get existing strings and add new ones
+    const ssDoc=new DOMParser().parseFromString(ssXml,'application/xml');
+    const sst=ssDoc.getElementsByTagNameNS(nsUri,'sst')[0];
+    const existingSi=[...sst.getElementsByTagNameNS(nsUri,'si')];
+    let ssCount=existingSi.length;
+
+    // Collect all unique new strings and map them to indices
+    const newStrings=new Map();
+    function getStringIndex(str){
+      if(newStrings.has(str))return newStrings.get(str);
+      const idx=ssCount++;
+      newStrings.set(str,idx);
+      // Add to sharedStrings XML
+      const si=ssDoc.createElementNS(nsUri,'si');
+      const t=ssDoc.createElementNS(nsUri,'t');
+      t.textContent=str;
+      si.appendChild(t);
+      sst.appendChild(si);
+      return idx;
+    }
+
+    // Parse sheet4
+    const doc=new DOMParser().parseFromString(sheetXml,'application/xml');
     const sheetData=doc.getElementsByTagNameNS(nsUri,'sheetData')[0];
 
-    // Remove existing data rows (row 4+) to start clean
-    const existingRows=[...sheetData.getElementsByTagNameNS(nsUri,'row')];
-    existingRows.forEach(row=>{
-      const r=parseInt(row.getAttribute('r'));
-      if(r>=4)sheetData.removeChild(row);
+    // Remove existing data rows (row 4+)
+    [...sheetData.getElementsByTagNameNS(nsUri,'row')].forEach(row=>{
+      if(parseInt(row.getAttribute('r'))>=4)sheetData.removeChild(row);
     });
 
-    // Add data rows using inline strings (<is><t>) to avoid sharedStrings conflicts
+    // Add data rows using shared string references
     const cols=['A','B','C','D','E','F','G','H','I','J','K','L','M'];
     f.rows.forEach((rowData,i)=>{
       const r=i+4;
@@ -1105,15 +1123,14 @@ async function dlAmazonDSP(f,fn){
       rowEl.setAttribute('r',String(r));
       rowData.forEach((val,j)=>{
         if(j>=cols.length)return;
-        const cellRef=cols[j]+r;
+        const strVal=String(val??'');
+        if(!strVal)return;
         const c=doc.createElementNS(nsUri,'c');
-        c.setAttribute('r',cellRef);
-        c.setAttribute('t','inlineStr');
-        const is=doc.createElementNS(nsUri,'is');
-        const t=doc.createElementNS(nsUri,'t');
-        t.textContent=String(val||'');
-        is.appendChild(t);
-        c.appendChild(is);
+        c.setAttribute('r',cols[j]+r);
+        c.setAttribute('t','s');
+        const v=doc.createElementNS(nsUri,'v');
+        v.textContent=String(getStringIndex(strVal));
+        c.appendChild(v);
         rowEl.appendChild(c);
       });
       sheetData.appendChild(rowEl);
@@ -1121,21 +1138,20 @@ async function dlAmazonDSP(f,fn){
 
     // Update dimension
     const dim=doc.getElementsByTagNameNS(nsUri,'dimension')[0];
-    if(dim){
-      const lastRow=f.rows.length+3;
-      dim.setAttribute('ref',`A1:M${lastRow}`);
-    }
+    if(dim)dim.setAttribute('ref',`A1:M${f.rows.length+3}`);
 
-    // Serialize back to string
-    const serializer=new XMLSerializer();
-    let newXml=serializer.serializeToString(doc);
-    // Fix: XMLSerializer may add xmlns to every element, clean up
-    newXml=newXml.replace(/ xmlns=""/g,'');
+    // Update sst count/uniqueCount
+    sst.setAttribute('count',String(ssCount));
+    sst.setAttribute('uniqueCount',String(ssCount));
 
-    // Replace the sheet in the ZIP
-    zip.file(sheetFile,newXml);
+    // Serialize and save
+    const ser=new XMLSerializer();
+    let sheetOut=ser.serializeToString(doc).replace(/ xmlns=""/g,'');
+    let ssOut=ser.serializeToString(ssDoc).replace(/ xmlns=""/g,'');
 
-    // Generate the modified XLSX
+    zip.file(sheetFile,sheetOut);
+    zip.file(ssFile,ssOut);
+
     const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     dl(blob,fn);
     toast('Template Amazon DSP gerado','success');
