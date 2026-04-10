@@ -2608,14 +2608,25 @@ function bulkEditSelected(){
   const keys=Array.from(dashSelectedKeys);
   const first=dashGroups.find(x=>x.name+'||'+x.dimensions===keys[0]);if(!first)return;
   dashEditGroup=first;dashEditGroup._bulkKeys=keys;
-  const allDsps=new Set();keys.forEach(k=>{const gg=dashGroups.find(x=>x.name+'||'+x.dimensions===k);if(gg)Object.keys(gg.dsps).forEach(d=>allDsps.add(d))});
-  const hasXandr=allDsps.has('xandr');
-  let h='<div style="font-size:0.78rem;color:var(--accent);margin-bottom:16px;font-weight:600">'+keys.length+' criativos selecionados</div>';
+  // Collect DSP stats from selection
+  const dspCount={};
+  keys.forEach(k=>{const gg=dashGroups.find(x=>x.name+'||'+x.dimensions===k);if(gg)Object.keys(gg.dsps).forEach(d=>{dspCount[d]=(dspCount[d]||0)+1})});
+  const dspKeys=Object.keys(dspCount).sort();
+  const dn={xandr:'Xandr',dv360:'DV360'};
+  let h='<div style="font-size:0.78rem;color:var(--accent);margin-bottom:8px;font-weight:600">'+keys.length+' criativos selecionados</div>';
+  h+='<div style="font-size:0.72rem;color:var(--text-tri);margin-bottom:20px;display:flex;gap:8px">'+dspKeys.map(d=>'<span class="modal-dsp-tag '+d+'" style="font-size:0.65rem">'+dn[d]+' ('+dspCount[d]+')</span>').join('')+'</div>';
   h+='<div class="modal-field"><label>Nome (aplica a todos)</label><input id="editName" value="" placeholder="Deixe vazio pra manter o atual"></div>';
-  if(hasXandr){
-    h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag xandr">Xandr</span></div>';
-    h+='<div class="modal-field"><label>URL de destino (auditoria)</label><input id="editLandingPage_xandr" value="" placeholder="Deixe vazio pra manter"></div>';
-    h+='<div class="modal-field"><label>Click redirect (geralmente vazio em 3P tags)</label><input id="editClickUrl_xandr" value="" placeholder="Deixe vazio pra manter"></div></div>';
+  // Show DSP-specific fields for each DSP in the selection
+  for(const dsp of dspKeys){
+    h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag '+dsp+'">'+dn[dsp]+'</span><span style="font-size:0.68rem;color:var(--text-tri);margin-left:auto">'+dspCount[dsp]+' criativo'+(dspCount[dsp]>1?'s':'')+'</span></div>';
+    if(dsp==='xandr'){
+      h+='<div class="modal-field"><label>URL de destino <span style="font-weight:400;color:var(--text-tri)">(landing_page_url — auditoria)</span></label><input id="editLandingPage_xandr" value="" placeholder="Deixe vazio pra manter"></div>';
+      h+='<div class="modal-field"><label>Click redirect <span style="font-weight:400;color:var(--text-tri)">(click_url)</span></label><input id="editClickUrl_xandr" value="" placeholder="Deixe vazio pra manter"></div>';
+    }
+    if(dsp==='dv360'){
+      h+='<div style="font-size:0.72rem;color:var(--text-tri);padding:8px 0">DV360 suporta edição de nome via API. Campos adicionais como trackers podem ser editados individualmente.</div>';
+    }
+    h+='</div>';
   }
   document.getElementById('editModalBody').innerHTML=h;
   document.getElementById('editModal').classList.add('visible');
