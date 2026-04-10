@@ -190,6 +190,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-empty-text{font-size:0.95rem;color:var(--text-sec);font-weight:500}
 .dash-empty-sub{font-size:0.8rem;color:var(--text-tri);margin-top:6px;max-width:320px;margin-left:auto;margin-right:auto;line-height:1.5}
 .dash-pagination{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);font-size:0.74rem;color:var(--text-tri)}
+.dash-bulk-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-dim);border:1px solid var(--accent-ring);border-radius:var(--r-sm);margin-bottom:10px;font-size:0.78rem;animation:slideUp 0.2s var(--ease-out)}
+.dash-bulk-bar span{font-weight:600;color:var(--accent)}
+.dash-table th input[type="checkbox"],.dash-table td input[type="checkbox"]{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
 .dash-pg-btn{padding:5px 10px;border-radius:var(--r-xs);font-size:0.74rem;border:1px solid var(--border);background:transparent;color:var(--text-sec);cursor:pointer;font-family:var(--font);transition:all var(--dur-f)}
 .dash-pg-btn:hover:not(:disabled){border-color:var(--border-active);color:var(--accent)}
 .dash-pg-btn:disabled{opacity:0.3;cursor:not-allowed}
@@ -572,7 +575,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
   <div class="topbar">
     <div class="topbar-brand"><div class="topbar-logo">H</div><span class="topbar-title">Creative Smart Bulk</span></div>
     <div class="topbar-right">
-      <button class="topbar-dash" onclick="openDashboard()" title="Dashboard de criativos"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard<span class="topbar-dash-badge" id="dashBadge"></span></button>
+      <button class="topbar-dash" id="topbarDashBtn" onclick="toggleDashHome()" title="Dashboard de criativos"><svg id="topbarDashIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="topbarDashLabel">Dashboard</span><span class="topbar-dash-badge" id="dashBadge"></span></button>
       <div class="topbar-user" id="headerUser">
         <img class="topbar-avatar" id="headerAvatar" src="" alt="" width="28" height="28">
         <div class="topbar-initials" id="headerInitials" style="display:none"></div>
@@ -731,7 +734,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
   <div class="dashboard" id="dashboard">
     <div class="dash-hero">
       <div class="dash-hero-left">
-        <button class="dash-hero-back" onclick="closeDashboard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
         <div><div class="dash-hero-title">Criativos</div><div class="dash-hero-sub" id="dashSubtitle">Carregando...</div></div>
       </div>
       <div class="dash-hero-actions">
@@ -755,9 +757,14 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       <div style="flex:1"></div>
       <input class="dash-search" id="dashSearch" placeholder="Buscar..." oninput="dashSearchDebounce()">
     </div>
+    <div class="dash-bulk-bar" id="dashBulkBar" style="display:none">
+      <span id="dashBulkCount">0 selecionados</span>
+      <button class="dash-btn" onclick="bulkEditSelected()">Editar Selecionados</button>
+      <button class="dash-btn" style="margin-left:auto" onclick="clearDashSelection()">Cancelar</button>
+    </div>
     <div class="dash-table-wrap" id="dashTableWrap">
       <table class="dash-table" id="dashTable">
-        <thead><tr><th style="width:38%">Nome</th><th>Size</th><th>Status</th><th>Criado</th><th>Data</th><th></th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)"></th><th style="width:36%">Nome</th><th>Size</th><th>Status</th><th>Criado</th><th>Data</th><th></th></tr></thead>
         <tbody id="dashBody"></tbody>
       </table>
       <div class="dash-pagination" id="dashPagination"></div>
@@ -2395,30 +2402,42 @@ document.getElementById('tagsFilterSelect').addEventListener('click',()=>{
   renderPlacementsTable();toast(`${filtered.length} placement(s) selecionado(s)`,'success');
 });
 
-// ══════════════════════════════════════════════
-// DASHBOARD
-// ══════════════════════════════════════════════
-let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashDensity='normal',dashExpandedKey=null,_dashSearchTimer=null;
+// ── DASHBOARD ──
+let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashDensity='normal',dashExpandedKey=null,dashSelectedKeys=new Set(),dashIsOpen=false,_dashSearchTimer=null;
 
+function toggleDashHome(){if(dashIsOpen)closeDashboard();else openDashboard()}
+function updateTopbarBtn(){
+  const label=document.getElementById('topbarDashLabel');
+  const icon=document.getElementById('topbarDashIcon');
+  if(!label||!icon)return;
+  if(dashIsOpen){
+    label.textContent='Home';
+    icon.innerHTML='<path d="M3 12l9-9 9 9"/><path d="M9 21V12h6v9"/>';
+    icon.removeAttribute('fill');icon.setAttribute('stroke','currentColor');icon.setAttribute('stroke-width','2');icon.setAttribute('stroke-linecap','round');icon.setAttribute('stroke-linejoin','round');
+  }else{
+    label.textContent='Dashboard';
+    icon.innerHTML='<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
+    icon.removeAttribute('stroke');icon.removeAttribute('stroke-width');icon.removeAttribute('stroke-linecap');icon.removeAttribute('stroke-linejoin');
+  }
+}
 function openDashboard(){
-  const flow=document.getElementById('flowSelector');
-  const wiz=document.getElementById('wizard');
-  flow.style.display='none';
-  wiz.classList.remove('active');
+  document.getElementById('flowSelector').style.display='none';
+  document.getElementById('wizard').classList.remove('active');
   document.getElementById('dashboard').classList.add('active');
-  loadCreatives();
+  dashIsOpen=true;updateTopbarBtn();loadCreatives();
 }
 function closeDashboard(){
   document.getElementById('dashboard').classList.remove('active');
   document.getElementById('flowSelector').style.display='';
+  dashIsOpen=false;updateTopbarBtn();
 }
 function setDashFilter(el){
   document.querySelectorAll('[data-dash-dsp]').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');dashFilterDsp=el.dataset.dashDsp;dashPage=0;dashExpandedKey=null;renderDashTable();
+  el.classList.add('active');dashFilterDsp=el.dataset.dashDsp;dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable();
 }
 function setDashAuditFilter(el){
   document.querySelectorAll('[data-dash-audit]').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');dashFilterAudit=el.dataset.dashAudit;dashPage=0;dashExpandedKey=null;renderDashTable();
+  el.classList.add('active');dashFilterAudit=el.dataset.dashAudit;dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable();
 }
 function setDashDensity(mode,el){
   dashDensity=mode;
@@ -2426,7 +2445,24 @@ function setDashDensity(mode,el){
   el.classList.add('active');
   document.getElementById('dashTable').classList.toggle('compact',mode==='compact');
 }
-function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=setTimeout(()=>{dashFilterSearch=document.getElementById('dashSearch').value.toLowerCase().trim();dashPage=0;dashExpandedKey=null;renderDashTable()},200)}
+function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=setTimeout(()=>{dashFilterSearch=document.getElementById('dashSearch').value.toLowerCase().trim();dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable()},200)}
+
+// Selection
+function toggleDashSelect(key,checked){if(checked)dashSelectedKeys.add(key);else dashSelectedKeys.delete(key);updateDashBulkBar()}
+function toggleDashSelectAll(checked){
+  const filtered=getFilteredGroups();
+  const page=filtered.slice(dashPage*dashPageSize,dashPage*dashPageSize+dashPageSize);
+  if(checked)page.forEach(g=>dashSelectedKeys.add(g.name+'||'+g.dimensions));
+  else page.forEach(g=>dashSelectedKeys.delete(g.name+'||'+g.dimensions));
+  renderDashTable();updateDashBulkBar();
+}
+function clearDashSelection(){dashSelectedKeys.clear();const sa=document.getElementById('dashSelectAll');if(sa)sa.checked=false;updateDashBulkBar()}
+function updateDashBulkBar(){
+  const bar=document.getElementById('dashBulkBar');if(!bar)return;
+  const n=dashSelectedKeys.size;
+  bar.style.display=n>0?'flex':'none';
+  document.getElementById('dashBulkCount').textContent=n+' selecionado'+(n>1?'s':'');
+}
 
 function buildGroups(){
   const map=new Map();
@@ -2434,40 +2470,32 @@ function buildGroups(){
     const key=c.name+'||'+c.dimensions;
     if(!map.has(key))map.set(key,{name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,dsps:{}});
     const g=map.get(key);
-    g.dsps[c.dsp]={id:c.id,dsp_creative_id:c.dsp_creative_id,audit_status:c.audit_status||'unknown',click_url:c.click_url,landing_page:c.landing_page,js_tag:c.js_tag,vast_tag:c.vast_tag,sync_error:c.sync_error,dsp_config:c.dsp_config};
+    g.dsps[c.dsp]={id:c.id,dsp_creative_id:c.dsp_creative_id,audit_status:c.audit_status||'unknown',click_url:c.click_url,landing_page:c.landing_page,js_tag:c.js_tag,vast_tag:c.vast_tag,sync_error:c.sync_error,dsp_config:c.dsp_config,trackers:c.trackers};
     if(new Date(c.created_at)<new Date(g.created_at))g.created_at=c.created_at;
   }
   dashGroups=Array.from(map.values()).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 }
-
-function updateDashBadge(){
-  const pending=dashCreatives.filter(c=>c.audit_status==='pending').length;
-  const badge=document.getElementById('dashBadge');
-  if(badge)badge.textContent=pending>0?pending:'';
-}
+function updateDashBadge(){const p=dashCreatives.filter(c=>c.audit_status==='pending').length;const b=document.getElementById('dashBadge');if(b)b.textContent=p>0?p:''}
 
 async function loadCreatives(){
   if(!sbClient||!currentUser)return;
-  document.getElementById('dashBody').innerHTML='<tr><td colspan="6" class="dash-empty"><div class="dash-empty-text">Carregando...</div></td></tr>';
+  document.getElementById('dashBody').innerHTML='<tr><td colspan="7" class="dash-empty"><div class="dash-empty-text">Carregando...</div></td></tr>';
   try{
     const{data,error}=await sbClient.from('creatives').select('*').order('created_at',{ascending:false}).limit(1000);
     if(error)throw error;
     dashCreatives=data||[];
     buildGroups();renderDashStats();renderDashTable();updateDashBadge();
-    document.getElementById('dashSubtitle').textContent=`${dashGroups.length} criativos em ${dashCreatives.length} registros`;
+    document.getElementById('dashSubtitle').textContent=dashGroups.length+' criativos em '+dashCreatives.length+' registros';
   }catch(err){toast('Erro ao carregar criativos: '+err.message,'error')}
 }
 
 function renderDashStats(){
-  const groups=dashGroups.length;
-  const approved=dashCreatives.filter(c=>c.audit_status==='approved').length;
-  const pending=dashCreatives.filter(c=>c.audit_status==='pending').length;
-  const rejected=dashCreatives.filter(c=>c.audit_status==='rejected').length;
+  const g=dashGroups.length,ap=dashCreatives.filter(c=>c.audit_status==='approved').length,pe=dashCreatives.filter(c=>c.audit_status==='pending').length,re=dashCreatives.filter(c=>c.audit_status==='rejected').length;
   document.getElementById('dashStats').innerHTML=
-    `<div class="dash-stat hero"><div class="dash-stat-val">${groups}</div><div class="dash-stat-label">Criativos únicos</div></div>`+
-    `<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-success"></div><div class="dash-stat-label">Approved</div></div><div class="dash-stat-val">${approved}</div></div>`+
-    `<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-warning"></div><div class="dash-stat-label">Pending</div></div><div class="dash-stat-val">${pending}</div></div>`+
-    `<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-error"></div><div class="dash-stat-label">Rejected</div></div><div class="dash-stat-val">${rejected}</div></div>`;
+    '<div class="dash-stat hero"><div class="dash-stat-val">'+g+'</div><div class="dash-stat-label">Criativos</div></div>'+
+    '<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-success"></div><div class="dash-stat-label">Approved</div></div><div class="dash-stat-val">'+ap+'</div></div>'+
+    '<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-warning"></div><div class="dash-stat-label">Pending</div></div><div class="dash-stat-val">'+pe+'</div></div>'+
+    '<div class="dash-stat"><div class="dash-stat-top"><div class="dash-stat-dot c-error"></div><div class="dash-stat-label">Rejected</div></div><div class="dash-stat-val">'+re+'</div></div>';
 }
 
 function getFilteredGroups(){
@@ -2477,11 +2505,7 @@ function getFilteredGroups(){
   if(dashFilterSearch)list=list.filter(g=>g.name.toLowerCase().includes(dashFilterSearch));
   return list;
 }
-
-function toggleDashExpand(key){
-  dashExpandedKey=dashExpandedKey===key?null:key;
-  renderDashTable();
-}
+function toggleDashExpand(key){dashExpandedKey=dashExpandedKey===key?null:key;renderDashTable()}
 
 function renderDashTable(){
   const filtered=getFilteredGroups();
@@ -2491,140 +2515,116 @@ function renderDashTable(){
   const page=filtered.slice(start,start+dashPageSize);
   const body=document.getElementById('dashBody');
   if(page.length===0){
-    body.innerHTML=`<tr><td colspan="6" class="dash-empty"><div class="dash-empty-icon">📋</div><div class="dash-empty-text">Nenhum criativo encontrado</div><div class="dash-empty-sub">Criativos ativados via Tags, Surveys ou Assets aparecem aqui automaticamente</div></td></tr>`;
+    body.innerHTML='<tr><td colspan="7" class="dash-empty"><div class="dash-empty-icon">📋</div><div class="dash-empty-text">Nenhum criativo encontrado</div><div class="dash-empty-sub">Criativos ativados via Tags, Surveys ou Assets aparecem aqui</div></td></tr>';
     document.getElementById('dashPagination').innerHTML='';return;
   }
-  const dspNames={xandr:'Xandr',dv360:'DV360',stackadapt:'SA',amazondsp:'AMZN'};
+  const dn={xandr:'Xandr',dv360:'DV360',stackadapt:'SA',amazondsp:'AMZN'};
   let html='';
   page.forEach((g,gi)=>{
-    const d=new Date(g.created_at);
-    const dateStr=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
-    const dspKeys=Object.keys(g.dsps).sort();
-    const statusCol=dspKeys.map(k=>{
-      const st=g.dsps[k].audit_status||'unknown';
-      return`<div class="dsp-chip"><span class="dsp-dot ${st}"></span><span class="dsp-chip-label">${dspNames[k]||k}</span><span class="dsp-chip-status">${st}</span></div>`;
-    }).join('');
-    const groupKey=g.name+'||'+g.dimensions;
-    const encodedKey=encodeURIComponent(groupKey);
-    const isExpanded=dashExpandedKey===groupKey;
-    html+=`<tr style="animation:fadeRow 0.25s var(--ease-out) ${gi*25}ms both" class="${isExpanded?'expanded':''}" onclick="toggleDashExpand('${groupKey.replace(/'/g,"\\'")}')">
-      <td><div class="td-name-wrap"><div class="td-name" title="${esc(g.name)}">${esc(g.name)}</div><div class="td-name-type">${g.creative_type||'display'} · ${dspKeys.length} DSP${dspKeys.length>1?'s':''}</div></div></td>
-      <td class="td-dims">${g.dimensions||'-'}</td>
-      <td><div class="td-dsps">${statusCol}</div></td>
-      <td class="td-meta">${esc(g.created_by_name)}</td>
-      <td class="td-meta">${dateStr}</td>
-      <td><button class="dash-edit-btn" onclick="event.stopPropagation();openEditModal('${encodedKey}')">Editar</button></td>
-    </tr>`;
-    if(isExpanded){
-      const expandFields=dspKeys.map(k=>{
-        const dd=g.dsps[k];
-        let f=`<div class="dash-expand-field"><div class="dash-expand-label">${dspNames[k]} ID</div><div class="dash-expand-val">${dd.dsp_creative_id||'-'}</div></div>`;
-        if(dd.click_url)f+=`<div class="dash-expand-field"><div class="dash-expand-label">${dspNames[k]} Click URL</div><div class="dash-expand-val">${esc(dd.click_url)}</div></div>`;
-        if(dd.landing_page)f+=`<div class="dash-expand-field"><div class="dash-expand-label">${dspNames[k]} Landing Page</div><div class="dash-expand-val">${esc(dd.landing_page)}</div></div>`;
-        if(dd.sync_error)f+=`<div class="dash-expand-field"><div class="dash-expand-label">Sync Error</div><div class="dash-expand-val" style="color:var(--error)">${esc(dd.sync_error)}</div></div>`;
-        return f;
-      }).join('');
-      const hasTag=dspKeys.some(k=>g.dsps[k].js_tag||g.dsps[k].vast_tag);
-      let tagField='';
-      if(hasTag){
-        const tag=g.dsps[dspKeys[0]].js_tag||g.dsps[dspKeys[0]].vast_tag||'';
-        tagField=`<div class="dash-expand-field" style="grid-column:1/-1"><div class="dash-expand-label">${g.dsps[dspKeys[0]].vast_tag?'VAST Tag':'JS Tag'}</div><div class="dash-expand-val">${esc(tag.substring(0,300))}${tag.length>300?'...':''}</div></div>`;
-      }
-      html+=`<tr class="dash-expand visible"><td colspan="6"><div class="dash-expand-inner">${expandFields}${tagField}</div></td></tr>`;
+    const dt=new Date(g.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
+    const dk=Object.keys(g.dsps).sort();
+    const sc=dk.map(k=>'<div class="dsp-chip"><span class="dsp-dot '+(g.dsps[k].audit_status||'unknown')+'"></span><span class="dsp-chip-label">'+(dn[k]||k)+'</span><span class="dsp-chip-status">'+(g.dsps[k].audit_status||'unknown')+'</span></div>').join('');
+    const gk=g.name+'||'+g.dimensions;
+    const ek=encodeURIComponent(gk);
+    const isExp=dashExpandedKey===gk;
+    const isSel=dashSelectedKeys.has(gk);
+    html+='<tr style="animation:fadeRow 0.25s var(--ease-out) '+gi*25+'ms both" class="'+(isExp?'expanded':'')+'" onclick="toggleDashExpand(\''+gk.replace(/'/g,"\\'")+'\')">';
+    html+='<td onclick="event.stopPropagation()"><input type="checkbox" '+(isSel?'checked':'')+' onchange="toggleDashSelect(\''+gk.replace(/'/g,"\\'")+"',this.checked)\"></td>";
+    html+='<td><div class="td-name-wrap"><div class="td-name" title="'+esc(g.name)+'">'+esc(g.name)+'</div><div class="td-name-type">'+(g.creative_type||'display')+' · '+dk.length+' DSP'+(dk.length>1?'s':'')+'</div></div></td>';
+    html+='<td class="td-dims">'+(g.dimensions||'-')+'</td>';
+    html+='<td><div class="td-dsps">'+sc+'</div></td>';
+    html+='<td class="td-meta">'+esc(g.created_by_name)+'</td>';
+    html+='<td class="td-meta">'+dt+'</td>';
+    html+='<td><button class="dash-edit-btn" onclick="event.stopPropagation();openEditModal(\''+ek+'\')">Editar</button></td></tr>';
+    if(isExp){
+      let ef=dk.map(k=>{const dd=g.dsps[k];let f='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' ID</div><div class="dash-expand-val">'+(dd.dsp_creative_id||'-')+'</div></div>';if(dd.landing_page)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' URL destino</div><div class="dash-expand-val">'+esc(dd.landing_page)+'</div></div>';if(dd.click_url)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' Click redirect</div><div class="dash-expand-val">'+esc(dd.click_url)+'</div></div>';if(dd.sync_error)f+='<div class="dash-expand-field"><div class="dash-expand-label">Sync Error</div><div class="dash-expand-val" style="color:var(--error)">'+esc(dd.sync_error)+'</div></div>';return f}).join('');
+      const fd=g.dsps[dk[0]];const tg=fd.js_tag||fd.vast_tag||'';
+      if(tg)ef+='<div class="dash-expand-field" style="grid-column:1/-1"><div class="dash-expand-label">'+(fd.vast_tag?'VAST':'JS')+' Tag</div><div class="dash-expand-val">'+esc(tg.substring(0,300))+(tg.length>300?'...':'')+'</div></div>';
+      html+='<tr class="dash-expand visible"><td></td><td colspan="6"><div class="dash-expand-inner">'+ef+'</div></td></tr>';
     }
   });
   body.innerHTML=html;
-  document.getElementById('dashPagination').innerHTML=
-    `<span>${filtered.length} criativo${filtered.length!==1?'s':''}</span>`+
-    `<div style="display:flex;gap:4px;align-items:center">`+
-    `<button class="dash-pg-btn" onclick="dashPage--;dashExpandedKey=null;renderDashTable()" ${dashPage===0?'disabled':''}>←</button>`+
-    `<span style="padding:0 10px;font-variant-numeric:tabular-nums">${dashPage+1} / ${totalPages}</span>`+
-    `<button class="dash-pg-btn" onclick="dashPage++;dashExpandedKey=null;renderDashTable()" ${dashPage>=totalPages-1?'disabled':''}>→</button></div>`;
+  document.getElementById('dashPagination').innerHTML='<span>'+filtered.length+' criativo'+(filtered.length!==1?'s':'')+'</span><div style="display:flex;gap:4px;align-items:center"><button class="dash-pg-btn" onclick="dashPage--;dashExpandedKey=null;renderDashTable()" '+(dashPage===0?'disabled':'')+'>←</button><span style="padding:0 10px;font-variant-numeric:tabular-nums">'+((dashPage+1)+' / '+totalPages)+'</span><button class="dash-pg-btn" onclick="dashPage++;dashExpandedKey=null;renderDashTable()" '+(dashPage>=totalPages-1?'disabled':'')+'>→</button></div>';
 }
 
 async function syncCreatives(){
   if(!sbClient||!currentUser)return;
-  const btn=document.getElementById('dashSyncBtn');
-  const wrap=document.getElementById('dashTableWrap');
-  btn.disabled=true;btn.textContent='Sincronizando...';btn.classList.add('loading');
-  wrap.classList.add('loading');
+  const btn=document.getElementById('dashSyncBtn'),wrap=document.getElementById('dashTableWrap');
+  btn.disabled=true;btn.textContent='Sincronizando...';btn.classList.add('loading');wrap.classList.add('loading');
   try{
-    const token=(await sbClient.auth.getSession()).data.session?.access_token;
-    if(!token)throw new Error('Sessão expirada');
-    const res=await fetch(SUPABASE_URL+'/functions/v1/creative-sync',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({})
-    });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.error||'Sync failed');
-    toast(`Sync: ${data.updated||0} atualizado(s) de ${data.synced||0} verificados`,'success');
+    const tk=(await sbClient.auth.getSession()).data.session?.access_token;if(!tk)throw new Error('Sessão expirada');
+    const r=await fetch(SUPABASE_URL+'/functions/v1/creative-sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||'Sync failed');
+    toast('Sync: '+(d.updated||0)+' atualizado(s) de '+(d.synced||0)+' verificados','success');
     await loadCreatives();
   }catch(err){toast('Erro no sync: '+err.message,'error')}
   finally{btn.disabled=false;btn.textContent='Sync Status';btn.classList.remove('loading');wrap.classList.remove('loading')}
 }
 
+// Bulk edit
+function bulkEditSelected(){
+  if(dashSelectedKeys.size===0)return;
+  const keys=Array.from(dashSelectedKeys);
+  const first=dashGroups.find(x=>x.name+'||'+x.dimensions===keys[0]);if(!first)return;
+  dashEditGroup=first;dashEditGroup._bulkKeys=keys;
+  const allDsps=new Set();keys.forEach(k=>{const gg=dashGroups.find(x=>x.name+'||'+x.dimensions===k);if(gg)Object.keys(gg.dsps).forEach(d=>allDsps.add(d))});
+  const hasXandr=allDsps.has('xandr');
+  let h='<div style="font-size:0.78rem;color:var(--accent);margin-bottom:16px;font-weight:600">'+keys.length+' criativos selecionados</div>';
+  h+='<div class="modal-field"><label>Nome (aplica a todos)</label><input id="editName" value="" placeholder="Deixe vazio pra manter o atual"></div>';
+  if(hasXandr){
+    h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag xandr">Xandr</span></div>';
+    h+='<div class="modal-field"><label>URL de destino (auditoria)</label><input id="editLandingPage_xandr" value="" placeholder="Deixe vazio pra manter"></div>';
+    h+='<div class="modal-field"><label>Click redirect (geralmente vazio em 3P tags)</label><input id="editClickUrl_xandr" value="" placeholder="Deixe vazio pra manter"></div></div>';
+  }
+  document.getElementById('editModalBody').innerHTML=h;
+  document.getElementById('editModal').classList.add('visible');
+}
+
 function openEditModal(groupKey){
   const key=decodeURIComponent(groupKey);
-  const g=dashGroups.find(x=>x.name+'||'+x.dimensions===key);
-  if(!g)return;
-  dashEditGroup=g;
-  const dspKeys=Object.keys(g.dsps).sort();
-  const dspNames={xandr:'Xandr',dv360:'DV360'};
-  let html='';
-  html+=`<div class="modal-field"><label>Nome (aplica em todas as DSPs)</label><input id="editName" value="${esc(g.name||'')}"></div>`;
-  for(const dsp of dspKeys){
-    const d=g.dsps[dsp];
-    html+=`<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag ${dsp}">${dspNames[dsp]||dsp}</span><span class="dsp-chip" style="margin-left:auto"><span class="dsp-dot ${d.audit_status||'unknown'}"></span><span class="dsp-chip-status">${d.audit_status||'unknown'}</span></span></div>`;
-    html+=`<div class="modal-field"><label>Creative ID</label><div class="modal-field-ro">${d.dsp_creative_id||'-'}</div></div>`;
+  const g=dashGroups.find(x=>x.name+'||'+x.dimensions===key);if(!g)return;
+  dashEditGroup=g;dashEditGroup._bulkKeys=null;
+  const dk=Object.keys(g.dsps).sort(),dn={xandr:'Xandr',dv360:'DV360'};
+  let h='<div class="modal-field"><label>Nome (aplica em todas as DSPs)</label><input id="editName" value="'+esc(g.name||'')+'"></div>';
+  for(const dsp of dk){const d=g.dsps[dsp];
+    h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag '+dsp+'">'+(dn[dsp]||dsp)+'</span><span class="dsp-chip" style="margin-left:auto"><span class="dsp-dot '+(d.audit_status||'unknown')+'"></span><span class="dsp-chip-status">'+(d.audit_status||'unknown')+'</span></span></div>';
+    h+='<div class="modal-field"><label>Creative ID</label><div class="modal-field-ro">'+(d.dsp_creative_id||'-')+'</div></div>';
     if(dsp==='xandr'){
-      html+=`<div class="modal-field"><label>Click URL</label><input id="editClickUrl_${dsp}" value="${esc(d.click_url||'')}"></div>`;
-      html+=`<div class="modal-field"><label>Landing Page</label><input id="editLandingPage_${dsp}" value="${esc(d.landing_page||'')}"></div>`;
+      h+='<div class="modal-field"><label>URL de destino (auditoria)</label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||'')+'"></div>';
+      h+='<div class="modal-field"><label>Click redirect (geralmente vazio em 3P tags)</label><input id="editClickUrl_'+dsp+'" value="'+esc(d.click_url||'')+'"></div>';
     }
-    if(d.sync_error)html+=`<div style="font-size:0.72rem;color:var(--error);padding:8px 0">Sync error: ${esc(d.sync_error)}</div>`;
-    html+=`</div>`;
+    if(d.sync_error)h+='<div style="font-size:0.72rem;color:var(--error);padding:8px 0">Sync error: '+esc(d.sync_error)+'</div>';
+    h+='</div>';
   }
-  document.getElementById('editModalBody').innerHTML=html;
+  document.getElementById('editModalBody').innerHTML=h;
   document.getElementById('editModal').classList.add('visible');
 }
 function closeEditModal(){document.getElementById('editModal').classList.remove('visible');dashEditGroup=null}
 
 async function saveEdit(){
   if(!dashEditGroup||!sbClient||!currentUser)return;
-  const g=dashEditGroup;
-  const dspKeys=Object.keys(g.dsps);
+  const tk=(await sbClient.auth.getSession()).data.session?.access_token;
+  if(!tk){toast('Sessão expirada','error');return}
+  const btn=document.getElementById('editSaveBtn');btn.disabled=true;btn.textContent='Salvando...';
+  const isBulk=dashEditGroup._bulkKeys&&dashEditGroup._bulkKeys.length>1;
+  const groups=isBulk?dashEditGroup._bulkKeys.map(k=>dashGroups.find(x=>x.name+'||'+x.dimensions===k)).filter(Boolean):[dashEditGroup];
   const newName=document.getElementById('editName')?.value?.trim()||'';
-  const nameChanged=newName&&newName!==g.name;
-  const token=(await sbClient.auth.getSession()).data.session?.access_token;
-  if(!token){toast('Sessão expirada','error');return}
-  const btn=document.getElementById('editSaveBtn');
-  btn.disabled=true;btn.textContent='Salvando...';
-  let successCount=0,errorCount=0;
+  const newLp=document.getElementById('editLandingPage_xandr')?.value?.trim();
+  const newClick=document.getElementById('editClickUrl_xandr')?.value?.trim();
+  let ok=0,fail=0;
   try{
-    const promises=dspKeys.map(async dsp=>{
-      const d=g.dsps[dsp];
-      const changes={};
-      if(nameChanged)changes.name=newName;
-      if(dsp==='xandr'){
-        const newClick=document.getElementById('editClickUrl_'+dsp)?.value?.trim()||'';
-        const newLp=document.getElementById('editLandingPage_'+dsp)?.value?.trim()||'';
-        if(newClick!==(d.click_url||''))changes.click_url=newClick;
-        if(newLp!==(d.landing_page||''))changes.landing_page=newLp;
-      }
-      if(Object.keys(changes).length===0)return;
-      const res=await fetch(SUPABASE_URL+'/functions/v1/creative-update',{
-        method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-        body:JSON.stringify({creativeId:d.id,changes})
-      });
-      const data=await res.json();
-      if(!res.ok||!data.success){errorCount++;return}
-      successCount++;
-    });
-    await Promise.all(promises);
-    if(errorCount===0&&successCount===0){toast('Nenhuma alteração detectada','error')}
-    else if(errorCount===0){toast(`Atualizado em ${successCount} DSP${successCount>1?'s':''}`,'success')}
-    else{toast(`${successCount} OK, ${errorCount} com erro`,'error')}
-    closeEditModal();await loadCreatives();
-  }catch(err){toast('Erro ao salvar: '+err.message,'error')}
+    const ps=[];
+    for(const g of groups){for(const dsp of Object.keys(g.dsps)){
+      const d=g.dsps[dsp],ch={};
+      if(isBulk){if(newName)ch.name=newName;if(dsp==='xandr'){if(newLp)ch.landing_page=newLp;if(newClick)ch.click_url=newClick}}
+      else{if(newName&&newName!==g.name)ch.name=newName;if(dsp==='xandr'){const ck=document.getElementById('editClickUrl_'+dsp)?.value?.trim()||'';const lp=document.getElementById('editLandingPage_'+dsp)?.value?.trim()||'';if(ck!==(d.click_url||''))ch.click_url=ck;if(lp!==(d.landing_page||''))ch.landing_page=lp}}
+      if(!Object.keys(ch).length)continue;
+      ps.push(fetch(SUPABASE_URL+'/functions/v1/creative-update',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({creativeId:d.id,changes:ch})}).then(async r=>{const j=await r.json();if(!r.ok||!j.success)fail++;else ok++}).catch(()=>fail++));
+    }}
+    await Promise.all(ps);
+    if(!ok&&!fail)toast('Nenhuma alteração','error');else if(!fail)toast(ok+' atualização'+(ok>1?'ões':'')+' sincronizada'+(ok>1?'s':''),'success');else toast(ok+' OK, '+fail+' erro(s)','error');
+    closeEditModal();clearDashSelection();await loadCreatives();
+  }catch(err){toast('Erro: '+err.message,'error')}
   finally{btn.disabled=false;btn.textContent='Salvar e Sincronizar'}
 }
 
