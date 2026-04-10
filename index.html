@@ -2608,7 +2608,7 @@ function bulkEditSelected(){
       h+='<div class="modal-field"><label>Click redirect <span style="font-weight:400;color:var(--text-tri)">(click_url)</span></label><input id="editClickUrl_xandr" value="" placeholder="Deixe vazio pra manter"></div>';
     }
     if(dsp==='dv360'){
-      h+='<div style="font-size:0.72rem;color:var(--text-tri);padding:8px 0">DV360 suporta edição de nome via API. Campos adicionais como trackers podem ser editados individualmente.</div>';
+      h+='<div class="modal-field"><label>Landing Page URL <span style="font-weight:400;color:var(--text-tri)">(exitEvents)</span></label><input id="editLandingPage_dv360" value="" placeholder="Deixe vazio pra manter"></div>';
     }
     h+='</div>';
   }
@@ -2623,24 +2623,35 @@ function openEditModal(groupKey){
   const dk=Object.keys(g.dsps).sort(),dn={xandr:'Xandr',dv360:'DV360'};
   let h='<div class="modal-field"><label>Nome (aplica em todas as DSPs)</label><input id="editName" value="'+esc(g.name||'')+'"></div>';
   for(const dsp of dk){const d=g.dsps[dsp];
-    // Parse trackers
     let trackers=[];
     try{trackers=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){trackers=[]}
+    const isVideo=g.creative_type==='video';
     h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag '+dsp+'">'+(dn[dsp]||dsp)+'</span><span class="dsp-chip" style="margin-left:auto"><span class="dsp-dot '+(d.audit_status||'unknown')+'"></span><span class="dsp-chip-status">'+(d.audit_status||'unknown')+'</span></span></div>';
     h+='<div class="modal-field"><label>Creative ID</label><div class="modal-field-ro">'+(d.dsp_creative_id||'-')+'</div></div>';
-    if(dsp==='xandr'){
-      h+='<div class="modal-field"><label>URL de destino <span style="font-weight:400;color:var(--text-tri)">(landing_page_url — usada na auditoria Xandr pra validar a marca)</span></label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||'')+'"></div>';
-      h+='<div class="modal-field"><label>Click redirect <span style="font-weight:400;color:var(--text-tri)">(click_url — redireciona o clique. Em 3P tags geralmente fica vazio porque o redirect já está na tag)</span></label><input id="editClickUrl_'+dsp+'" value="'+esc(d.click_url||'')+'"></div>';
+    // Landing page - both DSPs
+    if(!isVideo){
+      if(dsp==='xandr'){
+        h+='<div class="modal-field"><label>URL de destino <span style="font-weight:400;color:var(--text-tri)">(landing_page_url — auditoria Xandr)</span></label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||'')+'"></div>';
+        h+='<div class="modal-field"><label>Click redirect <span style="font-weight:400;color:var(--text-tri)">(click_url — geralmente vazio em 3P tags)</span></label><input id="editClickUrl_'+dsp+'" value="'+esc(d.click_url||'')+'"></div>';
+      } else if(dsp==='dv360'){
+        h+='<div class="modal-field"><label>Landing Page URL <span style="font-weight:400;color:var(--text-tri)">(exitEvents — URL de destino do clique)</span></label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||d.click_url||'')+'"></div>';
+      }
     }
-    // Trackers section
-    h+='<div class="modal-field"><label>Impression Trackers <span style="font-weight:400;color:var(--text-tri)">(salvo localmente, não sincroniza com a DSP)</span></label>';
-    h+='<div id="editTrackers_'+dsp+'" class="modal-trackers">';
-    trackers.forEach((t,i)=>{
-      const url=typeof t==='string'?t:(t.url||t);
-      if(url)h+='<div class="modal-tracker-row" data-dsp="'+dsp+'" data-idx="'+i+'"><input class="modal-tracker-input" value="'+esc(url)+'" readonly><button class="modal-tracker-rm" onclick="removeModalTracker(\''+dsp+'\','+i+')" title="Remover">×</button></div>';
-    });
-    h+='<div class="modal-tracker-add"><input id="editTrackerNew_'+dsp+'" class="modal-tracker-input" placeholder="Cole a URL do pixel..."><button class="modal-tracker-add-btn" onclick="addModalTracker(\''+dsp+'\')">+</button></div>';
-    h+='</div></div>';
+    // VAST tag URL for video
+    if(isVideo&&dsp==='dv360'){
+      h+='<div class="modal-field"><label>VAST Tag URL</label><input id="editVastTag_'+dsp+'" value="'+esc(d.vast_tag||'')+'"></div>';
+    }
+    // Trackers - both DSPs (now syncs to DSP!)
+    if(!isVideo){
+      h+='<div class="modal-field"><label>Impression Trackers <span style="font-weight:400;color:var(--text-tri)">(sincroniza com a DSP ao salvar)</span></label>';
+      h+='<div id="editTrackers_'+dsp+'" class="modal-trackers">';
+      trackers.forEach((t,i)=>{
+        const url=typeof t==='string'?t:(t.url||t);
+        if(url)h+='<div class="modal-tracker-row" data-dsp="'+dsp+'" data-idx="'+i+'"><input class="modal-tracker-input" value="'+esc(url)+'" readonly><button class="modal-tracker-rm" onclick="removeModalTracker(\''+dsp+'\','+i+')" title="Remover">×</button></div>';
+      });
+      h+='<div class="modal-tracker-add"><input id="editTrackerNew_'+dsp+'" class="modal-tracker-input" placeholder="Cole a URL do pixel..."><button class="modal-tracker-add-btn" onclick="addModalTracker(\''+dsp+'\')">+</button></div>';
+      h+='</div></div>';
+    }
     if(d.sync_error)h+='<div style="font-size:0.72rem;color:var(--error);padding:8px 0">Sync error: '+esc(d.sync_error)+'</div>';
     h+='</div>';
   }
@@ -2681,32 +2692,39 @@ async function saveEdit(){
   const isBulk=dashEditGroup._bulkKeys&&dashEditGroup._bulkKeys.length>1;
   const groups=isBulk?dashEditGroup._bulkKeys.map(k=>dashGroups.find(x=>x.name+'||'+x.dimensions===k)).filter(Boolean):[dashEditGroup];
   const newName=document.getElementById('editName')?.value?.trim()||'';
-  const newLp=document.getElementById('editLandingPage_xandr')?.value?.trim();
-  const newClick=document.getElementById('editClickUrl_xandr')?.value?.trim();
   let ok=0,fail=0;
   try{
     const ps=[];
     for(const g of groups){for(const dsp of Object.keys(g.dsps)){
       const d=g.dsps[dsp],ch={};
-      if(isBulk){if(newName)ch.name=newName;if(dsp==='xandr'){if(newLp)ch.landing_page=newLp;if(newClick)ch.click_url=newClick}}
-      else{if(newName&&newName!==g.name)ch.name=newName;if(dsp==='xandr'){const ck=document.getElementById('editClickUrl_'+dsp)?.value?.trim()||'';const lp=document.getElementById('editLandingPage_'+dsp)?.value?.trim()||'';if(ck!==(d.click_url||''))ch.click_url=ck;if(lp!==(d.landing_page||''))ch.landing_page=lp}}
-      if(!Object.keys(ch).length)continue;
-      ps.push(fetch(SUPABASE_URL+'/functions/v1/creative-update',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({creativeId:d.id,changes:ch})}).then(async r=>{const j=await r.json();if(!r.ok||!j.success)fail++;else ok++}).catch(()=>fail++));
-    }}
-    await Promise.all(ps);
-    // Save tracker changes directly to DB (not synced to DSP)
-    if(!isBulk){
-      for(const dsp of Object.keys(dashEditGroup.dsps)){
-        const d=dashEditGroup.dsps[dsp];
+      if(isBulk){
+        if(newName)ch.name=newName;
+        // Bulk: get DSP-specific fields from modal
+        const lpEl=document.getElementById('editLandingPage_'+dsp);
+        const ckEl=document.getElementById('editClickUrl_'+dsp);
+        if(lpEl&&lpEl.value.trim())ch.landing_page=lpEl.value.trim();
+        if(ckEl&&ckEl.value.trim())ch.click_url=ckEl.value.trim();
+      } else {
+        if(newName&&newName!==g.name)ch.name=newName;
+        // Landing page for both Xandr and DV360
+        const lpEl=document.getElementById('editLandingPage_'+dsp);
+        if(lpEl){const lp=lpEl.value.trim()||'';if(lp!==(d.landing_page||d.click_url||''))ch.landing_page=lp}
+        // Click URL for Xandr only
+        if(dsp==='xandr'){const ckEl=document.getElementById('editClickUrl_'+dsp);if(ckEl){const ck=ckEl.value.trim()||'';if(ck!==(d.click_url||''))ch.click_url=ck}}
+        // VAST tag for DV360 video
+        const vastEl=document.getElementById('editVastTag_'+dsp);
+        if(vastEl){const vt=vastEl.value.trim()||'';if(vt!==(d.vast_tag||''))ch.vast_tag=vt}
+        // Trackers (now synced to DSP via creative-update)
         const newTrackers=getModalTrackers(dsp);
         let oldTrackers=[];
         try{oldTrackers=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){}
         oldTrackers=oldTrackers.map(t=>typeof t==='string'?t:(t.url||t)).filter(Boolean);
-        if(JSON.stringify(newTrackers)!==JSON.stringify(oldTrackers)){
-          await sbClient.from('creatives').update({trackers:JSON.stringify(newTrackers)}).eq('id',d.id);
-        }
+        if(JSON.stringify(newTrackers)!==JSON.stringify(oldTrackers))ch.trackers=newTrackers;
       }
-    }
+      if(!Object.keys(ch).length)continue;
+      ps.push(fetch(SUPABASE_URL+'/functions/v1/creative-update',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({creativeId:d.id,changes:ch})}).then(async r=>{const j=await r.json();if(!r.ok||!j.success)fail++;else ok++}).catch(()=>fail++));
+    }}
+    await Promise.all(ps);
     if(!ok&&!fail)toast('Nenhuma alteração','error');else if(!fail)toast(ok+' atualização'+(ok>1?'ões':'')+' sincronizada'+(ok>1?'s':''),'success');else toast(ok+' OK, '+fail+' erro(s)','error');
     closeEditModal();clearDashSelection();await loadCreatives();
   }catch(err){toast('Erro: '+err.message,'error')}
