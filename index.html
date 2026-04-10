@@ -838,6 +838,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     <div class="dash-bulk-bar" id="dashBulkBar" style="display:none">
       <span id="dashBulkCount">0 selecionados</span>
       <button class="dash-btn" onclick="bulkEditSelected()">Editar Selecionados</button>
+      <button class="dash-btn" onclick="showDashRename()">Renomear</button>
       <button class="dash-btn" style="margin-left:auto" onclick="clearDashSelection()">Cancelar</button>
     </div>
     <div class="dash-table-wrap" id="dashTableWrap">
@@ -2145,6 +2146,7 @@ function updateAssetsBulkBar(){
 
 function showBulkRename(){
   const ids=getSelectedAssetIds();if(!ids.length)return;
+  _renameContext='assets';
   document.getElementById('renamePrefix').value='';
   document.getElementById('renameSuffix').value='';
   document.getElementById('renameFullReplace').value='';
@@ -2155,7 +2157,23 @@ function showBulkRename(){
     document.getElementById(id).addEventListener('input',updateRenamePreview);
   });
 }
-function closeRenameModal(){document.getElementById('renameModal').classList.remove('visible')}
+function closeRenameModal(){document.getElementById('renameModal').classList.remove('visible');_renameContext=null}
+let _renameContext=null; // 'assets' or 'dashboard'
+
+function showDashRename(){
+  if(dashSelectedKeys.size===0)return;
+  _renameContext='dashboard';
+  document.getElementById('renamePrefix').value='';
+  document.getElementById('renameSuffix').value='';
+  document.getElementById('renameFullReplace').value='';
+  document.getElementById('renameModal').classList.add('visible');
+  updateRenamePreview();
+  ['renamePrefix','renameSuffix','renameFullReplace'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.removeEventListener('input',updateRenamePreview);
+    el.addEventListener('input',updateRenamePreview);
+  });
+}
 document.getElementById('renameModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeRenameModal()});
 
 function getRenamedName(original,prefix,suffix,full,index,entry){
@@ -2166,30 +2184,60 @@ function getRenamedName(original,prefix,suffix,full,index,entry){
 }
 
 function updateRenamePreview(){
-  const ids=getSelectedAssetIds();
   const prefix=document.getElementById('renamePrefix').value;
   const suffix=document.getElementById('renameSuffix').value;
   const full=document.getElementById('renameFullReplace').value;
   const list=document.getElementById('renamePreviewList');
   if(!prefix&&!suffix&&!full){list.innerHTML='<span style="color:var(--text-tri);font-size:0.72rem">Digite um prefixo, sufixo ou nome completo pra ver o preview</span>';return}
-  const entries=ids.map(id=>assetEntries.find(a=>a.id===id)).filter(Boolean).slice(0,8);
-  list.innerHTML=entries.map((a,i)=>{
-    const newName=getRenamedName(a.name,prefix,suffix,full,i,a);
-    return'<div class="rename-preview-item"><span class="rename-preview-old">'+esc(a.name)+'</span><span class="rename-preview-arrow">→</span><span class="rename-preview-new">'+esc(newName)+'</span></div>';
-  }).join('')+(ids.length>8?'<span style="color:var(--text-tri);font-size:0.68rem">...e mais '+(ids.length-8)+'</span>':'');
+  let entries=[];
+  if(_renameContext==='dashboard'){
+    const keys=Array.from(dashSelectedKeys);
+    entries=keys.map(k=>dashGroups.find(g=>g._gid===k)).filter(Boolean).slice(0,8).map((g,i)=>({name:g.name,dimensions:g.dimensions,type:g.creative_type||'display',index:i}));
+  } else {
+    const ids=getSelectedAssetIds();
+    entries=ids.map(id=>assetEntries.find(a=>a.id===id)).filter(Boolean).slice(0,8).map((a,i)=>({name:a.name,dimensions:a.dimensions,type:a.type,index:i}));
+  }
+  list.innerHTML=entries.map(e=>{
+    const newName=getRenamedName(e.name,prefix,suffix,full,e.index,e);
+    return'<div class="rename-preview-item"><span class="rename-preview-old">'+esc(e.name)+'</span><span class="rename-preview-arrow">→</span><span class="rename-preview-new">'+esc(newName)+'</span></div>';
+  }).join('')+((_renameContext==='dashboard'?dashSelectedKeys.size:getSelectedAssetIds().length)>8?'<span style="color:var(--text-tri);font-size:0.68rem">...e mais</span>':'');
 }
 
-function applyBulkRename(){
-  const ids=getSelectedAssetIds();if(!ids.length)return;
+async function applyBulkRename(){
   const prefix=document.getElementById('renamePrefix').value;
   const suffix=document.getElementById('renameSuffix').value;
   const full=document.getElementById('renameFullReplace').value;
   if(!prefix&&!suffix&&!full){toast('Preencha pelo menos um campo','error');return}
-  let count=0;
-  ids.forEach((id,i)=>{const entry=assetEntries.find(a=>a.id===id);if(entry){entry.name=getRenamedName(entry.name,prefix,suffix,full,i,entry);count++}});
-  closeRenameModal();
-  renderAssetsTable();
-  toast(`${count} nome${count!==1?'s':''} alterado${count!==1?'s':''}`,'success');
+
+  if(_renameContext==='dashboard'){
+    // Dashboard: rename and sync to DSPs
+    if(!sbClient||!currentUser)return;
+    const tk=(await sbClient.auth.getSession()).data.session?.access_token;
+    if(!tk){toast('Sessão expirada','error');return}
+    const keys=Array.from(dashSelectedKeys);
+    const groups=keys.map(k=>dashGroups.find(g=>g._gid===k)).filter(Boolean);
+    closeRenameModal();
+    let ok=0,fail=0;
+    const ps=[];
+    groups.forEach((g,gi)=>{
+      const newName=getRenamedName(g.name,prefix,suffix,full,gi,{name:g.name,dimensions:g.dimensions,type:g.creative_type||'display'});
+      for(const dsp of Object.keys(g.dsps)){
+        const d=g.dsps[dsp];
+        ps.push(fetch(SUPABASE_URL+'/functions/v1/creative-update',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({creativeId:d.id,changes:{name:newName}})}).then(async r=>{const j=await r.json();if(!r.ok||!j.success)fail++;else ok++}).catch(()=>fail++));
+      }
+    });
+    await Promise.all(ps);
+    if(!fail)toast(ok+' nome(s) sincronizado(s) nas DSPs','success');else toast(ok+' OK, '+fail+' erro(s)','error');
+    clearDashSelection();await loadCreatives();
+  } else {
+    // Assets: local rename only
+    const ids=getSelectedAssetIds();
+    let count=0;
+    ids.forEach((id,i)=>{const entry=assetEntries.find(a=>a.id===id);if(entry){entry.name=getRenamedName(entry.name,prefix,suffix,full,i,entry);count++}});
+    closeRenameModal();
+    renderAssetsTable();
+    toast(`${count} nome${count!==1?'s':''} alterado${count!==1?'s':''}`,'success');
+  }
 }
 
 function bulkSetField(field){
