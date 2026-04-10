@@ -1524,9 +1524,14 @@ function getWeightClass(entry){
 
 function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(0)+'KB';return(b/1048576).toFixed(1)+'MB'}
 
+let _selectedAssetIds=new Set();
+function getSelectedAssetIds(){return[..._selectedAssetIds]}
+function syncSelectionFromDom(){_selectedAssetIds=new Set([...document.querySelectorAll('.asset-cb:checked')].map(c=>parseInt(c.dataset.id)))}
+
 function renderAssetsTable(){
-  // Preserve selection state before re-render
-  const prevSelected=new Set(getSelectedAssetIds());
+  // Clean up: remove IDs that no longer exist
+  const existingIds=new Set(assetEntries.map(a=>a.id));
+  _selectedAssetIds.forEach(id=>{if(!existingIds.has(id))_selectedAssetIds.delete(id)});
   const tbody=document.getElementById('assetsTableBody');
   const filterVal=(document.getElementById('assetsFilter')?.value||'').toLowerCase();
   const filtered=filterVal?assetEntries.filter(a=>a.name.toLowerCase().includes(filterVal)):assetEntries;
@@ -1536,7 +1541,7 @@ function renderAssetsTable(){
     const sz=a.compressedFile?a.compressedFile.size:a.size;
     const wc=getWeightClass(a);
     const thumbHtml=a.thumb?`<img src="${a.thumb}" class="asset-thumb${a.type==='video'?' asset-thumb-video':''}" alt="">`:'-';
-    const checked=prevSelected.has(a.id)?' checked':'';
+    const checked=_selectedAssetIds.has(a.id)?' checked':'';
     return`<tr style="animation-delay:${i*40}ms" data-asset-id="${a.id}">
       <td class="cb-col"><input type="checkbox" class="custom-cb asset-cb" data-id="${a.id}"${checked}></td>
       <td>${thumbHtml}</td>
@@ -1551,6 +1556,9 @@ function renderAssetsTable(){
         <button class="asset-action-btn danger" title="Remover" data-rm="${a.id}">✕</button>
       </td>
     </tr>`}).join('');
+  // Sync select-all checkbox
+  const selectAll=document.getElementById('assetsSelectAll');
+  if(selectAll)selectAll.checked=filtered.length>0&&filtered.every(a=>_selectedAssetIds.has(a.id));
   updateAssetsBulkBar();
 }
 
@@ -1567,8 +1575,6 @@ function updateAssetsBulkBar(){
     <button onclick="bulkRemove()">Remover</button>
     <button onclick="bulkCompress()">Comprimir</button>`;
 }
-
-function getSelectedAssetIds(){return[...document.querySelectorAll('.asset-cb:checked')].map(c=>parseInt(c.dataset.id))}
 
 function bulkSetField(field){
   const ids=getSelectedAssetIds();if(!ids.length)return;
@@ -1857,10 +1863,10 @@ document.getElementById('assetsFilter').addEventListener('input',()=>renderAsset
 document.getElementById('assetsFilterSelect').addEventListener('click',()=>{
   const filterVal=(document.getElementById('assetsFilter')?.value||'').toLowerCase();
   if(!filterVal){toast('Digite algo no filtro primeiro','error');return}
-  // Uncheck all, then check only filtered
+  _selectedAssetIds.clear();
   document.querySelectorAll('.asset-cb').forEach(c=>c.checked=false);
   const filtered=assetEntries.filter(a=>a.name.toLowerCase().includes(filterVal));
-  filtered.forEach(a=>{const cb=document.querySelector(`.asset-cb[data-id="${a.id}"]`);if(cb)cb.checked=true});
+  filtered.forEach(a=>{_selectedAssetIds.add(a.id);const cb=document.querySelector(`.asset-cb[data-id="${a.id}"]`);if(cb)cb.checked=true});
   updateAssetsBulkBar();
   toast(`${filtered.length} asset(s) selecionado(s)`,'success');
 });
@@ -1951,7 +1957,7 @@ document.getElementById('assetsTableBody').addEventListener('click',async e=>{
   if(dup){const id=parseInt(dup.dataset.dup);const orig=assetEntries.find(a=>a.id===id);if(orig){assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',trackers:orig.trackers.map(t=>typeof t==='string'?{url:t,dsps:'all'}:{...t,dsps:t.dsps==='all'?'all':[...t.dsps]}),landingPage:''});renderAssetsTable()};return}
   const rm=e.target.closest('[data-rm]');
   if(rm){const id=parseInt(rm.dataset.rm);assetEntries=assetEntries.filter(a=>a.id!==id);renderAssetsTable();updateVisibility();if(!assetEntries.length){document.getElementById('assetsUploadZone').classList.remove('has-files');document.getElementById('assetsContent').style.display='none'};return}
-  const cb=e.target.closest('.asset-cb');if(cb)setTimeout(updateAssetsBulkBar,0);
+  const cb=e.target.closest('.asset-cb');if(cb){const id=parseInt(cb.dataset.id);if(cb.checked)_selectedAssetIds.add(id);else _selectedAssetIds.delete(id);setTimeout(updateAssetsBulkBar,0)}
 });
 // Tracker add on Enter
 // Extract tracker URL from HTML tags or return as-is if already a URL
@@ -1987,7 +1993,9 @@ function commitSingleTracker(input){
   if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
 }
 document.getElementById('assetsSelectAll').addEventListener('change',e=>{
-  document.querySelectorAll('.asset-cb').forEach(c=>c.checked=e.target.checked);updateAssetsBulkBar();
+  const checked=e.target.checked;
+  document.querySelectorAll('.asset-cb').forEach(c=>{c.checked=checked;const id=parseInt(c.dataset.id);if(checked)_selectedAssetIds.add(id);else _selectedAssetIds.delete(id)});
+  updateAssetsBulkBar();
 });
 const assetsZone=document.getElementById('assetsUploadZone');
 assetsZone.addEventListener('dragover',e=>{e.preventDefault();assetsZone.classList.add('dragover')});
