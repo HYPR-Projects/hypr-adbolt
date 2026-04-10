@@ -1264,6 +1264,18 @@ uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('dragove
 uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0])});
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0])});
 uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
+// Auto-detect dimensions when pasting tag
+document.getElementById('manualTagCode').addEventListener('input',function(){
+  const tag=this.value.trim();if(!tag)return;
+  const wEl=document.getElementById('manualTagWidth'),hEl=document.getElementById('manualTagHeight');
+  if(wEl.value&&hEl.value)return; // don't overwrite if already filled
+  let w=0,h=0;
+  const dw=tag.match(/data-width\s*=\s*"(\d+)"/i),dh=tag.match(/data-height\s*=\s*"(\d+)"/i);
+  if(dw&&dh){w=parseInt(dw[1]);h=parseInt(dh[1])}
+  if(!w||!h){const wm=tag.match(/width\s*[:=]\s*"?(\d+)/i),hm=tag.match(/height\s*[:=]\s*"?(\d+)/i);if(wm&&hm){w=parseInt(wm[1]);h=parseInt(hm[1])}}
+  if(!w||!h){const dm=tag.match(/(\d{2,4})x(\d{2,4})/i);if(dm){w=parseInt(dm[1]);h=parseInt(dm[2])}}
+  if(w&&h){wEl.value=w;hEl.value=h}
+});
 
 function addManualTag(){
   const nameEl=document.getElementById('manualTagName');
