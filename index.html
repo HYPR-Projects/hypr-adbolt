@@ -155,7 +155,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-skeleton-row td{padding:14px 16px !important}
 .dash-skeleton-bar{height:12px;border-radius:var(--r-xs);background:var(--border);animation:skeletonPulse 1.2s ease-in-out infinite}
 .dash-skeleton-bar.w1{width:65%}
-.dash-skeleton-bar.w2{width:45%}
 .dash-skeleton-bar.w3{width:80px}
 .dash-skeleton-bar.w4{width:100px}
 .dash-skeleton-bar.w5{width:60px}
@@ -256,9 +255,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .rename-preview-old{color:var(--text-tri);text-decoration:line-through;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rename-preview-arrow{color:var(--text-tri);flex-shrink:0}
 .rename-preview-new{color:var(--accent);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* ── View transitions ── */
-.view-exit{animation:viewExit 0.2s var(--ease) forwards}
-@keyframes viewExit{to{opacity:0;transform:translateY(-8px)}}
 /* ── Manual Tag ── */
 .manual-tag-divider{display:flex;align-items:center;gap:16px;margin:24px 0 20px;color:var(--text-tri);font-size:0.78rem}
 .manual-tag-divider::before,.manual-tag-divider::after{content:'';flex:1;height:1px;background:var(--border)}
@@ -367,7 +363,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .info-item-label{font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tri);margin-bottom:4px;font-weight:500}
 .info-item-value{font-size:0.85rem;font-weight:500}
 .info-item-value.mono{font-family:var(--mono);font-size:0.8rem}
-.table-wrap,.placements-table-wrap{overflow-x:auto;margin-top:14px;border-radius:var(--r-sm);border:1px solid var(--border)}
+.table-wrap{overflow-x:auto;margin-top:14px;border-radius:var(--r-sm);border:1px solid var(--border)}
 .placements-table,.assets-table{width:100%;border-collapse:collapse;font-size:0.78rem}
 .placements-table th,.assets-table th{text-align:left;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-tri);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);font-weight:600;background:var(--bg-surface);position:sticky;top:0;z-index:1}
 .placements-table td,.assets-table td{padding:10px var(--sp-4);border-bottom:1px solid var(--border-subtle);color:var(--text-sec);font-family:var(--mono);font-size:0.75rem}
@@ -634,7 +630,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 
 <div class="app-shell" id="appShell">
   <header class="topbar">
-    <div class="topbar-brand"><div class="topbar-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style="filter:drop-shadow(0 0 3px rgba(255,255,255,0.4))"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h1 class="topbar-title">HYPR <span style="color:#3397B9">Ad</span>Bolt</h1></div>
+    <div class="topbar-brand"><div class="topbar-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style="filter:drop-shadow(0 0 3px rgba(255,255,255,0.4))"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><span class="topbar-title">HYPR <span style="color:#3397B9">Ad</span>Bolt</span></div>
     <div class="topbar-right">
       <button class="topbar-dash" id="topbarDashBtn" onclick="toggleDashHome()" title="Dashboard de criativos"><svg id="topbarDashIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="topbarDashLabel">Dashboard</span><span class="topbar-dash-badge" id="dashBadge"></span></button>
       <div class="topbar-user" id="headerUser">
@@ -905,7 +901,19 @@ const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const STACKADAPT_EXCLUDED_SIZES=new Set(['336x280']);
 const SURVEY_SIZES=['300x600','300x250','320x480'];
 
+// ── State ──
 let parsedData=null,currentMode='tags',selectedDsps=new Set(),placementAssignment={},generatedFiles={},surveyEntries=[],surveyIdCounter=0,currentUser=null,sbClient=null,activeWizardStep=0,assetEntries=[],assetIdCounter=0;
+let toastTimer=null;
+let _activationDone=false,_activating=false;
+let _lastAutoW='',_lastAutoH='',_lastAutoClick='';
+let _selectedTagIds=new Set();
+let _tagsFilterType='all',_tagsFilterSize='all';
+let _selectedAssetIds=new Set();
+let _assetsFilterType='all',_assetsFilterSize='all';
+let _renameContext=null;
+let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashExpandedKey=null,dashSelectedKeys=new Set(),dashIsOpen=false,_dashSearchTimer=null,_autoSyncTimer=null,_silentSyncing=false;
+let _bulkTrackerMode={};
+
 try{sbClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY)}catch(e){console.error('Supabase init error:',e)}
 
 // ── Auth ──
@@ -950,13 +958,11 @@ function analyzeTracker(raw){
   // Nothing recognizable — treat as raw JS
   return{url:t,format:'raw-js'};
 }
-function extractTrackerUrl(raw){return analyzeTracker(raw).url}
 const FORMAT_LABELS={'url-image':'IMG','url-js':'JS','url-html':'HTML','raw-js':'Raw JS'};
 const FORMAT_COLORS={'url-image':'var(--accent)','url-js':'var(--warning)','url-html':'var(--success)','raw-js':'var(--error)'};
 function formatLabel(f){return FORMAT_LABELS[f]||f}
 function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(0)+'KB';return(b/1048576).toFixed(1)+'MB'}
 function toggleTheme(){const n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('hypr-theme',n)}
-let toastTimer=null;
 function toast(msg,type=''){const el=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;el.className='toast '+type;clearTimeout(toastTimer);requestAnimationFrame(()=>el.classList.add('show'));if(type!=='error')toastTimer=setTimeout(()=>el.classList.remove('show'),3200)}
 
 // ── Wizard Navigation ──
@@ -1076,8 +1082,6 @@ function finalizeProgress(dsp,successCount,total){
   if(cur)cur.textContent=successCount===total?`✓ ${successCount}/${total} criativos criados`:`⚠ ${successCount}/${total} criados (${total-successCount} erros)`;
 }
 
-let _activationDone=false;
-let _activating=false;
 function _onBeforeUnload(e){e.preventDefault();e.returnValue='';return''}
 async function activateInDsps(){
   if(!currentUser){toast('Faça login primeiro','error');return}
@@ -1287,69 +1291,6 @@ async function activateDV360(token){
     return{dsp:'DV360',status:'error',detail:err.message||'Erro de conexão'};
   }
 }
-function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result.split(',')[1]);
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ── Video Compression (Canvas + MediaRecorder) ──
-const VIDEO_COMPRESS_MAX=4*1024*1024; // compress videos > 4MB
-const VIDEO_COMPRESS_TARGET=2*1024*1024; // target ~2MB
-
-function compressVideo(file,targetBytes){
-  return new Promise((resolve,reject)=>{
-    const vid=document.createElement('video');
-    vid.muted=true;vid.preload='auto';
-    vid.onloadedmetadata=()=>{
-      const dur=vid.duration;
-      // Calculate target bitrate: (targetBytes * 8) / duration, leave 10% for audio
-      const targetBitrate=Math.floor((targetBytes*8*0.9)/dur);
-      const maxBitrate=Math.min(targetBitrate,1500000); // cap at 1.5Mbps
-      vid.currentTime=0;
-      vid.oncanplay=()=>{
-        const canvas=document.createElement('canvas');
-        // Scale down if large: max 1280px wide
-        const scale=Math.min(1,1280/vid.videoWidth);
-        canvas.width=Math.round(vid.videoWidth*scale/2)*2; // even numbers
-        canvas.height=Math.round(vid.videoHeight*scale/2)*2;
-        const ctx=canvas.getContext('2d');
-
-        const stream=canvas.captureStream(24); // 24fps
-        const recorder=new MediaRecorder(stream,{
-          mimeType:'video/webm;codecs=vp8',
-          videoBitsPerSecond:maxBitrate
-        });
-        const chunks=[];
-        recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
-        recorder.onstop=()=>{
-          const blob=new Blob(chunks,{type:'video/webm'});
-          const newFile=new File([blob],file.name.replace(/\.\w+$/,'.webm'),{type:'video/webm'});
-          URL.revokeObjectURL(vid.src);
-          resolve({file:newFile,compressed:true,originalSize:file.size,newSize:blob.size});
-        };
-        recorder.onerror=e=>{URL.revokeObjectURL(vid.src);reject(e)};
-        recorder.start(100); // collect in 100ms chunks
-
-        // Draw frames
-        function drawFrame(){
-          if(vid.paused||vid.ended){recorder.stop();return}
-          ctx.drawImage(vid,0,0,canvas.width,canvas.height);
-          requestAnimationFrame(drawFrame);
-        }
-        vid.play().then(drawFrame).catch(reject);
-        // Stop when video ends
-        vid.onended=()=>{setTimeout(()=>recorder.stop(),200)};
-      };
-    };
-    vid.onerror=()=>{URL.revokeObjectURL(vid.src);reject(new Error('Video load failed'))};
-    vid.src=URL.createObjectURL(file);
-  });
-}
-
 // ── Upload to Supabase Storage ──
 async function uploadToStorage(file,token){
   const ext=file.name.split('.').pop()||'bin';
@@ -1391,11 +1332,6 @@ function buildCreativePayload(asset,dsp){
   };
 }
 
-// Legacy compat wrapper
-async function prepareAssetForUpload(asset,dsp,token,progressCb){
-  await uploadAssetToStorage(asset,token,progressCb);
-  return buildCreativePayload(asset,dsp);
-}
 
 async function activateXandrAssets(token){
   try{
@@ -1596,7 +1532,6 @@ uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.r
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0])});
 uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
 // Auto-detect dimensions and click URL when pasting tag
-let _lastAutoW='',_lastAutoH='',_lastAutoClick='';
 document.getElementById('manualTagCode').addEventListener('input',function(){
   const tag=this.value.trim();if(!tag)return;
   const wEl=document.getElementById('manualTagWidth'),hEl=document.getElementById('manualTagHeight'),clickEl=document.getElementById('manualTagClickUrl');
@@ -1782,10 +1717,8 @@ function renderExtractedInfo(d){
   renderPlacementsTable();
   document.getElementById('extractedInfo').classList.add('visible')}
 
-let _selectedTagIds=new Set();
 function getSelectedTagIds(){return[..._selectedTagIds]}
 
-let _tagsFilterType='all',_tagsFilterSize='all';
 function setTagsFilter(filterType,val,btn){
   if(filterType==='type'){
     _tagsFilterType=val;
@@ -2309,10 +2242,8 @@ function getWeightClass(entry){
   if(sz>maxWeight*1.5)return'over';if(sz>maxWeight*0.8)return'warn';return'ok';
 }
 
-let _selectedAssetIds=new Set();
 function getSelectedAssetIds(){return[..._selectedAssetIds]}
 
-let _assetsFilterType='all',_assetsFilterSize='all';
 function setAssetsFilter(ft,val,btn){
   if(ft==='type'){_assetsFilterType=val;document.querySelectorAll('.tags-pill[data-filter="atype"]').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active')}
   if(ft==='size')_assetsFilterSize=val;
@@ -2406,7 +2337,6 @@ function showBulkRename(){
   });
 }
 function closeRenameModal(){document.getElementById('renameModal').classList.remove('visible');_renameContext=null}
-let _renameContext=null; // 'assets' or 'dashboard'
 
 function showDashRename(){
   if(dashSelectedKeys.size===0)return;
@@ -2961,7 +2891,6 @@ document.getElementById('tagsFilterSelect').addEventListener('click',()=>{
 });
 
 // ── Dashboard ──
-let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashExpandedKey=null,dashSelectedKeys=new Set(),dashIsOpen=false,_dashSearchTimer=null,_autoSyncTimer=null,_silentSyncing=false;
 
 // Silent sync: atualiza status sem skeleton/overlay, só re-renderiza a tabela
 async function silentSync(){
@@ -3335,7 +3264,6 @@ function addModalTracker(dsp){
   inp.value='';
 }
 function closeEditModal(){document.getElementById('editModal').classList.remove('visible');dashEditGroup=null}
-let _bulkTrackerMode={};
 function setBulkTrackerMode(dsp,mode,btn){
   _bulkTrackerMode[dsp]=mode;
   btn.parentElement.querySelectorAll('.btm-btn').forEach(b=>b.classList.remove('active'));
