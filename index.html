@@ -1096,9 +1096,21 @@ async function activateInDsps(){
   const results=[];
 
   if(isAssetMode){
-    const assetCount=generatedFiles._assets.length;
+    const assets=generatedFiles._assets;
+    const assetCount=assets.length;
     const activeDsps=[...selectedDsps].filter(d=>d==='xandr'||d==='dv360');
-    if(activeDsps.length)showActivationProgress(activeDsps,assetCount);
+
+    // ── Centralized upload: upload all assets to Storage once ──
+    if(activeDsps.length){
+      showActivationProgress(activeDsps,assetCount);
+      const firstDsp=activeDsps[0];
+      for(let i=0;i<assets.length;i++){
+        const a=assets[i];
+        updateProgress(firstDsp,0,assetCount,'Enviando '+(i+1)+'/'+assetCount+': '+a.name);
+        try{await uploadAssetToStorage(a,token,msg=>updateProgress(firstDsp,0,assetCount,msg))}
+        catch(e){console.error('Upload failed for',a.name,e)}
+      }
+    }
 
     if(selectedDsps.has('xandr'))results.push(await activateXandrAssets(token));
     if(selectedDsps.has('dv360'))results.push(await activateDV360Assets(token));
@@ -1300,26 +1312,20 @@ async function uploadToStorage(file,token){
   return path;
 }
 
-// ── Prepare asset: compress video if needed, upload to storage ──
-async function prepareAssetForUpload(asset,dsp,token,progressCb){
-  let file=asset.compressedFile||asset.originalFile;
-
-  // Compress video if over threshold
-  if(asset.type==='video'&&file.size>VIDEO_COMPRESS_MAX){
-    if(progressCb)progressCb('Comprimindo '+asset.name+'...');
-    try{
-      const result=await compressVideo(file,VIDEO_COMPRESS_TARGET);
-      file=result.file;
-      if(progressCb)progressCb(`${asset.name} comprimido: ${formatBytes(result.originalSize)} → ${formatBytes(result.newSize)}`);
-    }catch(e){
-      console.warn('Video compression failed, using original:',e);
-    }
-  }
-
-  // Upload to storage
+// ── Prepare assets: upload to Storage once, reuse for all DSPs ──
+async function uploadAssetToStorage(asset,token,progressCb){
+  // Already uploaded? reuse path
+  if(asset._storagePath)return asset._storagePath;
+  const file=asset.compressedFile||asset.originalFile;
   if(progressCb)progressCb('Enviando '+asset.name+' pro storage...');
   const storagePath=await uploadToStorage(file,token);
+  asset._storagePath=storagePath;
+  asset._uploadedFile=file;
+  return storagePath;
+}
 
+function buildCreativePayload(asset,dsp){
+  const file=asset._uploadedFile||asset.compressedFile||asset.originalFile;
   return{
     name:asset.name,
     type:asset.type,
@@ -1327,10 +1333,16 @@ async function prepareAssetForUpload(asset,dsp,token,progressCb){
     fileName:file.name,
     mimeType:file.type,
     fileSize:file.size,
-    storagePath:storagePath,
+    storagePath:asset._storagePath,
     landingPage:asset.landingPage,
     trackers:mergeTrackers(asset.trackers||[],dsp)
   };
+}
+
+// Legacy compat wrapper
+async function prepareAssetForUpload(asset,dsp,token,progressCb){
+  await uploadAssetToStorage(asset,token,progressCb);
+  return buildCreativePayload(asset,dsp);
 }
 
 async function activateXandrAssets(token){
@@ -1348,7 +1360,12 @@ async function activateXandrAssets(token){
       const a=assets[i];
       updateProgress('xandr',i,assets.length,a.name);
       try{
-        const prepared=await prepareAssetForUpload(a,'xandr',token,msg=>updateProgress('xandr',i,assets.length,msg));
+        const prepared=buildCreativePayload(a,'xandr');
+        if(!prepared.storagePath){
+          // Fallback: upload if not yet uploaded
+          await uploadAssetToStorage(a,token,msg=>updateProgress('xandr',i,assets.length,msg));
+          Object.assign(prepared,buildCreativePayload(a,'xandr'));
+        }
         const body={
           advertiserId:7392214,
           brandUrl:brandUrl||null,
@@ -1385,16 +1402,16 @@ async function activateDV360Assets(token){
     const campaignName=parsedData?.campaignName||'';
     const advertiserName=parsedData?.advertiserName||'';
     const total=assets.length;
-    updateProgress('dv360',0,total,'Preparando...');
 
-    // Prepare all assets: compress videos + upload to storage
+    // Build payloads using already-uploaded storagePaths
     const creatives=[];
     for(let i=0;i<total;i++){
       const a=assets[i];
-      updateProgress('dv360',i,total,'Preparando '+(i+1)+'/'+total);
       try{
-        const prepared=await prepareAssetForUpload(a,'dv360',token,msg=>updateProgress('dv360',i,total,msg));
-        creatives.push(prepared);
+        if(!a._storagePath){
+          await uploadAssetToStorage(a,token,msg=>updateProgress('dv360',i,total,msg));
+        }
+        creatives.push(buildCreativePayload(a,'dv360'));
       }catch(err){
         creatives.push({name:a.name,_uploadError:err.message});
       }
