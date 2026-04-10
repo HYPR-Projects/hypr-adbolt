@@ -1002,7 +1002,7 @@ function getPixelForDsp(dsp){const raw=document.getElementById(`pixel_${dsp}`)?.
 function commitPendingTrackers(){
   document.querySelectorAll('[data-tracker-add]').forEach(input=>{
     const raw=input.value.trim();if(!raw)return;
-    const url=extractTrackerUrl(raw);
+    const url=normalizeUrl(extractTrackerUrl(raw));
     const id=parseInt(input.dataset.trackerAdd);
     const entry=assetEntries.find(a=>a.id===id);
     if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});input.value=''}
@@ -1632,7 +1632,7 @@ function toggleBulkScope(btn){
 function execBulkAddTracker(){
   const val=(document.getElementById('bulkTrackerUrl')?.value||'').trim();
   if(!val){toast('Cole a URL do pixel','error');return}
-  const url=extractTrackerUrl(val);
+  const url=normalizeUrl(extractTrackerUrl(val));
   const allBtn=document.querySelector('.bulk-scope-btn[data-scope="all"]');
   const dsps=allBtn?.classList.contains('active')?'all':[...document.querySelectorAll('.bulk-scope-btn.active:not([data-scope="all"])')].map(b=>b.dataset.scope);
   if(dsps!=='all'&&!dsps.length){toast('Selecione ao menos uma DSP','error');return}
@@ -1997,7 +1997,7 @@ document.getElementById('assetsTableBody').addEventListener('focusout',e=>{
 });
 function commitSingleTracker(input){
   const raw=input.value.trim();if(!raw)return;
-  const url=extractTrackerUrl(raw);
+  const url=normalizeUrl(extractTrackerUrl(raw));
   const id=parseInt(input.dataset.trackerAdd);
   const entry=assetEntries.find(a=>a.id===id);
   if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
