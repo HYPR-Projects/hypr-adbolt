@@ -1264,17 +1264,23 @@ uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('dragove
 uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0])});
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0])});
 uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
-// Auto-detect dimensions when pasting tag
+// Auto-detect dimensions and click URL when pasting tag
 document.getElementById('manualTagCode').addEventListener('input',function(){
   const tag=this.value.trim();if(!tag)return;
-  const wEl=document.getElementById('manualTagWidth'),hEl=document.getElementById('manualTagHeight');
-  if(wEl.value&&hEl.value)return; // don't overwrite if already filled
-  let w=0,h=0;
-  const dw=tag.match(/data-width\s*=\s*"(\d+)"/i),dh=tag.match(/data-height\s*=\s*"(\d+)"/i);
-  if(dw&&dh){w=parseInt(dw[1]);h=parseInt(dh[1])}
-  if(!w||!h){const wm=tag.match(/width\s*[:=]\s*"?(\d+)/i),hm=tag.match(/height\s*[:=]\s*"?(\d+)/i);if(wm&&hm){w=parseInt(wm[1]);h=parseInt(hm[1])}}
-  if(!w||!h){const dm=tag.match(/(\d{2,4})x(\d{2,4})/i);if(dm){w=parseInt(dm[1]);h=parseInt(dm[2])}}
-  if(w&&h){wEl.value=w;hEl.value=h}
+  const wEl=document.getElementById('manualTagWidth'),hEl=document.getElementById('manualTagHeight'),clickEl=document.getElementById('manualTagClickUrl');
+  if(!wEl.value&&!hEl.value){
+    let w=0,h=0;
+    const dw=tag.match(/data-width\s*=\s*"(\d+)"/i),dh=tag.match(/data-height\s*=\s*"(\d+)"/i);
+    if(dw&&dh){w=parseInt(dw[1]);h=parseInt(dh[1])}
+    if(!w||!h){const wm=tag.match(/width\s*[:=]\s*"?(\d+)/i),hm=tag.match(/height\s*[:=]\s*"?(\d+)/i);if(wm&&hm){w=parseInt(wm[1]);h=parseInt(hm[1])}}
+    if(!w||!h){const dm=tag.match(/(\d{2,4})x(\d{2,4})/i);if(dm){w=parseInt(dm[1]);h=parseInt(dm[2])}}
+    if(w&&h){wEl.value=w;hEl.value=h}
+  }
+  if(!clickEl.value){
+    const cta=tag.match(/data-cta-url\s*=\s*"([^"]+)"/i);
+    if(cta)clickEl.value=cta[1];
+    else{const href=tag.match(/(?:href|landing[-_]?page|click[-_]?url)\s*=\s*"(https?:\/\/[^"]+)"/i);if(href)clickEl.value=href[1]}
+  }
 });
 
 function addManualTag(){
@@ -1289,18 +1295,23 @@ function addManualTag(){
   // Auto-detect dimensions from tag if not filled
   let w=parseInt(widthEl.value)||0,h=parseInt(heightEl.value)||0;
   if(!w||!h){
-    // Try data-width/data-height
     const wm=tag.match(/data-width\s*=\s*"(\d+)"/i);
     const hm=tag.match(/data-height\s*=\s*"(\d+)"/i);
     if(wm&&hm){w=parseInt(wm[1]);h=parseInt(hm[1])}
-    // Try width="N" height="N"
     if(!w||!h){const wm2=tag.match(/width\s*[:=]\s*"?(\d+)/i);const hm2=tag.match(/height\s*[:=]\s*"?(\d+)/i);if(wm2&&hm2){w=parseInt(wm2[1]);h=parseInt(hm2[1])}}
-    // Try NxN in name or tag
     if(!w||!h){const dm=tag.match(/(\d{2,4})x(\d{2,4})/i);if(dm){w=parseInt(dm[1]);h=parseInt(dm[2])}}
     if(w)widthEl.value=w;if(h)heightEl.value=h;
   }
   if(!w||!h){toast('Informe a largura e altura do criativo','error');widthEl.focus();return}
   const dims=w+'x'+h;
+  // Auto-extract click/landing URL from tag if not filled
+  let clickUrl=clickEl.value.trim();
+  if(!clickUrl){
+    const ctaMatch=tag.match(/data-cta-url\s*=\s*"([^"]+)"/i);
+    if(ctaMatch)clickUrl=ctaMatch[1];
+    if(!clickUrl){const hrefMatch=tag.match(/(?:href|url|landing)\s*=\s*"(https?:\/\/[^"]+)"/i);if(hrefMatch)clickUrl=hrefMatch[1]}
+    if(clickUrl)clickEl.value=clickUrl;
+  }
   // Auto-generate name if empty
   let name=nameEl.value.trim();
   if(!name){
@@ -1312,8 +1323,6 @@ function addManualTag(){
   }
   const type=typeEl.value||'display';
   const isVideo=type==='video';
-  const clickUrl=clickEl.value.trim()||'';
-  // Init parsedData if needed
   if(!parsedData){
     parsedData={campaignName:'Manual Tags',advertiserName:'',brandName:'',placements:[]};
   }
