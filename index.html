@@ -1525,6 +1525,8 @@ function getWeightClass(entry){
 function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(0)+'KB';return(b/1048576).toFixed(1)+'MB'}
 
 function renderAssetsTable(){
+  // Preserve selection state before re-render
+  const prevSelected=new Set(getSelectedAssetIds());
   const tbody=document.getElementById('assetsTableBody');
   const filterVal=(document.getElementById('assetsFilter')?.value||'').toLowerCase();
   const filtered=filterVal?assetEntries.filter(a=>a.name.toLowerCase().includes(filterVal)):assetEntries;
@@ -1534,8 +1536,9 @@ function renderAssetsTable(){
     const sz=a.compressedFile?a.compressedFile.size:a.size;
     const wc=getWeightClass(a);
     const thumbHtml=a.thumb?`<img src="${a.thumb}" class="asset-thumb${a.type==='video'?' asset-thumb-video':''}" alt="">`:'-';
+    const checked=prevSelected.has(a.id)?' checked':'';
     return`<tr style="animation-delay:${i*40}ms" data-asset-id="${a.id}">
-      <td class="cb-col"><input type="checkbox" class="custom-cb asset-cb" data-id="${a.id}"></td>
+      <td class="cb-col"><input type="checkbox" class="custom-cb asset-cb" data-id="${a.id}"${checked}></td>
       <td>${thumbHtml}</td>
       <td><input class="asset-input asset-name-input" value="${esc(a.name)}" data-field="name" data-id="${a.id}"></td>
       <td><span class="asset-type-badge ${a.type}">${a.type}</span></td>
