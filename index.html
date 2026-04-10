@@ -117,6 +117,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-btn:hover{border-color:var(--border-active);background:var(--accent-dim);color:var(--accent)}
 .dash-btn.primary{background:var(--accent);color:var(--text-on-accent);border-color:transparent}
 .dash-btn.primary:hover{background:var(--accent-hover);border-color:transparent;color:var(--text-on-accent)}
+.dash-btn-danger{color:var(--error) !important;border-color:var(--error) !important}
+.dash-btn-danger:hover{background:var(--error) !important;color:#fff !important}
 .dash-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
 .dash-btn-sync{position:relative;overflow:hidden}
 .dash-btn-sync.loading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);animation:shimmer 1.5s infinite}
@@ -839,6 +841,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       <span id="dashBulkCount">0 selecionados</span>
       <button class="dash-btn" onclick="bulkEditSelected()">Editar Selecionados</button>
       <button class="dash-btn" onclick="showDashRename()">Renomear</button>
+      <button class="dash-btn dash-btn-danger" onclick="bulkDeleteCreatives()">Deletar</button>
       <button class="dash-btn" style="margin-left:auto" onclick="clearDashSelection()">Cancelar</button>
     </div>
     <div class="dash-table-wrap" id="dashTableWrap">
@@ -2802,6 +2805,48 @@ function toggleDashSelectAll(checked){
   renderDashTable();updateDashBulkBar();
 }
 function clearDashSelection(){dashSelectedKeys.clear();const sa=document.getElementById('dashSelectAll');if(sa)sa.checked=false;updateDashBulkBar()}
+
+async function bulkDeleteCreatives(){
+  if(dashSelectedKeys.size===0||!sbClient||!currentUser)return;
+  const keys=Array.from(dashSelectedKeys);
+  const groups=keys.map(k=>dashGroups.find(g=>g._gid===k)).filter(Boolean);
+  // Collect all creative IDs across all DSPs
+  const allIds=[];
+  const xandrCount=[];const dv360Count=[];
+  groups.forEach(g=>{
+    Object.entries(g.dsps).forEach(([dsp,d])=>{
+      allIds.push(d.id);
+      if(dsp==='xandr')xandrCount.push(d.id);
+      if(dsp==='dv360')dv360Count.push(d.id);
+    });
+  });
+  // Confirm with details
+  let msg=`Deletar ${groups.length} criativo(s)?`;
+  if(xandrCount.length)msg+=`\n• Xandr: ${xandrCount.length} deletado(s) permanentemente`;
+  if(dv360Count.length)msg+=`\n• DV360: ${dv360Count.length} arquivado(s) (DV360 não permite deletar)`;
+  msg+='\n\nEssa ação não pode ser desfeita.';
+  if(!confirm(msg))return;
+
+  const tk=(await sbClient.auth.getSession()).data.session?.access_token;
+  if(!tk){toast('Sessão expirada','error');return}
+
+  try{
+    const res=await fetch(SUPABASE_URL+'/functions/v1/creative-delete',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},
+      body:JSON.stringify({creativeIds:allIds})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Erro ao deletar');
+
+    const parts=[];
+    if(data.deleted)parts.push(data.deleted+' deletado(s) na Xandr');
+    if(data.archived)parts.push(data.archived+' arquivado(s) na DV360');
+    if(data.failed)parts.push(data.failed+' erro(s)');
+    toast(parts.join(', ')||'Nenhuma alteração',data.failed?'error':'success');
+    clearDashSelection();
+    await loadCreatives();
+  }catch(err){toast('Erro: '+err.message,'error')}
+}
 function updateDashBulkBar(){
   const bar=document.getElementById('dashBulkBar');if(!bar)return;
   const n=dashSelectedKeys.size;
