@@ -978,7 +978,7 @@ function updateOptions(){
   const hasAmazon=selectedDsps.has('amazondsp');
   document.getElementById('amazonDspConfigDivider').style.display=hasAmazon?'':'none';
   document.getElementById('amazonDspConfigSection').style.display=hasAmazon?'':'none';
-  const showPixels=currentMode!=='surveys';
+  const showPixels=currentMode!=='surveys'&&currentMode!=='assets';
   ['stackadapt','xandr'].forEach(dsp=>{
     const wrap=document.getElementById(`pixelWrap_${dsp}`),field=document.getElementById(`pixel_${dsp}`);
     const shouldShow=selectedDsps.has(dsp)&&showPixels,wasHidden=!wrap.classList.contains('visible');
