@@ -471,6 +471,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .asset-type-badge.display{background:var(--accent-dim);color:var(--accent)}
 .asset-type-badge.video{background:var(--success-dim);color:var(--success)}
 .asset-type-badge.html5{background:var(--warning-dim);color:var(--warning)}
+.asset-format-badge{font-family:var(--mono);font-size:0.65rem;padding:2px 8px;border-radius:var(--r-xs);background:var(--bg-raised);border:1px solid var(--border-subtle);color:var(--text-sec);font-weight:500;letter-spacing:0.03em;white-space:nowrap}
+.td-format{white-space:nowrap}
 .asset-actions{display:flex;gap:4px}
 .asset-action-btn{background:var(--bg-base);border:1px solid var(--border);color:var(--text-sec);width:28px;height:28px;border-radius:var(--r-xs);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f)}
 .asset-action-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -748,7 +750,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
             <span class="assets-filter-count" id="assetsFilterCount"></span>
             <button class="assets-filter-select-btn" id="assetsFilterSelect">Selecionar filtrados</button>
           </div>
-          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll" aria-label="Selecionar todos os assets"></th><th></th><th>Nome</th><th>Tipo</th><th>Size</th><th>Peso</th><th>Landing Page</th><th>Tracker</th><th></th></tr></thead><tbody id="assetsTableBody"></tbody></table></div>
+          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll" aria-label="Selecionar todos os assets"></th><th></th><th>Nome</th><th>Tipo</th><th>Formato</th><th>Size</th><th>Peso</th><th>Landing Page</th><th>Tracker</th><th></th></tr></thead><tbody id="assetsTableBody"></tbody></table></div>
         </div>
       </div>
 
@@ -849,7 +851,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     </div>
     <div class="dash-table-wrap" id="dashTableWrap">
       <table class="dash-table" id="dashTable">
-        <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)" aria-label="Selecionar todos os criativos"></th><th style="width:30%">Nome</th><th>Size</th><th>Status</th><th>Criado por</th><th>Criado em</th><th>Última edição</th><th></th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)" aria-label="Selecionar todos os criativos"></th><th style="width:30%">Nome</th><th>Size</th><th>Formato</th><th>Status</th><th>Criado por</th><th>Criado em</th><th>Última edição</th><th></th></tr></thead>
         <tbody id="dashBody"></tbody>
       </table>
       <div class="dash-pagination" id="dashPagination"></div>
@@ -2284,6 +2286,7 @@ function renderAssetsTable(){
       <td>${thumbHtml}</td>
       <td><input class="asset-input asset-name-input" value="${esc(a.name)}" data-field="name" data-id="${a.id}"></td>
       <td><span class="asset-type-badge ${a.type}">${a.type}</span></td>
+      <td><span class="asset-format-badge">${(a.originalFile?.name||a.file?.name||'').split('.').pop().toUpperCase()||'?'}</span></td>
       <td style="white-space:nowrap"><input class="asset-input mono" style="width:75px;display:inline-block;vertical-align:middle" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}">${a.type==='display'&&!isIABSize(a.dimensions)?`<span class="asset-size-warn" title="Size fora do padrão IAB. Sugestão: ${getSizeSuggestion(a.w,a.h)}">⚠️</span>${!a.resized?`<button class="asset-resize-btn" data-resize="${a.id}" data-suggest="${getSizeSuggestion(a.w,a.h)}" title="Redimensionar pra ${getSizeSuggestion(a.w,a.h)}">${getSizeSuggestion(a.w,a.h)}</button>`:''}`:(a.resized?'<span class="asset-size-ok" title="Redimensionado">✓</span>':'')}</td>
       <td><span class="asset-weight-badge ${wc}">${formatBytes(sz)}${a.compressed?' ⚡':''}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(a.landingPage)}" data-field="landingPage" data-id="${a.id}" placeholder="https://..."></td>
@@ -3021,7 +3024,7 @@ function buildGroups(){
     const key=c.name+'||'+c.dimensions;
     let g=groupMap.get(key);
     if(!g){
-      g={name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,last_edited_at:c.last_synced_at||c.updated_at||null,last_edited_by:c.last_edited_by_name||null,dsps:{}};
+      g={name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,asset_filename:c.asset_filename||null,asset_mime_type:c.asset_mime_type||null,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,last_edited_at:c.last_synced_at||c.updated_at||null,last_edited_by:c.last_edited_by_name||null,dsps:{}};
       groups.push(g);
       groupMap.set(key,g);
     }
@@ -3038,7 +3041,7 @@ function updateDashBadge(){const p=dashCreatives.filter(c=>c.audit_status==='pen
 
 async function loadCreatives(){
   if(!sbClient||!currentUser)return;
-  document.getElementById('dashBody').innerHTML='<tr><td colspan="7" class="dash-empty"><div class="dash-empty-text">Carregando...</div></td></tr>';
+  document.getElementById('dashBody').innerHTML='<tr><td colspan="8" class="dash-empty"><div class="dash-empty-text">Carregando...</div></td></tr>';
   try{
     const{data,error}=await sbClient.from('creatives').select('*').neq('status','deleted').order('created_at',{ascending:false}).limit(1000);
     if(error)throw error;
@@ -3066,6 +3069,10 @@ function getFilteredGroups(){
 }
 function toggleDashExpand(key){dashExpandedKey=dashExpandedKey===key?null:key;renderDashTable()}
 
+function getFormatLabel(g){
+  if(g.asset_filename){const ext=g.asset_filename.split('.').pop().toUpperCase();if(ext==='ZIP')return'HTML5';return ext}
+  if(g.asset_mime_type){const mt=g.asset_mime_type;if(mt.includes('jpeg')||mt.includes('jpg'))return'JPG';if(mt.includes('png'))return'PNG';if(mt.includes('gif'))return'GIF';if(mt.includes('mp4'))return'MP4';if(mt.includes('webm'))return'WEBM';if(mt.includes('mov')||mt.includes('quicktime'))return'MOV';if(mt.includes('zip'))return'HTML5'}
+  const t=g.creative_type||'display';if(t==='video')return'VAST';return'3P Tag'}
 function renderDashTable(){
   const filtered=getFilteredGroups();
   const totalPages=Math.ceil(filtered.length/dashPageSize)||1;
@@ -3074,7 +3081,7 @@ function renderDashTable(){
   const page=filtered.slice(start,start+dashPageSize);
   const body=document.getElementById('dashBody');
   if(page.length===0){
-    body.innerHTML='<tr><td colspan="7" class="dash-empty"><div class="dash-empty-icon">📋</div><div class="dash-empty-text">Nenhum criativo encontrado</div><div class="dash-empty-sub">Criativos ativados via Tags, Surveys ou Assets aparecem aqui</div></td></tr>';
+    body.innerHTML='<tr><td colspan="8" class="dash-empty"><div class="dash-empty-icon">📋</div><div class="dash-empty-text">Nenhum criativo encontrado</div><div class="dash-empty-sub">Criativos ativados via Tags, Surveys ou Assets aparecem aqui</div></td></tr>';
     document.getElementById('dashPagination').innerHTML='';return;
   }
   const dn={xandr:'Xandr',dv360:'DV360',stackadapt:'SA',amazondsp:'AMZN'};
@@ -3092,6 +3099,7 @@ function renderDashTable(){
     html+='<td onclick="event.stopPropagation()"><input type="checkbox" '+(isSel?'checked':'')+' onchange="toggleDashSelect(\''+gk.replace(/'/g,"\\'")+"',this.checked)\"></td>";
     html+='<td><div class="td-name-wrap"><div class="td-name" title="'+esc(g.name)+'">'+esc(g.name)+'</div><div class="td-name-type">'+(g.creative_type||'display')+' · '+dk.length+' DSP'+(dk.length>1?'s':'')+'</div></div></td>';
     html+='<td class="td-dims">'+(g.dimensions||'-')+'</td>';
+    html+='<td class="td-format"><span class="asset-format-badge">'+getFormatLabel(g)+'</span></td>';
     html+='<td><div class="td-dsps">'+sc+'</div></td>';
     html+='<td class="td-meta">'+esc(g.created_by_name)+'</td>';
     html+='<td class="td-meta td-datetime">'+dt+'</td>';
@@ -3101,7 +3109,7 @@ function renderDashTable(){
       let ef=dk.map(k=>{const dd=g.dsps[k];let f='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' ID</div><div class="dash-expand-val">'+(dd.dsp_creative_id||'-')+'</div></div>';if(dd.landing_page)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' URL destino</div><div class="dash-expand-val">'+esc(dd.landing_page)+'</div></div>';if(dd.click_url)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' Click redirect</div><div class="dash-expand-val">'+esc(dd.click_url)+'</div></div>';if(dd.sync_error)f+='<div class="dash-expand-field"><div class="dash-expand-label">Sync Error</div><div class="dash-expand-val" style="color:var(--error)">'+esc(dd.sync_error)+'</div></div>';return f}).join('');
       const fd=g.dsps[dk[0]];const tg=fd.js_tag||fd.vast_tag||'';
       if(tg)ef+='<div class="dash-expand-field" style="grid-column:1/-1"><div class="dash-expand-label">'+(fd.vast_tag?'VAST':'JS')+' Tag</div><div class="dash-expand-val">'+esc(tg.substring(0,300))+(tg.length>300?'...':'')+'</div></div>';
-      html+='<tr class="dash-expand visible"><td></td><td colspan="7"><div class="dash-expand-inner">'+ef+'</div></td></tr>';
+      html+='<tr class="dash-expand visible"><td></td><td colspan="8"><div class="dash-expand-inner">'+ef+'</div></td></tr>';
     }
   });
   body.innerHTML=html;
