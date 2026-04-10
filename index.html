@@ -502,7 +502,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
             <span class="assets-filter-count" id="tagsFilterCount"></span>
             <button class="assets-filter-select-btn" id="tagsFilterSelect">Selecionar filtrados</button>
           </div>
-          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="tagsSelectAll"></th><th>Placement Name</th><th>Tipo</th><th>Size</th><th>Tag</th><th>Click URL</th><th>Tracker</th></tr></thead><tbody id="placementsBody"></tbody></table></div>
+          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="tagsSelectAll"></th><th>Placement Name</th><th>Tipo</th><th>Size</th><th>Tag</th><th>Click URL</th><th>Tracker</th><th></th></tr></thead><tbody id="placementsBody"></tbody></table></div>
         </div>
       </div>
 
@@ -1154,6 +1154,7 @@ function renderPlacementsTable(){
       <td><span class="tag-preview mono" title="${esc(tagPreview)}" data-idx="${i}" style="cursor:pointer;font-size:0.7rem;color:var(--text-sec);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${esc(tagShort)}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(p.clickUrl)}" data-field="clickUrl" data-idx="${i}"></td>
       <td class="tracker-cell"><div class="tracker-chips">${(p.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';return`<span class="tracker-chip"><span class="tracker-scope-badge ${scopeClass}" data-tag-scope-toggle="${i}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tag-tracker-rm="${i}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tag-tracker-add="${i}" placeholder="+ pixel URL"></div></td>
+      <td class="asset-actions"><button class="asset-action-btn danger" title="Remover" data-tag-rm="${i}">✕</button></td>
     </tr>`}).join('');
   const selectAll=document.getElementById('tagsSelectAll');
   if(selectAll)selectAll.checked=filtered.length>0&&filtered.every(({i})=>_selectedTagIds.has(i));
@@ -1167,7 +1168,8 @@ function updateTagsBulkBar(){
   bar.style.display='flex';bar.className='assets-bulk-bar';
   bar.innerHTML=`<span class="assets-bulk-count">${selected.length} selecionado(s)</span>
     <button onclick="tagsBulkAddTracker()">+ Tracker</button>
-    <button onclick="tagsBulkFindReplace()">Find & Replace</button>`;
+    <button onclick="tagsBulkFindReplace()">Find & Replace</button>
+    <button onclick="tagsBulkRemove()">Remover</button>`;
 }
 function smartName(name){
   if(name.length<50)return`<span title="${esc(name)}">${esc(name)}</span>`;
@@ -1237,6 +1239,17 @@ function execTagsFindReplace(){
   ids.forEach(idx=>{const p=parsedData.placements[idx];if(p&&p.placementName.includes(find)){p.placementName=p.placementName.replaceAll(find,replace);count++}});
   document.querySelector('.fr-overlay')?.remove();
   renderPlacementsTable();toast(`${count} nome(s) alterado(s)`,'success');
+}
+function tagsBulkRemove(){
+  const ids=getSelectedTagIds();if(!ids.length)return;
+  if(!confirm(`Remover ${ids.length} placement(s)? Essa ação não pode ser desfeita.`))return;
+  // Remove from highest index to lowest to preserve indices
+  const sorted=[...ids].sort((a,b)=>b-a);
+  sorted.forEach(idx=>parsedData.placements.splice(idx,1));
+  _selectedTagIds.clear();
+  renderPlacementsTable();updateVisibility();
+  document.getElementById('uploadMeta').textContent=`${parsedData.placements.length} placements · ${parsedData.campaignName}`;
+  toast(`${ids.length} placement(s) removido(s)`,'success');
 }
 
 // ── Surveys ──
@@ -2149,6 +2162,9 @@ document.getElementById('placementsBody').addEventListener('click',e=>{
   // Tracker remove
   const rm=e.target.closest('[data-tag-tracker-rm]');
   if(rm){const idx=parseInt(rm.dataset.tagTrackerRm),ti=parseInt(rm.dataset.ti);if(parsedData?.placements[idx]){parsedData.placements[idx].trackers.splice(ti,1);renderPlacementsTable()};return}
+  // Row delete
+  const rowRm=e.target.closest('[data-tag-rm]');
+  if(rowRm){const idx=parseInt(rowRm.dataset.tagRm);if(parsedData){parsedData.placements.splice(idx,1);_selectedTagIds.clear();renderPlacementsTable();updateVisibility();document.getElementById('uploadMeta').textContent=`${parsedData.placements.length} placements · ${parsedData.campaignName}`};return}
   // Scope badge popover
   const scopeBtn=e.target.closest('[data-tag-scope-toggle]');
   if(scopeBtn){
