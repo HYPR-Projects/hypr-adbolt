@@ -17,7 +17,7 @@ html{font-size:15px;scroll-behavior:smooth}
 [data-theme="dark"]{
   --bg-base:#06060b;--bg-surface:#0d0d15;--bg-raised:#13131e;--bg-overlay:rgba(13,13,21,0.85);
   --bg-input:#0a0a12;--border:rgba(255,255,255,0.06);--border-subtle:rgba(255,255,255,0.04);
-  --border-active:rgba(123,110,240,0.4);--text:#e8e8f0;--text-sec:#8585a0;--text-tri:#5a5a72;
+  --border-active:rgba(123,110,240,0.4);--text:#e8e8f0;--text-sec:#8585a0;--text-tri:#7c7c94;
   --accent:#7b6ef0;--accent-dim:rgba(123,110,240,0.12);--accent-glow:rgba(123,110,240,0.08);
   --accent-hover:#8d82f2;--accent-ring:rgba(123,110,240,0.25);--accent-shadow:rgba(123,110,240,0.3);
   --success:#2edbd6;--success-dim:rgba(46,219,214,0.10);
@@ -32,12 +32,12 @@ html{font-size:15px;scroll-behavior:smooth}
 [data-theme="light"]{
   --bg-base:#f5f5f8;--bg-surface:#ffffff;--bg-raised:#ffffff;--bg-overlay:rgba(255,255,255,0.9);
   --bg-input:#f0f0f5;--border:rgba(0,0,0,0.08);--border-subtle:rgba(0,0,0,0.04);
-  --border-active:rgba(90,75,214,0.4);--text:#1a1a2e;--text-sec:#5a5a6e;--text-tri:#8a8a9e;
+  --border-active:rgba(90,75,214,0.4);--text:#1a1a2e;--text-sec:#5a5a6e;--text-tri:#6c6c80;
   --accent:#5a4bd6;--accent-dim:rgba(90,75,214,0.08);--accent-glow:rgba(90,75,214,0.05);
   --accent-hover:#6c5ce7;--accent-ring:rgba(90,75,214,0.2);--accent-shadow:rgba(90,75,214,0.25);
   --success:#007a75;--success-dim:rgba(0,122,117,0.06);
-  --error:#d45a40;--error-dim:rgba(212,90,64,0.06);
-  --warning:#b58900;--warning-dim:rgba(181,137,0,0.08);
+  --error:#c44a30;--error-dim:rgba(196,74,48,0.06);
+  --warning:#8a6800;--warning-dim:rgba(138,104,0,0.08);
   --text-on-accent:#fff;--text-on-success:#fff;
   --shadow-sm:0 1px 2px rgba(0,0,0,0.05);--shadow-md:0 4px 16px rgba(0,0,0,0.06);--shadow-lg:0 12px 40px rgba(0,0,0,0.08);
   --glass-bg:rgba(255,255,255,0.7);--glass-border:rgba(0,0,0,0.06);
@@ -608,8 +608,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 </div>
 
 <div class="app-shell" id="appShell">
-  <div class="topbar">
-    <div class="topbar-brand"><div class="topbar-logo">H</div><span class="topbar-title">Creative Smart Bulk</span></div>
+  <header class="topbar">
+    <div class="topbar-brand"><div class="topbar-logo">H</div><h1 class="topbar-title">Creative Smart Bulk</h1></div>
     <div class="topbar-right">
       <button class="topbar-dash" id="topbarDashBtn" onclick="toggleDashHome()" title="Dashboard de criativos"><svg id="topbarDashIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="topbarDashLabel">Dashboard</span><span class="topbar-dash-badge" id="dashBadge"></span></button>
       <div class="topbar-user" id="headerUser">
@@ -620,9 +620,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       <button class="btn-icon" id="themeToggle" aria-label="Alternar tema"><span class="icon-sun">☀️</span><span class="icon-moon">🌙</span></button>
       <button class="btn-text-sm" onclick="doSignOut()">Sair</button>
     </div>
-  </div>
+  </header>
 
-  <div class="flow-selector" id="flowSelector">
+  <div class="flow-selector" id="flowSelector" role="main">
     <div class="flow-selector-header">
       <h2>O que você quer criar?</h2>
       <p>Escolha o tipo de criativo para começar. Gere templates e ative nas DSPs em um fluxo guiado.</p>
@@ -635,11 +635,11 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
   </div>
 
   <div class="wizard" id="wizard">
-    <div class="wizard-sidebar">
+    <nav class="wizard-sidebar" aria-label="Etapas do wizard">
       <button class="wizard-back" onclick="exitWizard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Voltar</button>
       <div class="wizard-sidebar-title" id="wizardModeLabel">Tags CM360</div>
       <div class="wizard-steps" id="wizardSteps"></div>
-    </div>
+    </nav>
     <div class="wizard-content" id="wizardContent">
       <div class="step-view full-width" id="stepTags" data-step="tags">
         <div class="step-header"><h2>Upload de 3P Tags</h2><p>Arraste o arquivo de tags exportado do Campaign Manager (.xlsx ou .csv)</p></div>
@@ -653,20 +653,20 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
           <button class="upload-clear" id="uploadClear" style="display:none" aria-label="Remover arquivo">✕</button>
         </div>
         <div class="extracted-info" id="extractedInfo">
-          <h2 class="extracted-info-title">Dados extraídos</h2>
+          <h3 class="extracted-info-title">Dados extraídos</h3>
           <div class="info-grid" id="infoGrid"></div>
         </div>
         <div class="manual-tag-divider"><span>ou adicione tags manualmente</span></div>
         <div class="manual-tag-section" id="manualTagSection">
           <div class="manual-tag-row">
             <div class="manual-tag-fields">
-              <div class="manual-tag-field" style="flex:1"><label>Nome do placement</label><input type="text" id="manualTagName" placeholder="Ex: LeroyMerlin_GIF_300x250"></div>
-              <div class="manual-tag-field" style="width:90px"><label>Largura</label><input type="number" id="manualTagWidth" placeholder="300"></div>
-              <div class="manual-tag-field" style="width:90px"><label>Altura</label><input type="number" id="manualTagHeight" placeholder="250"></div>
-              <div class="manual-tag-field" style="width:110px"><label>Tipo</label><select id="manualTagType"><option value="display">Display</option><option value="video">Video</option></select></div>
+              <div class="manual-tag-field" style="flex:1"><label for="manualTagName">Nome do placement</label><input type="text" id="manualTagName" placeholder="Ex: LeroyMerlin_GIF_300x250"></div>
+              <div class="manual-tag-field" style="width:90px"><label for="manualTagWidth">Largura</label><input type="number" id="manualTagWidth" placeholder="300"></div>
+              <div class="manual-tag-field" style="width:90px"><label for="manualTagHeight">Altura</label><input type="number" id="manualTagHeight" placeholder="250"></div>
+              <div class="manual-tag-field" style="width:110px"><label for="manualTagType">Tipo</label><select id="manualTagType"><option value="display">Display</option><option value="video">Video</option></select></div>
             </div>
-            <div class="manual-tag-field" style="width:100%"><label>Tag HTML / JS / VAST URL</label><textarea id="manualTagCode" rows="3" placeholder="Cole a tag completa aqui (HTML, JS tag, ou VAST URL)"></textarea></div>
-            <div class="manual-tag-field" style="width:100%"><label>Click URL <span style="font-weight:400;color:var(--text-tri)">(opcional)</span></label><input type="text" id="manualTagClickUrl" placeholder="https://..."></div>
+            <div class="manual-tag-field" style="width:100%"><label for="manualTagCode">Tag HTML / JS / VAST URL</label><textarea id="manualTagCode" rows="3" placeholder="Cole a tag completa aqui (HTML, JS tag, ou VAST URL)"></textarea></div>
+            <div class="manual-tag-field" style="width:100%"><label for="manualTagClickUrl">Click URL <span style="font-weight:400;color:var(--text-tri)">(opcional)</span></label><input type="text" id="manualTagClickUrl" placeholder="https://..."></div>
             <button class="manual-tag-add-btn" onclick="addManualTag()">Adicionar Tag</button>
           </div>
         </div>
@@ -679,7 +679,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
               <button class="tags-pill" data-filter="type" data-val="display" onclick="setTagsFilter('type','display',this)">Display</button>
               <button class="tags-pill" data-filter="type" data-val="video" onclick="setTagsFilter('type','video',this)">Video</button>
             </div>
-            <select class="tags-size-select" id="tagsSizeFilter" onchange="setTagsFilter('size',this.value)">
+            <select class="tags-size-select" id="tagsSizeFilter" onchange="setTagsFilter('size',this.value)" aria-label="Filtrar por size">
               <option value="all">Todos os sizes</option>
             </select>
             <span class="assets-filter-count" id="tagsFilterCount"></span>
@@ -699,7 +699,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
           <button class="survey-type-btn" data-type="Intenção">Intenção</button>
           <button class="survey-type-btn" data-type="Preferência">Preferência</button>
         </div>
-        <div class="survey-custom-wrap"><input type="text" id="surveyCustomType" placeholder="Outro tipo — pressione Enter pra adicionar"></div>
+        <div class="survey-custom-wrap"><input type="text" id="surveyCustomType" placeholder="Outro tipo — pressione Enter pra adicionar" aria-label="Tipo personalizado de survey"></div>
         <div class="survey-entries" id="surveyEntries"></div>
       </div>
 
@@ -720,7 +720,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
               <button class="tags-pill" data-filter="atype" data-val="display" onclick="setAssetsFilter('type','display',this)">Display</button>
               <button class="tags-pill" data-filter="atype" data-val="video" onclick="setAssetsFilter('type','video',this)">Video</button>
             </div>
-            <select class="tags-size-select" id="assetsSizeFilter" onchange="setAssetsFilter('size',this.value)">
+            <select class="tags-size-select" id="assetsSizeFilter" onchange="setAssetsFilter('size',this.value)" aria-label="Filtrar por size">
               <option value="all">Todos os sizes</option>
             </select>
             <span class="assets-filter-count" id="assetsFilterCount"></span>
@@ -798,7 +798,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
   <div class="dashboard" id="dashboard">
     <div class="dash-hero">
       <div class="dash-hero-left">
-        <div><div class="dash-hero-title">Criativos</div><div class="dash-hero-sub" id="dashSubtitle">Carregando...</div></div>
+        <div><h2 class="dash-hero-title">Criativos</h2><div class="dash-hero-sub" id="dashSubtitle">Carregando...</div></div>
       </div>
       <div class="dash-hero-actions">
         <button class="dash-btn dash-btn-sync" id="dashSyncBtn" onclick="syncCreatives()">Sync Status</button>
@@ -833,16 +833,16 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     </div>
   </div>
 
-  <div class="modal-overlay" id="renameModal">
+  <div class="modal-overlay" id="renameModal" role="dialog" aria-modal="true" aria-label="Renomear criativos">
     <div class="modal" style="max-width:560px">
       <div class="modal-header"><span class="modal-title">Renomear</span><button class="modal-close" onclick="closeRenameModal()" aria-label="Fechar">✕</button></div>
       <div class="modal-body" id="renameModalBody">
         <div class="rename-section">
           <div class="rename-row">
-            <div class="modal-field" style="flex:1"><label>Prefixo <span style="font-weight:400;color:var(--text-tri)">(antes do nome atual)</span></label><input id="renamePrefix" placeholder="Ex: HYPR_"></div>
-            <div class="modal-field" style="flex:1"><label>Sufixo <span style="font-weight:400;color:var(--text-tri)">(depois do nome atual)</span></label><input id="renameSuffix" placeholder="Ex: _v2"></div>
+            <div class="modal-field" style="flex:1"><label for="renamePrefix">Prefixo <span style="font-weight:400;color:var(--text-tri)">(antes do nome atual)</span></label><input id="renamePrefix" placeholder="Ex: HYPR_"></div>
+            <div class="modal-field" style="flex:1"><label for="renameSuffix">Sufixo <span style="font-weight:400;color:var(--text-tri)">(depois do nome atual)</span></label><input id="renameSuffix" placeholder="Ex: _v2"></div>
           </div>
-          <div class="modal-field"><label>Ou substituir nome completo <span style="font-weight:400;color:var(--text-tri)">(deixe vazio pra usar prefixo/sufixo)</span></label><input id="renameFullReplace" placeholder="Novo nome completo (variáveis: {name}, {size}, {type}, {index})"></div>
+          <div class="modal-field"><label for="renameFullReplace">Ou substituir nome completo <span style="font-weight:400;color:var(--text-tri)">(deixe vazio pra usar prefixo/sufixo)</span></label><input id="renameFullReplace" placeholder="Novo nome completo (variáveis: {name}, {size}, {type}, {index})"></div>
           <div class="rename-preview" id="renamePreview"><span class="rename-preview-label">Preview</span><div class="rename-preview-list" id="renamePreviewList"></div></div>
         </div>
       </div>
@@ -853,7 +853,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     </div>
   </div>
 
-  <div class="modal-overlay" id="editModal">
+  <div class="modal-overlay" id="editModal" role="dialog" aria-modal="true" aria-label="Editar criativo">
     <div class="modal">
       <div class="modal-header"><span class="modal-title">Editar Criativo</span><button class="modal-close" onclick="closeEditModal()" aria-label="Fechar">✕</button></div>
       <div class="modal-body" id="editModalBody"></div>
@@ -952,7 +952,7 @@ function enterWizard(mode){
   const showAssets=mode==='assets';const dspSubs={dv360:['CSV · Third-Party Tags | API','API · Hosted Creatives'],stackadapt:['XLSX · Apenas template','API · Em breve'],xandr:['XLSX · Third-Party Creative | API','API · Hosted Creatives'],amazondsp:['XLSX · Apenas template','API · Em breve']};const unavail=new Set(['stackadapt','amazondsp']);
   document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{const dsp=card.dataset.dsp;const sub=card.querySelector('.dsp-card-sub');if(sub)sub.textContent=dspSubs[dsp]?.[showAssets?1:0]||sub.textContent;if(showAssets&&unavail.has(dsp))card.classList.add('dsp-unavailable')})}
 function exitWizard(){resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
-function renderWizardSteps(){const config=WIZARD_CONFIGS[currentMode];document.getElementById('wizardSteps').innerHTML=config.steps.map((step,i)=>`<div class="wizard-step${i===0?' active':''}" data-idx="${i}" onclick="navigateToStep(${i})"><div class="wizard-step-num"><span class="step-number">${i+1}</span><svg class="check-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="wizard-step-info"><div class="wizard-step-label">${config.labels[i]}</div><div class="wizard-step-sublabel">${config.sublabels[i]}</div></div></div>${i<config.steps.length-1?'<div class="wizard-step-connector"></div>':''}`).join('')}
+function renderWizardSteps(){const config=WIZARD_CONFIGS[currentMode];document.getElementById('wizardSteps').innerHTML=config.steps.map((step,i)=>`<div class="wizard-step${i===0?' active':''}" data-idx="${i}" role="button" tabindex="0" onclick="navigateToStep(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateToStep(${i})}"><div class="wizard-step-num"><span class="step-number">${i+1}</span><svg class="check-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="wizard-step-info"><div class="wizard-step-label">${config.labels[i]}</div><div class="wizard-step-sublabel">${config.sublabels[i]}</div></div></div>${i<config.steps.length-1?'<div class="wizard-step-connector"></div>':''}`).join('')}
 function navigateToStep(idx){const config=WIZARD_CONFIGS[currentMode];if(idx<0||idx>=config.steps.length)return;if(currentMode==='assets')commitPendingTrackers();activeWizardStep=idx;const stepKey=config.steps[idx];document.querySelectorAll('.wizard-step').forEach((el,i)=>el.classList.toggle('active',i===idx));document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'));const map={tags:'stepTags',surveys:'stepSurveys',assets:'stepAssets',dsps:'stepDsp',config:'stepConfig',activate:'stepActivate'};const target=document.getElementById(map[stepKey]);if(target){target.classList.add('active');target.scrollTop=0}document.getElementById('wizardContent').scrollTop=0;updateWizardStepStates();updateGenerateBtn();renderStepNav()}
 function renderStepNav(){const config=WIZARD_CONFIGS[currentMode];document.querySelectorAll('.step-nav').forEach(n=>n.remove());const activeView=document.querySelector('.step-view.active');if(!activeView)return;const isFirst=activeWizardStep===0;const isLast=activeWizardStep===config.steps.length-1;const nav=document.createElement('div');nav.className='step-nav';const prevLabel=isFirst?null:config.labels[activeWizardStep-1];const nextLabel=isLast?null:config.labels[activeWizardStep+1];nav.innerHTML=`${isFirst?'<div class="step-nav-spacer"></div>':`<button class="step-nav-btn" onclick="navigateToStep(${activeWizardStep-1})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>${prevLabel}</button>`}<div class="step-nav-spacer"></div>${isLast?'':`<button class="step-nav-btn primary" onclick="navigateToStep(${activeWizardStep+1})">${nextLabel}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>`}`;activeView.appendChild(nav)}
 function updateWizardStepStates(){const config=WIZARD_CONFIGS[currentMode];const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasDsp=selectedDsps.size>0;document.querySelectorAll('.wizard-step').forEach((el,i)=>{const s=config.steps[i];let c=false;if(s==='tags')c=hasTags;if(s==='surveys')c=hasSurveys;if(s==='assets')c=hasAssets;if(s==='dsps')c=hasDsp;if(s==='config')c=hasDsp;el.classList.toggle('completed',c&&i<activeWizardStep)})}
