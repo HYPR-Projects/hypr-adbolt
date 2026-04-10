@@ -2835,19 +2835,14 @@ function buildGroups(){
   // Sort by created_at ascending first so we process oldest first
   const sorted=[...dashCreatives].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   const groups=[];
-  const findGroup=(name,dims,ts)=>{
-    // Find existing group with same name+dims where created_at is within 2 min
-    for(let i=groups.length-1;i>=0;i--){
-      const g=groups[i];
-      if(g.name===name&&g.dimensions===dims&&Math.abs(new Date(ts)-new Date(g.created_at))<120000)return g;
-    }
-    return null;
-  };
+  const groupMap=new Map();
   for(const c of sorted){
-    let g=findGroup(c.name,c.dimensions,c.created_at);
+    const key=c.name+'||'+c.dimensions;
+    let g=groupMap.get(key);
     if(!g){
       g={name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,last_edited_at:c.last_synced_at||c.updated_at||null,last_edited_by:c.last_edited_by_name||null,dsps:{}};
       groups.push(g);
+      groupMap.set(key,g);
     }
     g.dsps[c.dsp]={id:c.id,dsp_creative_id:c.dsp_creative_id,audit_status:c.audit_status||'unknown',click_url:c.click_url,landing_page:c.landing_page,js_tag:c.js_tag,vast_tag:c.vast_tag,sync_error:c.sync_error,dsp_config:c.dsp_config,trackers:c.trackers};
     if(new Date(c.created_at)<new Date(g.created_at))g.created_at=c.created_at;
