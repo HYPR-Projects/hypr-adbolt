@@ -306,10 +306,21 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .cb-col{width:40px;text-align:center}
 .tracker-cell{min-width:200px}
 .tracker-chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.tracker-chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg-base);border:1px solid var(--border);border-radius:var(--r-xs);padding:3px 6px 3px 8px;font-family:var(--mono);font-size:0.68rem;color:var(--text-sec);max-width:180px}
-.tracker-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tracker-chip{display:inline-flex;align-items:center;gap:3px;background:var(--bg-base);border:1px solid var(--border);border-radius:var(--r-xs);padding:2px 5px 2px 3px;font-family:var(--mono);font-size:0.68rem;color:var(--text-sec);max-width:220px}
+.tracker-chip-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .tracker-chip-rm{background:none;border:none;color:var(--text-tri);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;flex-shrink:0;transition:color var(--dur-f)}
 .tracker-chip-rm:hover{color:var(--error)}
+.tracker-scope-badge{flex-shrink:0;font-size:0.58rem;font-weight:600;letter-spacing:0.03em;padding:2px 5px;border-radius:3px;cursor:pointer;transition:all var(--dur-f);text-transform:uppercase;line-height:1.2;position:relative;user-select:none}
+.tracker-scope-badge.scope-all{background:var(--border);color:var(--text-sec)}
+.tracker-scope-badge.scope-partial{background:var(--accent-dim);color:var(--accent)}
+.tracker-scope-badge:hover{filter:brightness(1.2);transform:scale(1.05)}
+.tracker-scope-pop{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 4px;box-shadow:var(--shadow-lg);z-index:var(--z-overlay);min-width:130px;animation:scaleIn 0.15s var(--ease-out)}
+.tracker-scope-pop::before{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%) rotate(45deg);width:8px;height:8px;background:var(--bg-surface);border-left:1px solid var(--border);border-top:1px solid var(--border)}
+.tracker-scope-pop-item{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:var(--r-xs);cursor:pointer;font-size:0.75rem;font-weight:500;transition:background var(--dur-f);white-space:nowrap}
+.tracker-scope-pop-item:hover{background:var(--accent-glow)}
+.tracker-scope-pop-item .pop-cb{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--border);background:var(--bg-input);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--dur-f);font-size:9px;color:var(--text-on-accent)}
+.tracker-scope-pop-item .pop-cb.checked{background:var(--accent);border-color:var(--accent)}
+.tracker-scope-pop-divider{height:1px;background:var(--border);margin:4px 6px}
 .tracker-add-input{background:transparent;border:1px solid var(--border);border-radius:var(--r-xs);color:var(--text);font-family:var(--mono);font-size:0.7rem;padding:4px 8px;width:100px;outline:none;min-width:60px;flex:1;transition:border-color var(--dur-f)}
 .tracker-add-input:focus{border-color:var(--accent)}
 .tracker-add-input::placeholder{color:var(--text-tri);font-size:0.65rem}
@@ -991,10 +1002,10 @@ function commitPendingTrackers(){
     const url=extractTrackerUrl(raw);
     const id=parseInt(input.dataset.trackerAdd);
     const entry=assetEntries.find(a=>a.id===id);
-    if(entry&&!entry.trackers.includes(url)){entry.trackers.push(url);input.value=''}
+    if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});input.value=''}
   });
 }
-function mergeTrackers(assetTrackers,dsp){if(currentMode!=='assets')return assetTrackers||[];const all=[...(assetTrackers||[])];['xandr','stackadapt'].forEach(d=>{const px=getPixelForDsp(d);if(px&&!all.includes(px))all.push(px)});return all}
+function mergeTrackers(assetTrackers,dsp){if(currentMode!=='assets')return(assetTrackers||[]).map(t=>typeof t==='string'?t:t.url);const urls=[];(assetTrackers||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!urls.includes(tr.url))urls.push(tr.url)}});['xandr','stackadapt'].forEach(d=>{const px=getPixelForDsp(d);if(px&&!urls.includes(px))urls.push(px)});return urls}
 function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasContent=hasTags||hasSurveys||hasAssets;const hasDsp=selectedDsps.size>0;const ready=hasContent&&hasDsp;
   const btnGen=document.getElementById('btnGenerate');const btnAct=document.getElementById('btnActivate');const dlCard=document.getElementById('actionDownload');const actCard=document.getElementById('actionActivate');
   if(btnGen)btnGen.disabled=!ready;if(btnAct)btnAct.disabled=!ready;
@@ -1532,7 +1543,7 @@ function renderAssetsTable(){
       <td style="white-space:nowrap"><input class="asset-input mono" style="width:75px;display:inline-block;vertical-align:middle" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}">${a.type==='display'&&!isIABSize(a.dimensions)?`<span class="asset-size-warn" title="Size fora do padrão IAB. Sugestão: ${getSizeSuggestion(a.w,a.h)}">⚠️</span>${!a.resized?`<button class="asset-resize-btn" data-resize="${a.id}" data-suggest="${getSizeSuggestion(a.w,a.h)}" title="Redimensionar pra ${getSizeSuggestion(a.w,a.h)}">${getSizeSuggestion(a.w,a.h)}</button>`:''}`:(a.resized?'<span class="asset-size-ok" title="Redimensionado">✓</span>':'')}</td>
       <td><span class="asset-weight-badge ${wc}">${formatBytes(sz)}${a.compressed?' ⚡':''}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(a.landingPage)}" data-field="landingPage" data-id="${a.id}" placeholder="https://..."></td>
-      <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>`<span class="tracker-chip"><span title="${esc(t)}">${esc(t)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL"></div></td>
+      <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';return`<span class="tracker-chip"><span class="tracker-scope-badge ${scopeClass}" data-scope-toggle="${a.id}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL"></div></td>
       <td class="asset-actions">
         <button class="asset-action-btn" title="Duplicar" data-dup="${a.id}">⧉</button>
         <button class="asset-action-btn danger" title="Remover" data-rm="${a.id}">✕</button>
@@ -1568,11 +1579,55 @@ function bulkSetField(field){
 
 function bulkAddTracker(){
   const ids=getSelectedAssetIds();if(!ids.length)return;
-  const val=prompt(`Pixel URL ou tag pra adicionar em ${ids.length} asset(s):`);
-  if(!val?.trim())return;
+  const overlay=document.createElement('div');overlay.className='fr-overlay';
+  const dspOpts=[['xandr','Xandr'],['dv360','DV360'],['stackadapt','StackAdapt'],['amazondsp','Amazon DSP']];
+  overlay.innerHTML=`<div class="fr-modal">
+    <h3>Adicionar tracker em ${ids.length} asset(s)</h3>
+    <label for="bulkTrackerUrl">Pixel URL ou tag</label>
+    <input class="asset-input" id="bulkTrackerUrl" placeholder="Cole a URL ou tag do pixel" style="font-family:var(--mono)">
+    <label style="margin-top:4px">Aplicar em quais DSPs?</label>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px">
+      <button type="button" class="bulk-scope-btn active" data-scope="all" onclick="toggleBulkScope(this)" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);border-radius:var(--r-xs);padding:6px 14px;font-size:0.78rem;font-weight:500;cursor:pointer;transition:all var(--dur-f)">Todas</button>
+      ${dspOpts.map(([k,l])=>`<button type="button" class="bulk-scope-btn" data-scope="${k}" onclick="toggleBulkScope(this)" style="background:var(--bg-input);border:1px solid var(--border);color:var(--text-sec);border-radius:var(--r-xs);padding:6px 14px;font-size:0.78rem;font-weight:500;cursor:pointer;transition:all var(--dur-f)">${l}</button>`).join('')}
+    </div>
+    <div class="fr-modal-actions">
+      <button onclick="this.closest('.fr-overlay').remove()">Cancelar</button>
+      <button class="primary" onclick="execBulkAddTracker()">Adicionar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('bulkTrackerUrl').focus();
+}
+function toggleBulkScope(btn){
+  const allBtn=document.querySelector('.bulk-scope-btn[data-scope="all"]');
+  const dspBtns=[...document.querySelectorAll('.bulk-scope-btn:not([data-scope="all"])')];
+  if(btn.dataset.scope==='all'){
+    // Toggle all on, clear individuals
+    dspBtns.forEach(b=>{b.classList.remove('active');b.style.background='var(--bg-input)';b.style.borderColor='var(--border)';b.style.color='var(--text-sec)'});
+    allBtn.classList.add('active');allBtn.style.background='var(--accent-dim)';allBtn.style.borderColor='var(--accent)';allBtn.style.color='var(--accent)';
+  }else{
+    btn.classList.toggle('active');
+    if(btn.classList.contains('active')){btn.style.background='var(--accent-dim)';btn.style.borderColor='var(--accent)';btn.style.color='var(--accent)'}
+    else{btn.style.background='var(--bg-input)';btn.style.borderColor='var(--border)';btn.style.color='var(--text-sec)'}
+    // Uncheck "all" if any individual is active
+    const anyDsp=dspBtns.some(b=>b.classList.contains('active'));
+    if(anyDsp){allBtn.classList.remove('active');allBtn.style.background='var(--bg-input)';allBtn.style.borderColor='var(--border)';allBtn.style.color='var(--text-sec)'}
+    // If none selected, revert to all
+    if(!anyDsp){allBtn.classList.add('active');allBtn.style.background='var(--accent-dim)';allBtn.style.borderColor='var(--accent)';allBtn.style.color='var(--accent)'}
+  }
+}
+function execBulkAddTracker(){
+  const val=(document.getElementById('bulkTrackerUrl')?.value||'').trim();
+  if(!val){toast('Cole a URL do pixel','error');return}
   const url=extractTrackerUrl(val);
-  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.includes(url))e.trackers.push(url)});
-  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s)${url!==val.trim()?' (URL extraída da tag)':''}`,'success');
+  const allBtn=document.querySelector('.bulk-scope-btn[data-scope="all"]');
+  const dsps=allBtn?.classList.contains('active')?'all':[...document.querySelectorAll('.bulk-scope-btn.active:not([data-scope="all"])')].map(b=>b.dataset.scope);
+  if(dsps!=='all'&&!dsps.length){toast('Selecione ao menos uma DSP','error');return}
+  const ids=getSelectedAssetIds();
+  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.some(t=>(typeof t==='string'?t:t.url)===url))e.trackers.push({url,dsps})});
+  document.querySelector('.fr-overlay')?.remove();
+  const scopeLabel=dsps==='all'?'todas DSPs':dsps.map(d=>({xandr:'Xandr',dv360:'DV360',stackadapt:'StackAdapt',amazondsp:'Amazon DSP'}[d]||d)).join(', ');
+  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s) → ${scopeLabel}${url!==val?' (URL extraída)':''}`,'success');
 }
 
 function showFindReplace(){
@@ -1605,7 +1660,7 @@ function bulkDuplicate(){
   const ids=getSelectedAssetIds();
   ids.forEach(id=>{
     const orig=assetEntries.find(a=>a.id===id);if(!orig)return;
-    assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',landingPage:''});
+    assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',trackers:orig.trackers.map(t=>typeof t==='string'?{url:t,dsps:'all'}:{...t,dsps:t.dsps==='all'?'all':[...t.dsps]}),landingPage:''});
   });
   renderAssetsTable();toast(`${ids.length} asset(s) duplicado(s)`,'success');
 }
@@ -1839,8 +1894,44 @@ document.getElementById('assetsTableBody').addEventListener('click',async e=>{
   // Tracker chip remove
   const chipRm=e.target.closest('[data-tracker-rm]');
   if(chipRm){const id=parseInt(chipRm.dataset.trackerRm),ti=parseInt(chipRm.dataset.ti);const entry=assetEntries.find(a=>a.id===id);if(entry){entry.trackers.splice(ti,1);renderAssetsTable()};return}
+  // Scope badge toggle popover
+  const scopeBtn=e.target.closest('[data-scope-toggle]');
+  if(scopeBtn){
+    e.stopPropagation();
+    // Close any existing popover
+    document.querySelectorAll('.tracker-scope-pop').forEach(p=>p.remove());
+    const assetId=parseInt(scopeBtn.dataset.scopeToggle);
+    const ti=parseInt(scopeBtn.dataset.ti);
+    const entry=assetEntries.find(a=>a.id===assetId);
+    if(!entry)return;
+    const tr=typeof entry.trackers[ti]==='string'?{url:entry.trackers[ti],dsps:'all'}:entry.trackers[ti];
+    const dspList=[['xandr','Xandr'],['dv360','DV360'],['stackadapt','StackAdapt'],['amazondsp','Amazon DSP']];
+    const isAll=tr.dsps==='all';
+    const pop=document.createElement('div');pop.className='tracker-scope-pop';
+    pop.innerHTML=`<div class="tracker-scope-pop-item" data-pop-dsp="all"><div class="pop-cb${isAll?' checked':''}">✓</div><span>Todas</span></div><div class="tracker-scope-pop-divider"></div>${dspList.map(([k,l])=>{const on=isAll||tr.dsps.includes(k);return`<div class="tracker-scope-pop-item" data-pop-dsp="${k}"><div class="pop-cb${on?' checked':''}">✓</div><span>${l}</span></div>`}).join('')}`;
+    scopeBtn.style.position='relative';scopeBtn.appendChild(pop);
+    // Handle popover clicks
+    pop.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      const item=ev.target.closest('[data-pop-dsp]');if(!item)return;
+      const dspKey=item.dataset.popDsp;
+      if(dspKey==='all'){
+        tr.dsps='all';
+      }else{
+        let arr=tr.dsps==='all'?[...dspList.map(d=>d[0])]:[...tr.dsps];
+        if(arr.includes(dspKey))arr=arr.filter(d=>d!==dspKey);else arr.push(dspKey);
+        tr.dsps=arr.length===0||arr.length===dspList.length?'all':arr;
+      }
+      entry.trackers[ti]=tr;
+      pop.remove();renderAssetsTable();
+    });
+    // Close on outside click
+    const closeHandler=ev=>{if(!pop.contains(ev.target)&&ev.target!==scopeBtn){pop.remove();document.removeEventListener('click',closeHandler)}};
+    setTimeout(()=>document.addEventListener('click',closeHandler),0);
+    return;
+  }
   const dup=e.target.closest('[data-dup]');
-  if(dup){const id=parseInt(dup.dataset.dup);const orig=assetEntries.find(a=>a.id===id);if(orig){assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',trackers:[...orig.trackers],landingPage:''});renderAssetsTable()};return}
+  if(dup){const id=parseInt(dup.dataset.dup);const orig=assetEntries.find(a=>a.id===id);if(orig){assetEntries.push({...orig,id:++assetIdCounter,name:orig.name+'_copy',trackers:orig.trackers.map(t=>typeof t==='string'?{url:t,dsps:'all'}:{...t,dsps:t.dsps==='all'?'all':[...t.dsps]}),landingPage:''});renderAssetsTable()};return}
   const rm=e.target.closest('[data-rm]');
   if(rm){const id=parseInt(rm.dataset.rm);assetEntries=assetEntries.filter(a=>a.id!==id);renderAssetsTable();updateVisibility();if(!assetEntries.length){document.getElementById('assetsUploadZone').classList.remove('has-files');document.getElementById('assetsContent').style.display='none'};return}
   const cb=e.target.closest('.asset-cb');if(cb)setTimeout(updateAssetsBulkBar,0);
@@ -1876,7 +1967,7 @@ function commitSingleTracker(input){
   const url=extractTrackerUrl(raw);
   const id=parseInt(input.dataset.trackerAdd);
   const entry=assetEntries.find(a=>a.id===id);
-  if(entry&&!entry.trackers.includes(url)){entry.trackers.push(url);renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
+  if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
 }
 document.getElementById('assetsSelectAll').addEventListener('change',e=>{
   document.querySelectorAll('.asset-cb').forEach(c=>c.checked=e.target.checked);updateAssetsBulkBar();
