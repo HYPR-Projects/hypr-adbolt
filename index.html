@@ -913,7 +913,7 @@ async function initAuth(){try{if(!sbClient){document.getElementById('login-scree
 async function doGoogleLogin(){if(!sbClient)return;const btn=document.getElementById('login-google-btn');const errEl=document.getElementById('login-error');errEl.innerHTML='';errEl.classList.remove('visible');btn.disabled=true;btn.textContent='Conectando...';const{error}=await sbClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+window.location.pathname,queryParams:{hd:'hypr.mobi'}}});if(error){btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg> Entrar com Google';errEl.innerHTML='Erro: '+error.message;errEl.classList.add('visible')}}
 async function handleLoggedIn(user){if(!user||!user.email||!user.email.endsWith('@hypr.mobi')){await sbClient.auth.signOut();const errEl=document.getElementById('login-error');if(errEl){errEl.innerHTML='Acesso restrito a <strong>@hypr.mobi</strong>. Você entrou com: '+(user?user.email:'desconhecido');errEl.classList.add('visible')}return}if(currentUser&&currentUser.id===user.id)return;currentUser=user;const meta=user.user_metadata||{};const name=meta.full_name||meta.name||user.email;document.getElementById('headerName').textContent=name;const avatarEl=document.getElementById('headerAvatar');const avatarUrl=meta.avatar_url||meta.picture||'';if(avatarUrl){avatarEl.src=avatarUrl;avatarEl.alt=name;avatarEl.style.display=''}else{avatarEl.style.display='none';const ini=document.getElementById('headerInitials');if(ini){ini.textContent=name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();ini.style.display='flex'}}const ls=document.getElementById('login-screen');if(ls.style.display!=='none'){ls.style.opacity='0';ls.style.transform='scale(1.02)';ls.style.transition='opacity 0.3s ease, transform 0.3s ease';setTimeout(()=>{ls.style.display='none'},300)}else{ls.style.display='none'}document.getElementById('appShell').classList.add('active')}
 function showLoginScreen(){const ls=document.getElementById('login-screen');ls.style.display='';ls.style.opacity='';ls.style.transform='';ls.style.transition='';document.getElementById('appShell').classList.remove('active')}
-async function doSignOut(){if(sbClient)await sbClient.auth.signOut();currentUser=null;showLoginScreen()}
+async function doSignOut(){if(_activating){toast('Aguarde a ativação terminar','error');return}if(sbClient)await sbClient.auth.signOut();currentUser=null;showLoginScreen()}
 
 // ── Utils ──
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
@@ -1005,9 +1005,10 @@ function enterWizard(mode){
   const showAssets=mode==='assets';const dspSubs={dv360:['API + Template CSV','API · Upload direto'],stackadapt:['Apenas template XLSX','Em breve'],xandr:['API + Template XLSX','API · Upload direto'],amazondsp:['Apenas template XLSX','Em breve']};const unavail=new Set(['stackadapt','amazondsp']);
   document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{const dsp=card.dataset.dsp;const sub=card.querySelector('.dsp-card-sub');if(sub)sub.textContent=dspSubs[dsp]?.[showAssets?1:0]||sub.textContent;if(showAssets&&unavail.has(dsp))card.classList.add('dsp-unavailable')});}
 function hasWizardData(){return!!(parsedData?.placements?.length||surveyEntries.length||assetEntries.length||selectedDsps.size)}
-function exitWizard(){if(hasWizardData()&&!confirm('Você tem dados configurados. Sair vai descartar tudo. Continuar?'))return;resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
+function exitWizard(){if(_activating){toast('Aguarde a ativação terminar','error');return}if(hasWizardData()&&!confirm('Você tem dados configurados. Sair vai descartar tudo. Continuar?'))return;resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
 function renderWizardSteps(){const config=WIZARD_CONFIGS[currentMode];document.getElementById('wizardSteps').innerHTML=config.steps.map((step,i)=>`<div class="wizard-step${i===0?' active':''}" data-idx="${i}" role="button" tabindex="0" onclick="navigateToStep(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateToStep(${i})}"><div class="wizard-step-num"><span class="step-number">${i+1}</span><svg class="check-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="wizard-step-info"><div class="wizard-step-label">${config.labels[i]}</div><div class="wizard-step-sublabel">${config.sublabels[i]}</div></div></div>${i<config.steps.length-1?'<div class="wizard-step-connector"></div>':''}`).join('')}
 function navigateToStep(idx){
+  if(_activating){toast('Aguarde a ativação terminar','error');return}
   const config=WIZARD_CONFIGS[currentMode];if(idx<0||idx>=config.steps.length)return;
   const targetStep=config.steps[idx];
   // Validate prerequisites when advancing to later steps
@@ -1072,9 +1073,13 @@ function finalizeProgress(dsp,successCount,total){
 }
 
 let _activationDone=false;
+let _activating=false;
+function _onBeforeUnload(e){e.preventDefault();e.returnValue='';return''}
 async function activateInDsps(){
   if(!currentUser){toast('Faça login primeiro','error');return}
   if(currentMode==='assets')commitPendingTrackers();
+  _activating=true;
+  window.addEventListener('beforeunload',_onBeforeUnload);
 
   if(selectedDsps.has('xandr')){
     let brandUrl=document.getElementById('inputXandrBrandUrl').value.trim();
@@ -1173,6 +1178,8 @@ async function activateInDsps(){
   if(anySuccess){_activationDone=true;btn.textContent='✓ Ativado';btn.disabled=false}
   else{btn.textContent='Ativar Agora';btn.disabled=false}
   if(isAssetMode)updateGenerateBtn();
+  _activating=false;
+  window.removeEventListener('beforeunload',_onBeforeUnload);
 }
 async function activateXandr(token){
   try{
@@ -2984,6 +2991,7 @@ function updateTopbarBtn(){
   }
 }
 function openDashboard(){
+  if(_activating){toast('Aguarde a ativação terminar','error');return}
   document.getElementById('flowSelector').style.display='none';
   document.getElementById('wizard').classList.remove('active');
   document.getElementById('dashboard').classList.add('active');
