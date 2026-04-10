@@ -651,9 +651,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       <p>Escolha o tipo de criativo para começar. Gere templates e ative nas DSPs em um fluxo guiado.</p>
     </div>
     <div class="flow-cards">
-      <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('tags')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('tags')}"><div class="flow-card-icon"><span>📄</span></div><div class="flow-card-title">3P Tags</div><div class="flow-card-desc">Upload de tags exportadas do Campaign Manager</div></div>
+      <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('tags')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('tags')}"><div class="flow-card-icon"><span>📄</span></div><div class="flow-card-title">Embeds & Adserver Tags</div><div class="flow-card-desc">Adserver script tags, VAST tags, Tap To Xp formats</div></div>
       <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('surveys')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('surveys')}"><div class="flow-card-icon"><span>📊</span></div><div class="flow-card-title">Surveys</div><div class="flow-card-desc">Pesquisas Typeform embedded em iframes</div></div>
-      <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('assets')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('assets')}"><div class="flow-card-icon"><span>🎨</span></div><div class="flow-card-title">Standard Images</div><div class="flow-card-desc">Upload direto de imagens e vídeos nas DSPs</div></div>
+      <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('assets')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('assets')}"><div class="flow-card-icon"><span>🎨</span></div><div class="flow-card-title">Standard Assets</div><div class="flow-card-desc">HTML5, image or video files</div></div>
     </div>
   </div>
 
@@ -665,7 +665,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     </nav>
     <div class="wizard-content" id="wizardContent">
       <div class="step-view full-width" id="stepTags" data-step="tags">
-        <div class="step-header"><h2>Upload de 3P Tags</h2><p>Arraste o arquivo de tags exportado do Campaign Manager (.xlsx ou .csv)</p></div>
+        <div class="step-header"><h2>Embeds & Adserver Tags</h2><p>Arraste o arquivo de tags exportado do Campaign Manager (.xlsx ou .csv)</p></div>
         <div class="upload-zone" id="uploadZone">
           <span class="upload-icon">📄</span>
           <div class="upload-text">Arraste o arquivo aqui ou <strong>clique para selecionar</strong></div>
@@ -729,7 +729,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       </div>
 
       <div class="step-view full-width" id="stepAssets" data-step="assets">
-        <div class="step-header"><h2>Standard Images</h2><p>Upload de imagens e vídeos para ativação direta nas DSPs</p></div>
+        <div class="step-header"><h2>Standard Assets</h2><p>Upload de imagens, vídeos e HTML5 para ativação direta nas DSPs</p></div>
         <div class="assets-upload-zone" id="assetsUploadZone">
           <span class="upload-icon">🎨</span>
           <div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div>
@@ -930,8 +930,8 @@ let toastTimer=null;
 function toast(msg,type=''){const el=document.getElementById('toast');document.getElementById('toastMsg').textContent=msg;el.className='toast '+type;clearTimeout(toastTimer);requestAnimationFrame(()=>el.classList.add('show'));if(type!=='error')toastTimer=setTimeout(()=>el.classList.remove('show'),3200)}
 
 // ── Wizard Navigation ──
-const WIZARD_CONFIGS={tags:{steps:['tags','dsps','config','activate'],labels:['Upload 3P Tags','DSPs','Config','Gerar & Ativar'],sublabels:['Arquivo CM360','Destino','Marca e opções','Templates']},surveys:{steps:['surveys','dsps','config','activate'],labels:['Surveys','DSPs','Config','Gerar & Ativar'],sublabels:['URLs Typeform','Destino','Marca e opções','Templates']},assets:{steps:['assets','dsps','config','activate'],labels:['Standard Images','DSPs','Config','Ativar'],sublabels:['Upload mídia','Destino','Marca e opções','Ativação']}};
-const MODE_LABELS={tags:'3P Tags',surveys:'Surveys',assets:'Standard Images'};
+const WIZARD_CONFIGS={tags:{steps:['tags','dsps','config','activate'],labels:['Embeds & Tags','DSPs','Config','Gerar & Ativar'],sublabels:['Arquivo CM360','Destino','Marca e opções','Templates']},surveys:{steps:['surveys','dsps','config','activate'],labels:['Surveys','DSPs','Config','Gerar & Ativar'],sublabels:['URLs Typeform','Destino','Marca e opções','Templates']},assets:{steps:['assets','dsps','config','activate'],labels:['Standard Assets','DSPs','Config','Ativar'],sublabels:['Upload mídia','Destino','Marca e opções','Ativação']}};
+const MODE_LABELS={tags:'Embeds & Tags',surveys:'Surveys',assets:'Standard Assets'};
 
 function resetWizardState(){
   // Reset all shared state
