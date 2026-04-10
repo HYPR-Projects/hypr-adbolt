@@ -238,6 +238,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .modal-tracker-add{display:flex;gap:6px;align-items:center}
 .modal-tracker-add-btn{width:28px;height:28px;border:1px solid var(--accent-ring);border-radius:var(--r-xs);background:var(--accent-dim);color:var(--accent);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f);flex-shrink:0}
 .modal-tracker-add-btn:hover{background:var(--accent);color:var(--text-on-accent)}
+.bulk-tracker-mode{display:flex;border:1px solid var(--border);border-radius:var(--r-xs);overflow:hidden;margin-bottom:8px}
+.btm-btn{flex:1;padding:6px 12px;border:none;background:transparent;color:var(--text-tri);font-size:0.7rem;font-family:var(--font);cursor:pointer;transition:all var(--dur-f);white-space:nowrap}
+.btm-btn.active{background:var(--accent-dim);color:var(--accent);font-weight:600}
+.btm-btn:not(.active):hover{background:var(--bg-raised);color:var(--text-sec)}
 /* ── View transitions ── */
 .view-exit{animation:viewExit 0.2s var(--ease) forwards}
 @keyframes viewExit{to{opacity:0;transform:translateY(-8px)}}
@@ -2731,6 +2735,7 @@ async function syncCreatives(){
 // Bulk edit
 function bulkEditSelected(){
   if(dashSelectedKeys.size===0)return;
+  _bulkTrackerMode={};
   const keys=Array.from(dashSelectedKeys);
   const first=dashGroups.find(x=>x._gid===keys[0]);if(!first)return;
   dashEditGroup=first;dashEditGroup._bulkKeys=keys;
@@ -2752,8 +2757,12 @@ function bulkEditSelected(){
     if(dsp==='dv360'){
       h+='<div class="modal-field"><label>Landing Page URL <span style="font-weight:400;color:var(--text-tri)">(exitEvents)</span></label><input id="editLandingPage_dv360" value="" placeholder="Deixe vazio pra manter"></div>';
     }
-    // Bulk trackers - add new trackers to all selected creatives for this DSP
-    h+='<div class="modal-field"><label>Adicionar Impression Trackers <span style="font-weight:400;color:var(--text-tri)">(adicionados aos existentes de cada criativo)</span></label>';
+    // Bulk trackers with add/replace toggle
+    h+='<div class="modal-field"><label>Impression Trackers</label>';
+    h+='<div class="bulk-tracker-mode" id="bulkTrackerMode_'+dsp+'">';
+    h+='<button class="btm-btn active" data-mode="add" onclick="setBulkTrackerMode(\''+dsp+'\',\'add\',this)">Adicionar aos existentes</button>';
+    h+='<button class="btm-btn" data-mode="replace" onclick="setBulkTrackerMode(\''+dsp+'\',\'replace\',this)">Substituir todos</button>';
+    h+='</div>';
     h+='<div id="editTrackers_'+dsp+'" class="modal-trackers">';
     h+='<div class="modal-tracker-add"><input id="editTrackerNew_'+dsp+'" class="modal-tracker-input" placeholder="Cole a URL do pixel..."><button class="modal-tracker-add-btn" onclick="addModalTracker(\''+dsp+'\')">+</button></div>';
     h+='</div></div>';
@@ -2830,6 +2839,12 @@ function addModalTracker(dsp){
   inp.value='';
 }
 function closeEditModal(){document.getElementById('editModal').classList.remove('visible');dashEditGroup=null}
+let _bulkTrackerMode={};
+function setBulkTrackerMode(dsp,mode,btn){
+  _bulkTrackerMode[dsp]=mode;
+  btn.parentElement.querySelectorAll('.btm-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
 
 async function saveEdit(){
   if(!dashEditGroup||!sbClient||!currentUser)return;
@@ -2851,14 +2866,19 @@ async function saveEdit(){
         const ckEl=document.getElementById('editClickUrl_'+dsp);
         if(lpEl&&lpEl.value.trim())ch.landing_page=lpEl.value.trim();
         if(ckEl&&ckEl.value.trim())ch.click_url=ckEl.value.trim();
-        // Bulk trackers: merge new trackers with existing ones for each creative
+        // Bulk trackers: add or replace based on toggle
         const bulkNewTrackers=getModalTrackers(dsp);
         if(bulkNewTrackers.length>0){
-          let existing=[];
-          try{existing=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){}
-          existing=existing.map(t=>typeof t==='string'?t:(t.url||t)).filter(Boolean);
-          const merged=[...existing,...bulkNewTrackers.filter(u=>!existing.includes(u))];
-          ch.trackers=merged;
+          const mode=_bulkTrackerMode[dsp]||'add';
+          if(mode==='replace'){
+            ch.trackers=bulkNewTrackers;
+          } else {
+            let existing=[];
+            try{existing=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){}
+            existing=existing.map(t=>typeof t==='string'?t:(t.url||t)).filter(Boolean);
+            const merged=[...existing,...bulkNewTrackers.filter(u=>!existing.includes(u))];
+            ch.trackers=merged;
+          }
         }
       } else {
         if(newName&&newName!==g.name)ch.name=newName;
