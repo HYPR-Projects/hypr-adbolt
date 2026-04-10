@@ -2752,6 +2752,11 @@ function bulkEditSelected(){
     if(dsp==='dv360'){
       h+='<div class="modal-field"><label>Landing Page URL <span style="font-weight:400;color:var(--text-tri)">(exitEvents)</span></label><input id="editLandingPage_dv360" value="" placeholder="Deixe vazio pra manter"></div>';
     }
+    // Bulk trackers - add new trackers to all selected creatives for this DSP
+    h+='<div class="modal-field"><label>Adicionar Impression Trackers <span style="font-weight:400;color:var(--text-tri)">(adicionados aos existentes de cada criativo)</span></label>';
+    h+='<div id="editTrackers_'+dsp+'" class="modal-trackers">';
+    h+='<div class="modal-tracker-add"><input id="editTrackerNew_'+dsp+'" class="modal-tracker-input" placeholder="Cole a URL do pixel..."><button class="modal-tracker-add-btn" onclick="addModalTracker(\''+dsp+'\')">+</button></div>';
+    h+='</div></div>';
     h+='</div>';
   }
   document.getElementById('editModalBody').innerHTML=h;
@@ -2846,6 +2851,15 @@ async function saveEdit(){
         const ckEl=document.getElementById('editClickUrl_'+dsp);
         if(lpEl&&lpEl.value.trim())ch.landing_page=lpEl.value.trim();
         if(ckEl&&ckEl.value.trim())ch.click_url=ckEl.value.trim();
+        // Bulk trackers: merge new trackers with existing ones for each creative
+        const bulkNewTrackers=getModalTrackers(dsp);
+        if(bulkNewTrackers.length>0){
+          let existing=[];
+          try{existing=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){}
+          existing=existing.map(t=>typeof t==='string'?t:(t.url||t)).filter(Boolean);
+          const merged=[...existing,...bulkNewTrackers.filter(u=>!existing.includes(u))];
+          ch.trackers=merged;
+        }
       } else {
         if(newName&&newName!==g.name)ch.name=newName;
         // Landing page for both Xandr and DV360
