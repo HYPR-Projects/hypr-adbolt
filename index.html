@@ -306,6 +306,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .wizard-step-num .check-svg{display:none}
 .wizard-step.completed .wizard-step-num .check-svg{display:block}
 .wizard-step.completed .wizard-step-num .step-number{display:none}
+.wizard-step.dimmed{opacity:0.35;pointer-events:none}
 .wizard-step-info{flex:1;min-width:0}
 .wizard-step-label{font-size:0.82rem;font-weight:500}
 .wizard-step-sublabel{font-size:0.68rem;color:var(--text-tri);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -362,6 +363,9 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .placements-table tbody tr,.assets-table tbody tr{transition:background var(--dur-f);opacity:0;animation:fadeRow 0.3s var(--ease-out) forwards}
 .placements-table tbody tr:hover,.assets-table tbody tr:hover{background:var(--accent-glow)}
 .dim-badge{background:var(--accent-dim);color:var(--accent);padding:3px 10px;border-radius:var(--r-pill);font-size:0.7rem;font-weight:500;display:inline-block}
+.tag-status-badge{padding:3px 10px;border-radius:var(--r-pill);font-size:0.68rem;font-weight:500;display:inline-block;cursor:help}
+.tag-status-badge.ok{background:var(--success-dim);color:var(--success)}
+.tag-status-badge.missing{background:var(--error-dim);color:var(--error)}
 
 /* ── Survey ── */
 .survey-types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
@@ -542,6 +546,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .act-detail{font-size:0.75rem;color:var(--text-sec);font-family:var(--mono)}
 .btn-copy-ids{background:var(--bg-raised);border:1px solid var(--border);color:var(--text-sec);border-radius:var(--r-xs);padding:5px 12px;font-size:0.72rem;font-weight:500;cursor:pointer;transition:all var(--dur-f);font-family:var(--font)}
 .btn-copy-ids:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.act-fail-list{margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:4px}
+.act-fail-item{display:flex;gap:8px;font-size:0.72rem;align-items:baseline}
+.act-fail-name{color:var(--text-sec);font-weight:500;flex-shrink:0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.act-fail-error{color:var(--error);font-family:var(--mono);font-size:0.68rem}
 .activation-progress{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px;animation:slideUp 0.3s var(--ease-out)}
 .activation-progress h3{font-size:0.85rem;font-weight:600;margin-bottom:18px}
 .ap-dsp{margin-bottom:16px}.ap-dsp:last-child{margin-bottom:0}
@@ -909,7 +917,7 @@ const MODE_LABELS={tags:'3P Tags',surveys:'Surveys',assets:'Standard Images'};
 
 function resetWizardState(){
   // Reset all shared state
-  selectedDsps=new Set();generatedFiles={};placementAssignment={};_selectedTagIds.clear();_selectedAssetIds.clear();
+  selectedDsps=new Set();generatedFiles={};placementAssignment={};_selectedTagIds.clear();_selectedAssetIds.clear();_activationDone=false;
   // Reset mode-specific data
   parsedData=null;assetEntries=[];assetIdCounter=0;surveyEntries=[];surveyIdCounter=0;
   _tagsFilterType='all';_tagsFilterSize='all';_assetsFilterType='all';_assetsFilterSize='all';
@@ -950,13 +958,47 @@ function enterWizard(mode){
   document.getElementById('wizardModeLabel').textContent=MODE_LABELS[mode];
   renderWizardSteps();navigateToStep(0);
   const brandUrlField=document.getElementById('inputXandrBrandUrl');if(brandUrlField&&!brandUrlField.value.trim()&&mode==='surveys')brandUrlField.value='https://hypr.mobi';
-  const showAssets=mode==='assets';const dspSubs={dv360:['CSV · Third-Party Tags | API','API · Hosted Creatives'],stackadapt:['XLSX · Apenas template','API · Em breve'],xandr:['XLSX · Third-Party Creative | API','API · Hosted Creatives'],amazondsp:['XLSX · Apenas template','API · Em breve']};const unavail=new Set(['stackadapt','amazondsp']);
+  const showAssets=mode==='assets';const dspSubs={dv360:['API + Template CSV','API · Upload direto'],stackadapt:['Apenas template XLSX','Em breve'],xandr:['API + Template XLSX','API · Upload direto'],amazondsp:['Apenas template XLSX','Em breve']};const unavail=new Set(['stackadapt','amazondsp']);
   document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{const dsp=card.dataset.dsp;const sub=card.querySelector('.dsp-card-sub');if(sub)sub.textContent=dspSubs[dsp]?.[showAssets?1:0]||sub.textContent;if(showAssets&&unavail.has(dsp))card.classList.add('dsp-unavailable')})}
-function exitWizard(){resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
+function hasWizardData(){return!!(parsedData?.placements?.length||surveyEntries.length||assetEntries.length||selectedDsps.size)}
+function exitWizard(){if(hasWizardData()&&!confirm('Você tem dados configurados. Sair vai descartar tudo. Continuar?'))return;resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
 function renderWizardSteps(){const config=WIZARD_CONFIGS[currentMode];document.getElementById('wizardSteps').innerHTML=config.steps.map((step,i)=>`<div class="wizard-step${i===0?' active':''}" data-idx="${i}" role="button" tabindex="0" onclick="navigateToStep(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateToStep(${i})}"><div class="wizard-step-num"><span class="step-number">${i+1}</span><svg class="check-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="wizard-step-info"><div class="wizard-step-label">${config.labels[i]}</div><div class="wizard-step-sublabel">${config.sublabels[i]}</div></div></div>${i<config.steps.length-1?'<div class="wizard-step-connector"></div>':''}`).join('')}
-function navigateToStep(idx){const config=WIZARD_CONFIGS[currentMode];if(idx<0||idx>=config.steps.length)return;if(currentMode==='assets')commitPendingTrackers();activeWizardStep=idx;const stepKey=config.steps[idx];document.querySelectorAll('.wizard-step').forEach((el,i)=>el.classList.toggle('active',i===idx));document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'));const map={tags:'stepTags',surveys:'stepSurveys',assets:'stepAssets',dsps:'stepDsp',config:'stepConfig',activate:'stepActivate'};const target=document.getElementById(map[stepKey]);if(target){target.classList.add('active');target.scrollTop=0}document.getElementById('wizardContent').scrollTop=0;updateWizardStepStates();updateGenerateBtn();renderStepNav()}
+function navigateToStep(idx){
+  const config=WIZARD_CONFIGS[currentMode];if(idx<0||idx>=config.steps.length)return;
+  const targetStep=config.steps[idx];
+  // Validate prerequisites when advancing to later steps
+  if(idx>activeWizardStep){
+    const hasContent=!!(parsedData?.placements?.length||surveyEntries.length||assetEntries.length);
+    const hasDsp=selectedDsps.size>0;
+    if((targetStep==='dsps'||targetStep==='config'||targetStep==='activate')&&!hasContent){toast('Adicione conteúdo primeiro','error');return}
+    if((targetStep==='config'||targetStep==='activate')&&!hasDsp){toast('Selecione pelo menos uma DSP','error');return}
+    if(targetStep==='activate'&&selectedDsps.has('xandr')){
+      const brandUrl=document.getElementById('inputXandrBrandUrl').value.trim();
+      if(!brandUrl){toast('Preencha a Brand URL na seção Auditoria Xandr','error');document.getElementById('inputXandrBrandUrl').focus();return}
+    }
+  }
+  if(currentMode==='assets')commitPendingTrackers();activeWizardStep=idx;const stepKey=config.steps[idx];document.querySelectorAll('.wizard-step').forEach((el,i)=>el.classList.toggle('active',i===idx));document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'));const map={tags:'stepTags',surveys:'stepSurveys',assets:'stepAssets',dsps:'stepDsp',config:'stepConfig',activate:'stepActivate'};const target=document.getElementById(map[stepKey]);if(target){target.classList.add('active');target.scrollTop=0}document.getElementById('wizardContent').scrollTop=0;updateWizardStepStates();updateGenerateBtn();renderStepNav()}
 function renderStepNav(){const config=WIZARD_CONFIGS[currentMode];document.querySelectorAll('.step-nav').forEach(n=>n.remove());const activeView=document.querySelector('.step-view.active');if(!activeView)return;const isFirst=activeWizardStep===0;const isLast=activeWizardStep===config.steps.length-1;const nav=document.createElement('div');nav.className='step-nav';const prevLabel=isFirst?null:config.labels[activeWizardStep-1];const nextLabel=isLast?null:config.labels[activeWizardStep+1];nav.innerHTML=`${isFirst?'<div class="step-nav-spacer"></div>':`<button class="step-nav-btn" onclick="navigateToStep(${activeWizardStep-1})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>${prevLabel}</button>`}<div class="step-nav-spacer"></div>${isLast?'':`<button class="step-nav-btn primary" onclick="navigateToStep(${activeWizardStep+1})">${nextLabel}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>`}`;activeView.appendChild(nav)}
-function updateWizardStepStates(){const config=WIZARD_CONFIGS[currentMode];const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasDsp=selectedDsps.size>0;document.querySelectorAll('.wizard-step').forEach((el,i)=>{const s=config.steps[i];let c=false;if(s==='tags')c=hasTags;if(s==='surveys')c=hasSurveys;if(s==='assets')c=hasAssets;if(s==='dsps')c=hasDsp;if(s==='config')c=hasDsp;el.classList.toggle('completed',c&&i<activeWizardStep)})}
+function updateWizardStepStates(){
+  const config=WIZARD_CONFIGS[currentMode];
+  const hasContent=!!(parsedData?.placements?.length||surveyEntries.length||assetEntries.length);
+  const hasDsp=selectedDsps.size>0;
+  document.querySelectorAll('.wizard-step').forEach((el,i)=>{
+    const s=config.steps[i];
+    let completed=false;
+    if(s==='tags')completed=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;
+    if(s==='surveys')completed=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;
+    if(s==='assets')completed=currentMode==='assets'&&assetEntries.length>0;
+    if(s==='dsps')completed=hasDsp;
+    if(s==='config')completed=hasDsp;
+    el.classList.toggle('completed',completed&&i<activeWizardStep);
+    // Dim unreachable steps
+    let reachable=true;
+    if((s==='dsps'||s==='config'||s==='activate')&&!hasContent)reachable=false;
+    if((s==='config'||s==='activate')&&!hasDsp)reachable=false;
+    el.classList.toggle('dimmed',!reachable&&i>activeWizardStep);
+  });
+}
 function updateVisibility(){updateWizardStepStates();updateGenerateBtn();if(currentMode==='assets'&&assetEntries.length>0)renderAssetsTable()}
 // ── Activation (progress, DSP API calls, results) ──
 function showActivationProgress(dsps,totalPerDsp){
@@ -985,9 +1027,9 @@ function finalizeProgress(dsp,successCount,total){
   if(cur)cur.textContent=successCount===total?`✓ ${successCount}/${total} criativos criados`:`⚠ ${successCount}/${total} criados (${total-successCount} erros)`;
 }
 
+let _activationDone=false;
 async function activateInDsps(){
   if(!currentUser){toast('Faça login primeiro','error');return}
-  // Commit any tracker values left in input fields before activation
   if(currentMode==='assets')commitPendingTrackers();
 
   if(selectedDsps.has('xandr')){
@@ -996,7 +1038,26 @@ async function activateInDsps(){
     if(!brandUrl){toast('Preencha a Brand URL na seção Auditoria Xandr','error');document.getElementById('inputXandrBrandUrl').focus();return}
   }
 
+  // Validate landing pages for assets mode
+  if(currentMode==='assets'){
+    const missingLp=assetEntries.filter(a=>!a.landingPage.trim());
+    if(missingLp.length){toast(`${missingLp.length} asset(s) sem landing page. Preencha antes de ativar.`,'error');return}
+  }
+
+  // Guard against re-activation
+  if(_activationDone){
+    if(!confirm('Criativos já foram ativados nesta sessão. Ativar novamente pode criar duplicados nas DSPs. Continuar?'))return;
+  }
+
+  // Build confirmation summary
   const isAssetMode=currentMode==='assets';
+  const dspNames={xandr:'Xandr',dv360:'DV360',stackadapt:'StackAdapt',amazondsp:'Amazon DSP'};
+  const activeDspList=[...selectedDsps].map(d=>dspNames[d]||d);
+  let creativeCount=0;
+  if(isAssetMode)creativeCount=assetEntries.length;
+  else{const hasTags=currentMode!=='surveys'&&parsedData;const hasSurveys=currentMode!=='tags'&&surveyEntries.length>0;if(hasTags)creativeCount+=parsedData.placements.length;if(hasSurveys)creativeCount+=surveyEntries.reduce((s,e)=>s+e.urls.length,0)}
+  if(!confirm(`Ativar ${creativeCount} criativo(s) em ${activeDspList.join(' e ')}?\n\nEssa ação envia os criativos direto pras DSPs via API.`))return;
+
   const btn=document.getElementById('btnActivate');
   btn.disabled=true;btn.textContent='Ativando...';
 
@@ -1046,7 +1107,9 @@ async function activateInDsps(){
   }
 
   renderActivationResults(results);
-  btn.textContent='Ativar Agora';btn.disabled=false;
+  const anySuccess=results.some(r=>r.status==='success'||r.status==='partial');
+  if(anySuccess){_activationDone=true;btn.textContent='✓ Ativado';btn.disabled=false}
+  else{btn.textContent='Ativar Agora';btn.disabled=false}
   if(isAssetMode)updateGenerateBtn();
 }
 async function activateXandr(token){
@@ -1245,7 +1308,9 @@ function renderActivationResults(results){
   const container=document.getElementById('activationCards');
   container.innerHTML=results.map((r,i)=>{
     const ids=(r.results||[]).filter(x=>x.success&&x.creativeId).map(x=>x.creativeId);
+    const failed=(r.results||[]).filter(x=>!x.success);
     const copyBtn=ids.length?`<button class="btn-copy-ids" onclick="navigator.clipboard.writeText('${ids.join('\\n')}');this.textContent='Copiado ✓';setTimeout(()=>this.textContent='Copiar IDs',1500)">Copiar IDs</button>`:'';
+    const failDetails=failed.length?`<div class="act-fail-list">${failed.map(f=>`<div class="act-fail-item"><span class="act-fail-name">${esc(f.name||'?')}</span><span class="act-fail-error">${esc(f.error||'Erro desconhecido')}</span></div>`).join('')}</div>`:'';
     return `<div class="activation-card" style="animation-delay:${i*120}ms">
       <div class="act-info">
         <span class="act-dsp">${r.dsp}</span>
@@ -1255,6 +1320,7 @@ function renderActivationResults(results){
         ${copyBtn}
         <span class="act-detail">${r.detail||''}</span>
       </div>
+      ${failDetails}
     </div>`;
   }).join('');
   document.getElementById('activationResults').classList.add('visible');
@@ -1263,7 +1329,7 @@ function renderActivationResults(results){
 
 // ── DSP Selection ──
 function toggleDsp(card){if(card.classList.contains('dsp-unavailable'))return;const d=card.dataset.dsp;card.classList.toggle('selected');selectedDsps.has(d)?selectedDsps.delete(d):selectedDsps.add(d);updateOptions();updateAssignment();updateVisibility();invalidateResults()}
-function invalidateResults(){generatedFiles={};document.getElementById('results').classList.remove('visible');document.getElementById('activationResults').classList.remove('visible');document.getElementById('activationProgress').style.display='none';document.getElementById('activationCards').innerHTML='';document.getElementById('resultCards').innerHTML=''}
+function invalidateResults(){generatedFiles={};_activationDone=false;document.getElementById('results').classList.remove('visible');document.getElementById('activationResults').classList.remove('visible');document.getElementById('activationProgress').style.display='none';document.getElementById('activationCards').innerHTML='';document.getElementById('resultCards').innerHTML='';const ab=document.getElementById('btnActivate');if(ab){ab.textContent='Ativar Agora'}}
 function updateOptions(){
   const hasSA=selectedDsps.has('stackadapt'),hasXandr=selectedDsps.has('xandr'),hasDV360=selectedDsps.has('dv360');
   document.getElementById('optBrandRow').style.display=hasSA?'flex':'none';
@@ -1535,13 +1601,13 @@ function renderPlacementsTable(){
   tbody.innerHTML=filtered.map(({p,i},fi)=>{
     const checked=_selectedTagIds.has(i)?' checked':'';
     const tagPreview=p.type==='video'?(p.vastTag||p.jsTag):p.jsTag;
-    const tagShort=tagPreview.length>40?tagPreview.substring(0,40)+'…':tagPreview;
+    const tagOk=tagPreview.length>0;
     return`<tr style="animation-delay:${fi*40}ms" data-tag-idx="${i}">
       <td class="cb-col"><input type="checkbox" class="custom-cb tag-cb" data-idx="${i}"${checked}></td>
       <td><input class="asset-input asset-name-input" value="${esc(p.placementName)}" data-field="placementName" data-idx="${i}"></td>
       <td><span class="asset-type-badge ${p.type}">${p.type==='video'?'video':'display'}</span></td>
       <td><span class="dim-badge">${esc(p.dimensions)}</span></td>
-      <td><span class="tag-preview mono" title="${esc(tagPreview)}" data-idx="${i}" style="cursor:pointer;font-size:0.7rem;color:var(--text-sec);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${esc(tagShort)}</span></td>
+      <td><span class="tag-status-badge ${tagOk?'ok':'missing'}" title="${tagOk?esc(tagPreview.substring(0,300)):'Tag vazia'}">${tagOk?'Tag ✓':'Sem tag'}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(p.clickUrl)}" data-field="clickUrl" data-idx="${i}"></td>
       <td class="tracker-cell"><div class="tracker-chips">${(p.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';return`<span class="tracker-chip"><span class="tracker-scope-badge ${scopeClass}" data-tag-scope-toggle="${i}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tag-tracker-rm="${i}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tag-tracker-add="${i}" placeholder="+ pixel URL"></div></td>
       <td class="asset-actions"><button class="asset-action-btn danger" title="Remover" data-tag-rm="${i}">✕</button></td>
@@ -1980,9 +2046,12 @@ function refreshAssetsZone(){
 
 async function handleAssetFiles(files){
   const zone=document.getElementById('assetsUploadZone');
+  const total=files.length;
+  let processed=0;
+  if(total>3)toast(`Processando 0/${total} arquivos...`,'');
   for(const file of files){
     const type=getAssetType(file);
-    if(!type){toast(`"${file.name}" não é suportado. Use JPG, PNG, GIF ou MP4.`,'error');continue}
+    if(!type){toast(`"${file.name}" não é suportado. Use JPG, PNG, GIF ou MP4.`,'error');processed++;continue}
     const dims=await readFileDimensions(file,type);
     const thumb=await generateThumb(file,type);
     const entry={
@@ -1995,9 +2064,11 @@ async function handleAssetFiles(files){
       compressed:false,compressedFile:null
     };
     assetEntries.push(entry);
+    processed++;
+    if(total>3&&processed<total)toast(`Processando ${processed}/${total} arquivos...`,'');
   }
   refreshAssetsZone();
-  toast(`${files.length} asset(s) adicionado(s)`,'success');
+  toast(`${assetEntries.length} asset(s) carregado(s)`,'success');
 }
 
 function getWeightClass(entry){
@@ -2989,6 +3060,8 @@ async function saveEdit(){
   const tk=(await sbClient.auth.getSession()).data.session?.access_token;
   if(!tk){toast('Sessão expirada','error');return}
   const btn=document.getElementById('editSaveBtn');btn.disabled=true;btn.textContent='Salvando...';
+  const modalBody=document.getElementById('editModalBody');
+  modalBody.querySelectorAll('input,select,button').forEach(el=>{el.disabled=true});
   const isBulk=dashEditGroup._bulkKeys&&dashEditGroup._bulkKeys.length>1;
   const groups=isBulk?dashEditGroup._bulkKeys.map(k=>dashGroups.find(x=>x._gid===k)).filter(Boolean):[dashEditGroup];
   const newName=document.getElementById('editName')?.value?.trim()||'';
@@ -3067,7 +3140,7 @@ async function saveEdit(){
     if(!ok&&!fail)toast('Nenhuma alteração','error');else if(!fail)toast(ok+' atualização'+(ok>1?'ões':'')+' sincronizada'+(ok>1?'s':''),'success');else toast(ok+' OK, '+fail+' erro(s)','error');
     closeEditModal();clearDashSelection();await loadCreatives();
   }catch(err){toast('Erro: '+err.message,'error')}
-  finally{btn.disabled=false;btn.textContent='Salvar e Sincronizar'}
+  finally{btn.disabled=false;btn.textContent='Salvar e Sincronizar';modalBody.querySelectorAll('input,select,button').forEach(el=>{el.disabled=false})}
 }
 
 // Close modal on overlay click
