@@ -241,6 +241,21 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .view-exit{animation:viewExit 0.2s var(--ease) forwards}
 @keyframes viewExit{to{opacity:0;transform:translateY(-8px)}}
 @media(max-width:768px){.dashboard{padding:0 16px 16px}.dash-stats{grid-template-columns:1fr 1fr}.dash-stat.hero{grid-column:1/-1}.dash-search{width:100%;order:10}.dash-expand-inner{grid-template-columns:1fr}}
+/* ── Manual Tag ── */
+.manual-tag-divider{display:flex;align-items:center;gap:16px;margin:24px 0 20px;color:var(--text-tri);font-size:0.78rem}
+.manual-tag-divider::before,.manual-tag-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.manual-tag-section{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;transition:border-color var(--dur-f)}
+.manual-tag-section:focus-within{border-color:var(--border-active)}
+.manual-tag-row{display:flex;flex-direction:column;gap:12px}
+.manual-tag-fields{display:flex;gap:10px;flex-wrap:wrap}
+.manual-tag-field{display:flex;flex-direction:column;gap:4px}
+.manual-tag-field label{font-size:0.72rem;font-weight:600;color:var(--text-sec);letter-spacing:0.2px}
+.manual-tag-field input,.manual-tag-field textarea,.manual-tag-field select{padding:9px 12px;border:1px solid var(--border);border-radius:var(--r-xs);background:var(--bg-input);color:var(--text);font-size:0.8rem;font-family:var(--font);transition:border-color var(--dur-f)}
+.manual-tag-field textarea{font-family:var(--mono);font-size:0.74rem;resize:vertical;min-height:60px}
+.manual-tag-field input:focus,.manual-tag-field textarea:focus,.manual-tag-field select:focus{outline:none;border-color:var(--accent-ring)}
+.manual-tag-field select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238585a0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.manual-tag-add-btn{align-self:flex-start;padding:10px 24px;border-radius:var(--r-xs);font-size:0.8rem;font-weight:500;border:none;background:var(--accent);color:var(--text-on-accent);cursor:pointer;font-family:var(--font);transition:all var(--dur-f)}
+.manual-tag-add-btn:hover{background:var(--accent-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(123,110,240,0.25)}
 .flow-selector{padding:80px 48px;max-width:900px;margin:0 auto;animation:fadeIn 0.5s var(--ease-out)}
 .flow-selector-header{text-align:center;margin-bottom:56px}
 .flow-selector-header h2{font-size:1.8rem;font-weight:700;letter-spacing:-0.5px;margin-bottom:10px}
@@ -637,6 +652,20 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
         <div class="extracted-info" id="extractedInfo">
           <h2 class="extracted-info-title">Dados extraídos</h2>
           <div class="info-grid" id="infoGrid"></div>
+        </div>
+        <div class="manual-tag-divider"><span>ou adicione tags manualmente</span></div>
+        <div class="manual-tag-section" id="manualTagSection">
+          <div class="manual-tag-row">
+            <div class="manual-tag-fields">
+              <div class="manual-tag-field" style="flex:1"><label>Nome do placement</label><input type="text" id="manualTagName" placeholder="Ex: LeroyMerlin_GIF_300x250"></div>
+              <div class="manual-tag-field" style="width:90px"><label>Largura</label><input type="number" id="manualTagWidth" placeholder="300"></div>
+              <div class="manual-tag-field" style="width:90px"><label>Altura</label><input type="number" id="manualTagHeight" placeholder="250"></div>
+              <div class="manual-tag-field" style="width:110px"><label>Tipo</label><select id="manualTagType"><option value="display">Display</option><option value="video">Video</option></select></div>
+            </div>
+            <div class="manual-tag-field" style="width:100%"><label>Tag HTML / JS / VAST URL</label><textarea id="manualTagCode" rows="3" placeholder="Cole a tag completa aqui (HTML, JS tag, ou VAST URL)"></textarea></div>
+            <div class="manual-tag-field" style="width:100%"><label>Click URL <span style="font-weight:400;color:var(--text-tri)">(opcional)</span></label><input type="text" id="manualTagClickUrl" placeholder="https://..."></div>
+            <button class="manual-tag-add-btn" onclick="addManualTag()">Adicionar Tag</button>
+          </div>
         </div>
         <div id="tagsTableSection" style="display:none">
           <div id="tagsBulkBar" style="display:none"></div>
@@ -1236,6 +1265,65 @@ uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.r
 fileInput.addEventListener('change',e=>{if(e.target.files.length)handleFile(e.target.files[0])});
 uploadClear.addEventListener('click',e=>{e.stopPropagation();clearUpload()});
 
+function addManualTag(){
+  const nameEl=document.getElementById('manualTagName');
+  const widthEl=document.getElementById('manualTagWidth');
+  const heightEl=document.getElementById('manualTagHeight');
+  const typeEl=document.getElementById('manualTagType');
+  const codeEl=document.getElementById('manualTagCode');
+  const clickEl=document.getElementById('manualTagClickUrl');
+  const tag=codeEl.value.trim();
+  if(!tag){toast('Cole a tag HTML/JS/VAST no campo','error');return}
+  // Auto-detect dimensions from tag if not filled
+  let w=parseInt(widthEl.value)||0,h=parseInt(heightEl.value)||0;
+  if(!w||!h){
+    // Try data-width/data-height
+    const wm=tag.match(/data-width\s*=\s*"(\d+)"/i);
+    const hm=tag.match(/data-height\s*=\s*"(\d+)"/i);
+    if(wm&&hm){w=parseInt(wm[1]);h=parseInt(hm[1])}
+    // Try width="N" height="N"
+    if(!w||!h){const wm2=tag.match(/width\s*[:=]\s*"?(\d+)/i);const hm2=tag.match(/height\s*[:=]\s*"?(\d+)/i);if(wm2&&hm2){w=parseInt(wm2[1]);h=parseInt(hm2[1])}}
+    // Try NxN in name or tag
+    if(!w||!h){const dm=tag.match(/(\d{2,4})x(\d{2,4})/i);if(dm){w=parseInt(dm[1]);h=parseInt(dm[2])}}
+    if(w)widthEl.value=w;if(h)heightEl.value=h;
+  }
+  if(!w||!h){toast('Informe a largura e altura do criativo','error');widthEl.focus();return}
+  const dims=w+'x'+h;
+  // Auto-generate name if empty
+  let name=nameEl.value.trim();
+  if(!name){
+    const srcMatch=tag.match(/data-iframe-src\s*=\s*"([^"]+)"/i)||tag.match(/src\s*=\s*"([^"]+)"/i);
+    if(srcMatch){try{const u=new URL(srcMatch[1]);name=u.pathname.split('/').filter(Boolean).pop()||'manual_tag'}catch(e){name='manual_tag'}}
+    else name='manual_tag';
+    name=name+'_'+dims;
+    nameEl.value=name;
+  }
+  const type=typeEl.value||'display';
+  const isVideo=type==='video';
+  const clickUrl=clickEl.value.trim()||'';
+  // Init parsedData if needed
+  if(!parsedData){
+    parsedData={campaignName:'Manual Tags',advertiserName:'',brandName:'',placements:[]};
+  }
+  const placement={
+    placementId:'manual_'+(Date.now())+'_'+Math.random().toString(36).substr(2,4),
+    placementName:name,
+    dimensions:dims,
+    jsTag:isVideo?'':tag,
+    clickUrl:clickUrl,
+    type:type,
+    vastTag:isVideo?tag:'',
+    trackers:[]
+  };
+  parsedData.placements.push(placement);
+  // Show table and render
+  document.getElementById('tagsTableSection').style.display='';
+  renderPlacementsTable();
+  updateVisibility();
+  // Clear form
+  codeEl.value='';nameEl.value='';clickEl.value='';
+  toast(name+' adicionado','success');
+}
 function clearUpload(){parsedData=null;placementAssignment={};_selectedTagIds.clear();fileInput.value='';uploadZone.classList.remove('has-file','processing');uploadClear.style.display='none';document.getElementById('uploadFilename').textContent='';document.getElementById('uploadMeta').textContent='';document.getElementById('extractedInfo').classList.remove('visible');document.getElementById('tagsTableSection').style.display='none';document.getElementById('results').classList.remove('visible');document.getElementById('assignmentSection').classList.remove('visible');updateVisibility()}
 
 function handleFile(file){
