@@ -1279,7 +1279,12 @@ document.getElementById('manualTagCode').addEventListener('input',function(){
   if(!clickEl.value){
     const cta=tag.match(/data-cta-url\s*=\s*"([^"]+)"/i);
     if(cta)clickEl.value=cta[1];
-    else{const href=tag.match(/(?:href|landing[-_]?page|click[-_]?url)\s*=\s*"(https?:\/\/[^"]+)"/i);if(href)clickEl.value=href[1]}
+    else{
+      // Try data-click-tracker (Nexd/Adcanvas) - extract the real URL after ${CLICK_URL} macro
+      const ct=tag.match(/data-click-tracker\s*=\s*"(?:\$\{CLICK_URL\})?([^"]*https?:\/\/[^"]+)"/i);
+      if(ct)clickEl.value=ct[1];
+      else{const href=tag.match(/(?:href|landing[-_]?page|click[-_]?url|data-landing|data-redirect)\s*=\s*"(https?:\/\/[^"]+)"/i);if(href)clickEl.value=href[1]}
+    }
   }
 });
 
