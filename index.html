@@ -2964,8 +2964,11 @@ async function bulkDeleteCreatives(){
   msg+='\n\nEssa ação não pode ser desfeita.';
   if(!confirm(msg))return;
 
+  // Pause auto-sync to prevent race condition (sync can overwrite deleted status)
+  stopAutoSync();
+
   const tk=(await sbClient.auth.getSession()).data.session?.access_token;
-  if(!tk){toast('Sessão expirada','error');return}
+  if(!tk){toast('Sessão expirada','error');startAutoSync();return}
 
   // Show loading toast at top
   const overlay=document.createElement('div');
@@ -3001,7 +3004,7 @@ async function bulkDeleteCreatives(){
     clearDashSelection();
     await loadCreatives();
   }catch(err){toast('Erro: '+err.message,'error')}
-  finally{const ov=document.getElementById('dashDeleteOverlay');if(ov)ov.remove()}
+  finally{const ov=document.getElementById('dashDeleteOverlay');if(ov)ov.remove();startAutoSync()}
 }
 function updateDashBulkBar(){
   const bar=document.getElementById('dashBulkBar');if(!bar)return;
