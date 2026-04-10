@@ -2810,7 +2810,6 @@ async function bulkDeleteCreatives(){
   if(dashSelectedKeys.size===0||!sbClient||!currentUser)return;
   const keys=Array.from(dashSelectedKeys);
   const groups=keys.map(k=>dashGroups.find(g=>g._gid===k)).filter(Boolean);
-  // Collect all creative IDs across all DSPs
   const allIds=[];
   const xandrCount=[];const dv360Count=[];
   groups.forEach(g=>{
@@ -2820,7 +2819,6 @@ async function bulkDeleteCreatives(){
       if(dsp==='dv360')dv360Count.push(d.id);
     });
   });
-  // Confirm with details
   let msg=`Deletar ${groups.length} criativo(s)?`;
   if(xandrCount.length)msg+=`\n• Xandr: ${xandrCount.length} deletado(s) permanentemente`;
   if(dv360Count.length)msg+=`\n• DV360: ${dv360Count.length} arquivado(s) (DV360 não permite deletar)`;
@@ -2829,6 +2827,13 @@ async function bulkDeleteCreatives(){
 
   const tk=(await sbClient.auth.getSession()).data.session?.access_token;
   if(!tk){toast('Sessão expirada','error');return}
+
+  // Show loading overlay
+  const wrap=document.getElementById('dashTableWrap');
+  const overlay=document.createElement('div');
+  overlay.className='dash-sync-status';overlay.id='dashDeleteOverlay';
+  overlay.innerHTML='<div class="dash-sync-spinner"></div><div class="dash-sync-status-text">Deletando '+allIds.length+' criativos...</div><div class="dash-sync-status-sub">'+(xandrCount.length?xandrCount.length+' Xandr':'')+' '+(dv360Count.length?dv360Count.length+' DV360':'')+'</div>';
+  wrap.style.position='relative';wrap.appendChild(overlay);
 
   try{
     const res=await fetch(SUPABASE_URL+'/functions/v1/creative-delete',{
@@ -2846,6 +2851,7 @@ async function bulkDeleteCreatives(){
     clearDashSelection();
     await loadCreatives();
   }catch(err){toast('Erro: '+err.message,'error')}
+  finally{const ov=document.getElementById('dashDeleteOverlay');if(ov)ov.remove()}
 }
 function updateDashBulkBar(){
   const bar=document.getElementById('dashBulkBar');if(!bar)return;
