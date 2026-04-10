@@ -219,6 +219,16 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .modal-dsp-tag.xandr{background:rgba(255,111,97,0.12);color:#ff6f61}
 .modal-dsp-tag.dv360{background:rgba(66,133,244,0.12);color:#4285f4}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:18px 28px;border-top:1px solid var(--border)}
+.modal-trackers{display:flex;flex-direction:column;gap:6px}
+.modal-tracker-row{display:flex;gap:6px;align-items:center}
+.modal-tracker-input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r-xs);background:var(--bg-input);color:var(--text);font-size:0.76rem;font-family:var(--mono);transition:border-color var(--dur-f)}
+.modal-tracker-input:focus{outline:none;border-color:var(--accent-ring)}
+.modal-tracker-input[readonly]{background:var(--bg-raised);color:var(--text-sec);cursor:default}
+.modal-tracker-rm{width:28px;height:28px;border:1px solid var(--border);border-radius:var(--r-xs);background:transparent;color:var(--text-tri);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f);flex-shrink:0}
+.modal-tracker-rm:hover{border-color:var(--error);color:var(--error);background:var(--error-dim)}
+.modal-tracker-add{display:flex;gap:6px;align-items:center}
+.modal-tracker-add-btn{width:28px;height:28px;border:1px solid var(--accent-ring);border-radius:var(--r-xs);background:var(--accent-dim);color:var(--accent);cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f);flex-shrink:0}
+.modal-tracker-add-btn:hover{background:var(--accent);color:var(--text-on-accent)}
 /* ── View transitions ── */
 .view-exit{animation:viewExit 0.2s var(--ease) forwards}
 @keyframes viewExit{to{opacity:0;transform:translateY(-8px)}}
@@ -2481,7 +2491,7 @@ async function loadCreatives(){
   if(!sbClient||!currentUser)return;
   document.getElementById('dashBody').innerHTML='<tr><td colspan="7" class="dash-empty"><div class="dash-empty-text">Carregando...</div></td></tr>';
   try{
-    const{data,error}=await sbClient.from('creatives').select('*').order('created_at',{ascending:false}).limit(1000);
+    const{data,error}=await sbClient.from('creatives').select('*').neq('status','deleted').order('created_at',{ascending:false}).limit(1000);
     if(error)throw error;
     dashCreatives=data||[];
     buildGroups();renderDashStats();renderDashTable();updateDashBadge();
@@ -2587,17 +2597,53 @@ function openEditModal(groupKey){
   const dk=Object.keys(g.dsps).sort(),dn={xandr:'Xandr',dv360:'DV360'};
   let h='<div class="modal-field"><label>Nome (aplica em todas as DSPs)</label><input id="editName" value="'+esc(g.name||'')+'"></div>';
   for(const dsp of dk){const d=g.dsps[dsp];
+    // Parse trackers
+    let trackers=[];
+    try{trackers=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){trackers=[]}
     h+='<div class="modal-dsp-section"><div class="modal-dsp-header"><span class="modal-dsp-tag '+dsp+'">'+(dn[dsp]||dsp)+'</span><span class="dsp-chip" style="margin-left:auto"><span class="dsp-dot '+(d.audit_status||'unknown')+'"></span><span class="dsp-chip-status">'+(d.audit_status||'unknown')+'</span></span></div>';
     h+='<div class="modal-field"><label>Creative ID</label><div class="modal-field-ro">'+(d.dsp_creative_id||'-')+'</div></div>';
     if(dsp==='xandr'){
-      h+='<div class="modal-field"><label>URL de destino (auditoria)</label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||'')+'"></div>';
-      h+='<div class="modal-field"><label>Click redirect (geralmente vazio em 3P tags)</label><input id="editClickUrl_'+dsp+'" value="'+esc(d.click_url||'')+'"></div>';
+      h+='<div class="modal-field"><label>URL de destino <span style="font-weight:400;color:var(--text-tri)">(landing_page_url — usada na auditoria Xandr pra validar a marca)</span></label><input id="editLandingPage_'+dsp+'" value="'+esc(d.landing_page||'')+'"></div>';
+      h+='<div class="modal-field"><label>Click redirect <span style="font-weight:400;color:var(--text-tri)">(click_url — redireciona o clique. Em 3P tags geralmente fica vazio porque o redirect já está na tag)</span></label><input id="editClickUrl_'+dsp+'" value="'+esc(d.click_url||'')+'"></div>';
     }
+    // Trackers section
+    h+='<div class="modal-field"><label>Impression Trackers <span style="font-weight:400;color:var(--text-tri)">(salvo localmente, não sincroniza com a DSP)</span></label>';
+    h+='<div id="editTrackers_'+dsp+'" class="modal-trackers">';
+    trackers.forEach((t,i)=>{
+      const url=typeof t==='string'?t:(t.url||t);
+      if(url)h+='<div class="modal-tracker-row" data-dsp="'+dsp+'" data-idx="'+i+'"><input class="modal-tracker-input" value="'+esc(url)+'" readonly><button class="modal-tracker-rm" onclick="removeModalTracker(\''+dsp+'\','+i+')" title="Remover">×</button></div>';
+    });
+    h+='<div class="modal-tracker-add"><input id="editTrackerNew_'+dsp+'" class="modal-tracker-input" placeholder="Cole a URL do pixel..."><button class="modal-tracker-add-btn" onclick="addModalTracker(\''+dsp+'\')">+</button></div>';
+    h+='</div></div>';
     if(d.sync_error)h+='<div style="font-size:0.72rem;color:var(--error);padding:8px 0">Sync error: '+esc(d.sync_error)+'</div>';
     h+='</div>';
   }
   document.getElementById('editModalBody').innerHTML=h;
   document.getElementById('editModal').classList.add('visible');
+}
+// Tracker helpers for modal
+function getModalTrackers(dsp){
+  const container=document.getElementById('editTrackers_'+dsp);if(!container)return[];
+  const urls=[];
+  container.querySelectorAll('.modal-tracker-row input').forEach(inp=>{if(inp.value.trim())urls.push(inp.value.trim())});
+  return urls;
+}
+function removeModalTracker(dsp,idx){
+  const container=document.getElementById('editTrackers_'+dsp);if(!container)return;
+  const rows=container.querySelectorAll('.modal-tracker-row');
+  if(rows[idx])rows[idx].remove();
+}
+function addModalTracker(dsp){
+  const inp=document.getElementById('editTrackerNew_'+dsp);if(!inp||!inp.value.trim())return;
+  const url=inp.value.trim();
+  const container=document.getElementById('editTrackers_'+dsp);
+  const addDiv=container.querySelector('.modal-tracker-add');
+  const idx=container.querySelectorAll('.modal-tracker-row').length;
+  const row=document.createElement('div');
+  row.className='modal-tracker-row';row.dataset.dsp=dsp;row.dataset.idx=idx;
+  row.innerHTML='<input class="modal-tracker-input" value="'+esc(url)+'" readonly><button class="modal-tracker-rm" onclick="this.parentElement.remove()" title="Remover">×</button>';
+  container.insertBefore(row,addDiv);
+  inp.value='';
 }
 function closeEditModal(){document.getElementById('editModal').classList.remove('visible');dashEditGroup=null}
 
@@ -2622,6 +2668,19 @@ async function saveEdit(){
       ps.push(fetch(SUPABASE_URL+'/functions/v1/creative-update',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({creativeId:d.id,changes:ch})}).then(async r=>{const j=await r.json();if(!r.ok||!j.success)fail++;else ok++}).catch(()=>fail++));
     }}
     await Promise.all(ps);
+    // Save tracker changes directly to DB (not synced to DSP)
+    if(!isBulk){
+      for(const dsp of Object.keys(dashEditGroup.dsps)){
+        const d=dashEditGroup.dsps[dsp];
+        const newTrackers=getModalTrackers(dsp);
+        let oldTrackers=[];
+        try{oldTrackers=typeof d.trackers==='string'?JSON.parse(d.trackers):(d.trackers||[])}catch(e){}
+        oldTrackers=oldTrackers.map(t=>typeof t==='string'?t:(t.url||t)).filter(Boolean);
+        if(JSON.stringify(newTrackers)!==JSON.stringify(oldTrackers)){
+          await sbClient.from('creatives').update({trackers:JSON.stringify(newTrackers)}).eq('id',d.id);
+        }
+      }
+    }
     if(!ok&&!fail)toast('Nenhuma alteração','error');else if(!fail)toast(ok+' atualização'+(ok>1?'ões':'')+' sincronizada'+(ok>1?'s':''),'success');else toast(ok+' OK, '+fail+' erro(s)','error');
     closeEditModal();clearDashSelection();await loadCreatives();
   }catch(err){toast('Erro: '+err.message,'error')}
