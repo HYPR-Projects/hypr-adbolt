@@ -2770,9 +2770,8 @@ function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=se
 function toggleDashSelect(key,checked){if(checked)dashSelectedKeys.add(key);else dashSelectedKeys.delete(key);updateDashBulkBar()}
 function toggleDashSelectAll(checked){
   const filtered=getFilteredGroups();
-  const page=filtered.slice(dashPage*dashPageSize,dashPage*dashPageSize+dashPageSize);
-  if(checked)page.forEach(g=>dashSelectedKeys.add(g._gid));
-  else page.forEach(g=>dashSelectedKeys.delete(g._gid));
+  if(checked)filtered.forEach(g=>dashSelectedKeys.add(g._gid));
+  else filtered.forEach(g=>dashSelectedKeys.delete(g._gid));
   renderDashTable();updateDashBulkBar();
 }
 function clearDashSelection(){dashSelectedKeys.clear();const sa=document.getElementById('dashSelectAll');if(sa)sa.checked=false;updateDashBulkBar()}
@@ -2832,7 +2831,6 @@ function updateDashBulkBar(){
 }
 
 function buildGroups(){
-  // Sort by created_at ascending first so we process oldest first
   const sorted=[...dashCreatives].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   const groups=[];
   const groupMap=new Map();
@@ -2850,8 +2848,8 @@ function buildGroups(){
     if(editTs&&(!g.last_edited_at||new Date(editTs)>new Date(g.last_edited_at))){g.last_edited_at=editTs;g.last_edited_by=c.last_edited_by_name||null}
   }
   dashGroups=groups.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  // Assign unique group IDs
   dashGroups.forEach((g,i)=>{g._gid='g'+i+'_'+g.name.substring(0,10)+'_'+g.dimensions});
+  console.log('[buildGroups]',dashCreatives.length,'records →',dashGroups.length,'groups. Multi-DSP:',dashGroups.filter(g=>Object.keys(g.dsps).length>1).length);
 }
 function updateDashBadge(){const p=dashCreatives.filter(c=>c.audit_status==='pending').length;const b=document.getElementById('dashBadge');if(b)b.textContent=p>0?p:''}
 
