@@ -273,6 +273,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 /* ── Assets ── */
 .assets-upload-zone{border:1.5px dashed var(--border);border-radius:var(--r);padding:48px 24px;text-align:center;cursor:pointer;transition:all var(--dur);background:var(--bg-surface);position:relative}
 .assets-upload-zone.has-files{padding:16px;border-style:solid;border-color:var(--success)}
+.assets-upload-zone.has-files input[type="file"]{pointer-events:none}
 .assets-summary{display:flex;align-items:center;justify-content:center;gap:12px;font-size:0.88rem;font-weight:500}
 .assets-clear{background:var(--bg-base);border:1px solid var(--border);color:var(--text-tri);width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:all var(--dur-f)}
 .asset-input{background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:var(--r-xs);color:var(--text);font-family:var(--mono);font-size:0.75rem;padding:6px 10px;outline:none;transition:all var(--dur-f);width:100%}
@@ -1512,7 +1513,7 @@ async function handleAssetFiles(files){
   zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>
     ${ASSET_FILE_INPUT_HTML}`;
   bindAssetFileInput();
-  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
+  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];_selectedAssetIds.clear();zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
   document.getElementById('assetsContent').style.display='';
   renderAssetsTable();updateVisibility();
   toast(`${files.length} asset(s) adicionado(s)`,'success');
@@ -1855,7 +1856,7 @@ ${scClose}`;
   zone.classList.add('has-files');
   zone.innerHTML=`<div class="assets-summary"><strong>${assetEntries.length}</strong> assets (${label})<button class="assets-clear" id="assetsClearAll" title="Remover todos">✕</button></div>${ASSET_FILE_INPUT_HTML}`;
   bindAssetFileInput();
-  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
+  document.getElementById('assetsClearAll').addEventListener('click',e=>{e.stopPropagation();assetEntries=[];_selectedAssetIds.clear();zone.classList.remove('has-files');zone.innerHTML=`<span class="upload-icon">🎨</span><div class="upload-text">Arraste arquivos aqui ou <strong>clique para selecionar</strong></div><div class="upload-format">JPG · PNG · GIF · MP4 · ZIP</div>${ASSET_FILE_INPUT_HTML}`;bindAssetFileInput();document.getElementById('assetsContent').style.display='none';updateVisibility()});
   document.getElementById('assetsContent').style.display='';
   renderAssetsTable();updateVisibility();
   const msg=warnings.length?`HTML5 creative ${w}x${h} (${warnings.join(', ')})`:`HTML5 creative ${w}x${h}`;
@@ -2007,6 +2008,7 @@ document.getElementById('assetsSelectAll').addEventListener('change',e=>{
   updateAssetsBulkBar();
 });
 const assetsZone=document.getElementById('assetsUploadZone');
+assetsZone.addEventListener('click',e=>{if(assetsZone.classList.contains('has-files')&&!e.target.closest('.assets-clear')){document.getElementById('assetsFileInput').click()}});
 assetsZone.addEventListener('dragover',e=>{e.preventDefault();assetsZone.classList.add('dragover')});
 assetsZone.addEventListener('dragleave',()=>assetsZone.classList.remove('dragover'));
 assetsZone.addEventListener('drop',e=>{e.preventDefault();assetsZone.classList.remove('dragover');if(e.dataTransfer.files.length)handleAssetInput([...e.dataTransfer.files])});
