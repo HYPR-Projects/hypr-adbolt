@@ -915,6 +915,23 @@ const MODE_LABELS={tags:'3P Tags',surveys:'Surveys',assets:'Standard Images'};
 function resetWizardState(){
   // Reset all shared state
   selectedDsps=new Set();generatedFiles={};placementAssignment={};_selectedTagIds.clear();_selectedAssetIds.clear();
+  // Reset mode-specific data
+  parsedData=null;assetEntries=[];assetIdCounter=0;surveyEntries=[];surveyIdCounter=0;
+  _tagsFilterType='all';_tagsFilterSize='all';_assetsFilterType='all';_assetsFilterSize='all';
+  // Reset upload zone
+  const fInput=document.getElementById('fileInput');if(fInput)fInput.value='';
+  const uz=document.getElementById('uploadZone');if(uz)uz.classList.remove('has-file','processing','dragover');
+  const uc=document.getElementById('uploadClear');if(uc)uc.style.display='none';
+  const uf=document.getElementById('uploadFilename');if(uf)uf.textContent='';
+  const um=document.getElementById('uploadMeta');if(um)um.textContent='';
+  document.getElementById('extractedInfo').classList.remove('visible');
+  const tts=document.getElementById('tagsTableSection');if(tts)tts.style.display='none';
+  // Reset manual tag fields
+  ['manualTagName','manualTagWidth','manualTagHeight','manualTagCode','manualTagClickUrl'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  _lastAutoW='';_lastAutoH='';_lastAutoClick='';
+  // Reset assets drop zone
+  const adz=document.getElementById('assetDropZone');if(adz){adz.classList.remove('has-file');const ai=adz.querySelector('.upload-filename');if(ai)ai.textContent='';const am=adz.querySelector('.upload-meta');if(am)am.textContent=''}
+  const atb=document.getElementById('assetsTableBody');if(atb)atb.innerHTML='';
   // Reset DSP card UI
   document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{card.classList.remove('selected','dsp-unavailable')});
   document.querySelectorAll('.dsp-card-check').forEach(c=>{c.style.opacity='0';c.style.transform='scale(0.5)'});
