@@ -141,10 +141,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-divider{width:1px;height:18px;background:var(--border);margin:0 4px}
 .dash-search{padding:7px 16px;border-radius:var(--r-pill);font-size:0.78rem;border:1px solid var(--border);background:var(--bg-input);color:var(--text);width:200px;font-family:var(--font);transition:all var(--dur-f)}
 .dash-search:focus{outline:none;border-color:var(--accent-ring);box-shadow:0 0 0 3px var(--accent-glow)}
-.dash-density{display:flex;border:1px solid var(--border);border-radius:var(--r-xs);overflow:hidden;margin-left:4px}
-.dash-density button{padding:5px 10px;background:transparent;border:none;color:var(--text-tri);cursor:pointer;font-size:0.68rem;font-family:var(--font);transition:all var(--dur-f)}
-.dash-density button.active{background:var(--accent-dim);color:var(--accent)}
-.dash-density button:hover:not(.active){color:var(--text-sec)}
 /* Table */
 .dash-table-wrap{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;position:relative}
 .dash-table-wrap.loading::before{content:'';position:absolute;inset:0;z-index:2;background:var(--bg-overlay);backdrop-filter:blur(2px)}
@@ -167,8 +163,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-table thead{background:var(--bg-raised)}
 .dash-table th{padding:11px 16px;text-align:left;font-weight:600;font-size:0.67rem;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-tri);border-bottom:1px solid var(--border);white-space:nowrap}
 .dash-table td{padding:13px 16px;border-bottom:1px solid var(--border-subtle);vertical-align:middle;transition:padding var(--dur-f)}
-.dash-table.compact td{padding:8px 16px}
-.dash-table.compact .td-name{font-size:0.78rem}
 .dash-table tr:last-child td{border-bottom:none}
 .dash-table tr{transition:background var(--dur-f)}
 .dash-table tbody tr:hover{background:var(--accent-glow)}
@@ -762,10 +756,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       </div>
       <div class="dash-hero-actions">
         <button class="dash-btn dash-btn-sync" id="dashSyncBtn" onclick="syncCreatives()">Sync Status</button>
-        <div class="dash-density" id="dashDensity">
-          <button class="active" onclick="setDashDensity('normal',this)">Normal</button>
-          <button onclick="setDashDensity('compact',this)">Compacto</button>
-        </div>
       </div>
     </div>
     <div class="dash-stats" id="dashStats"></div>
@@ -2427,7 +2417,7 @@ document.getElementById('tagsFilterSelect').addEventListener('click',()=>{
 });
 
 // ── DASHBOARD ──
-let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashDensity='normal',dashExpandedKey=null,dashSelectedKeys=new Set(),dashIsOpen=false,_dashSearchTimer=null;
+let dashCreatives=[],dashGroups=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditGroup=null,dashExpandedKey=null,dashSelectedKeys=new Set(),dashIsOpen=false,_dashSearchTimer=null;
 
 function toggleDashHome(){if(dashIsOpen)closeDashboard();else openDashboard()}
 function updateTopbarBtn(){
@@ -2462,12 +2452,6 @@ function setDashFilter(el){
 function setDashAuditFilter(el){
   document.querySelectorAll('[data-dash-audit]').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');dashFilterAudit=el.dataset.dashAudit;dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable();
-}
-function setDashDensity(mode,el){
-  dashDensity=mode;
-  document.querySelectorAll('.dash-density button').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('dashTable').classList.toggle('compact',mode==='compact');
 }
 function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=setTimeout(()=>{dashFilterSearch=document.getElementById('dashSearch').value.toLowerCase().trim();dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable()},200)}
 
