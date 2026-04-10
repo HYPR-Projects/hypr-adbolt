@@ -314,8 +314,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .tracker-scope-badge.scope-all{background:var(--border);color:var(--text-sec)}
 .tracker-scope-badge.scope-partial{background:var(--accent-dim);color:var(--accent)}
 .tracker-scope-badge:hover{filter:brightness(1.2);transform:scale(1.05)}
-.tracker-scope-pop{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 4px;box-shadow:var(--shadow-lg);z-index:var(--z-overlay);min-width:130px;animation:scaleIn 0.15s var(--ease-out)}
-.tracker-scope-pop::before{content:'';position:absolute;top:-5px;left:50%;transform:translateX(-50%) rotate(45deg);width:8px;height:8px;background:var(--bg-surface);border-left:1px solid var(--border);border-top:1px solid var(--border)}
+.tracker-scope-pop{position:fixed;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 4px;box-shadow:var(--shadow-lg);z-index:var(--z-overlay);min-width:130px;animation:scaleIn 0.15s var(--ease-out)}
 .tracker-scope-pop-item{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:var(--r-xs);cursor:pointer;font-size:0.75rem;font-weight:500;transition:background var(--dur-f);white-space:nowrap}
 .tracker-scope-pop-item:hover{background:var(--accent-glow)}
 .tracker-scope-pop-item .pop-cb{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--border);background:var(--bg-input);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--dur-f);font-size:9px;color:var(--text-on-accent)}
@@ -1624,10 +1623,19 @@ function execBulkAddTracker(){
   const dsps=allBtn?.classList.contains('active')?'all':[...document.querySelectorAll('.bulk-scope-btn.active:not([data-scope="all"])')].map(b=>b.dataset.scope);
   if(dsps!=='all'&&!dsps.length){toast('Selecione ao menos uma DSP','error');return}
   const ids=getSelectedAssetIds();
-  ids.forEach(id=>{const e=assetEntries.find(a=>a.id===id);if(e&&!e.trackers.some(t=>(typeof t==='string'?t:t.url)===url))e.trackers.push({url,dsps})});
+  ids.forEach(id=>{
+    const e=assetEntries.find(a=>a.id===id);if(!e)return;
+    const existing=e.trackers.findIndex(t=>(typeof t==='string'?t:t.url)===url);
+    if(existing>=0){
+      // Update scope of existing tracker
+      e.trackers[existing]={url,dsps:dsps==='all'?'all':[...(typeof dsps==='string'?[]:dsps)]};
+    }else{
+      e.trackers.push({url,dsps:dsps==='all'?'all':[...dsps]});
+    }
+  });
   document.querySelector('.fr-overlay')?.remove();
   const scopeLabel=dsps==='all'?'todas DSPs':dsps.map(d=>({xandr:'Xandr',dv360:'DV360',stackadapt:'StackAdapt',amazondsp:'Amazon DSP'}[d]||d)).join(', ');
-  renderAssetsTable();toast(`Pixel adicionado em ${ids.length} asset(s) → ${scopeLabel}${url!==val?' (URL extraída)':''}`,'success');
+  renderAssetsTable();toast(`Pixel aplicado em ${ids.length} asset(s) → ${scopeLabel}${url!==val?' (URL extraída)':''}`,'success');
 }
 
 function showFindReplace(){
@@ -1909,7 +1917,13 @@ document.getElementById('assetsTableBody').addEventListener('click',async e=>{
     const isAll=tr.dsps==='all';
     const pop=document.createElement('div');pop.className='tracker-scope-pop';
     pop.innerHTML=`<div class="tracker-scope-pop-item" data-pop-dsp="all"><div class="pop-cb${isAll?' checked':''}">✓</div><span>Todas</span></div><div class="tracker-scope-pop-divider"></div>${dspList.map(([k,l])=>{const on=isAll||tr.dsps.includes(k);return`<div class="tracker-scope-pop-item" data-pop-dsp="${k}"><div class="pop-cb${on?' checked':''}">✓</div><span>${l}</span></div>`}).join('')}`;
-    scopeBtn.style.position='relative';scopeBtn.appendChild(pop);
+    // Position popover in body using badge bounding rect
+    const rect=scopeBtn.getBoundingClientRect();
+    pop.style.position='fixed';
+    pop.style.top=(rect.bottom+6)+'px';
+    pop.style.left=(rect.left+rect.width/2)+'px';
+    pop.style.transform='translateX(-50%)';
+    document.body.appendChild(pop);
     // Handle popover clicks
     pop.addEventListener('click',ev=>{
       ev.stopPropagation();
