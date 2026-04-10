@@ -176,18 +176,24 @@ serve(async (req: Request) => {
     // Get OAuth2 access token
     const token = await getAccessToken(saKey);
 
-    // Create creatives sequentially (DV360 rate limits are tight)
+    // Process in parallel batches of 5 (DV360 allows ~10 req/s per advertiser)
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY = 250;
     const results: any[] = [];
     let successCount = 0;
 
-    for (const c of creatives) {
-      const result = await createCreative(token, advertiserId, c, trackingPixel);
-      results.push(result);
-      if (result.success) successCount++;
-
-      // Small delay between requests to respect rate limits
-      if (creatives.length > 1) {
-        await new Promise((r) => setTimeout(r, 300));
+    for (let i = 0; i < creatives.length; i += BATCH_SIZE) {
+      const batch = creatives.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((c: any) => createCreative(token, advertiserId, c, trackingPixel))
+      );
+      for (const r of batchResults) {
+        results.push(r);
+        if (r.success) successCount++;
+      }
+      // Delay between batches to respect rate limits
+      if (i + BATCH_SIZE < creatives.length) {
+        await new Promise((r) => setTimeout(r, BATCH_DELAY));
       }
     }
 
