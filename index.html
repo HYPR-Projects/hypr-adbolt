@@ -3028,6 +3028,9 @@ function getModalTrackers(dsp){
   const container=document.getElementById('editTrackers_'+dsp);if(!container)return[];
   const urls=[];
   container.querySelectorAll('.modal-tracker-row input').forEach(inp=>{if(inp.value.trim())urls.push(inp.value.trim())});
+  // Also include any text typed in the "new tracker" input (not yet added via + button)
+  const pendingInp=document.getElementById('editTrackerNew_'+dsp);
+  if(pendingInp&&pendingInp.value.trim()&&!urls.includes(pendingInp.value.trim()))urls.push(pendingInp.value.trim());
   return urls;
 }
 function removeModalTracker(dsp,idx){
