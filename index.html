@@ -99,11 +99,75 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .btn-text-sm:hover{border-color:var(--error);color:var(--error)}
 
 /* ── Flow Selector ── */
+/* ── Dashboard ── */
+.dashboard{display:none;padding:32px;max-width:1400px;margin:0 auto;animation:fadeIn 0.3s var(--ease-out)}
+.dashboard.active{display:block}
+.dashboard-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
+.dashboard-title{font-size:1.3rem;font-weight:700;letter-spacing:-0.4px}
+.dashboard-actions{display:flex;gap:8px;align-items:center}
+.dash-btn{padding:8px 16px;border-radius:var(--r-xs);font-size:0.78rem;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg-raised);color:var(--text);transition:all var(--dur-f);font-family:var(--font)}
+.dash-btn:hover{border-color:var(--border-active);background:var(--accent-dim)}
+.dash-btn.primary{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent)}
+.dash-btn.primary:hover{background:var(--accent-hover)}
+.dash-btn:disabled{opacity:0.4;cursor:not-allowed}
+.dash-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.dash-filter{padding:6px 14px;border-radius:var(--r-pill);font-size:0.74rem;font-weight:500;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-sec);cursor:pointer;transition:all var(--dur-f);font-family:var(--font)}
+.dash-filter.active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent-ring)}
+.dash-filter:hover:not(.active){background:var(--bg-raised);color:var(--text)}
+.dash-search{padding:7px 14px;border-radius:var(--r-pill);font-size:0.78rem;border:1px solid var(--border);background:var(--bg-input);color:var(--text);width:220px;font-family:var(--font);transition:border-color var(--dur-f)}
+.dash-search:focus{outline:none;border-color:var(--border-active)}
+.dash-stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.dash-stat{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 18px;flex:1;min-width:120px}
+.dash-stat-val{font-size:1.4rem;font-weight:700;letter-spacing:-0.5px}
+.dash-stat-label{font-size:0.7rem;color:var(--text-tri);margin-top:2px;text-transform:uppercase;letter-spacing:0.5px}
+.dash-table-wrap{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.dash-table{width:100%;border-collapse:collapse;font-size:0.78rem}
+.dash-table thead{background:var(--bg-raised)}
+.dash-table th{padding:10px 14px;text-align:left;font-weight:600;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-tri);border-bottom:1px solid var(--border);white-space:nowrap}
+.dash-table td{padding:10px 14px;border-bottom:1px solid var(--border-subtle);vertical-align:middle}
+.dash-table tr:last-child td{border-bottom:none}
+.dash-table tr:hover{background:var(--accent-glow)}
+.dash-table .td-name{font-weight:500;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-table .td-dsp{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:var(--r-pill);font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.3px}
+.dash-table .td-dsp.xandr{background:rgba(255,111,97,0.1);color:#ff6f61}
+.dash-table .td-dsp.dv360{background:rgba(66,133,244,0.1);color:#4285f4}
+.dash-table .td-dsp.stackadapt{background:rgba(0,200,150,0.1);color:#00c896}
+.dash-table .td-dsp.amazondsp{background:rgba(255,153,0,0.1);color:#ff9900}
+.dash-badge{display:inline-block;padding:3px 10px;border-radius:var(--r-pill);font-size:0.68rem;font-weight:600;letter-spacing:0.2px}
+.dash-badge.audited,.dash-badge.APPROVED{background:var(--success-dim);color:var(--success)}
+.dash-badge.pending,.dash-badge.PENDING,.dash-badge.no_audit{background:var(--warning-dim);color:var(--warning)}
+.dash-badge.rejected,.dash-badge.REJECTED{background:var(--error-dim);color:var(--error)}
+.dash-badge.unknown{background:var(--accent-dim);color:var(--text-tri)}
+.dash-table .td-type{font-size:0.72rem;color:var(--text-sec)}
+.dash-table .td-dims{font-family:var(--mono);font-size:0.72rem;color:var(--text-tri)}
+.dash-table .td-date{font-size:0.72rem;color:var(--text-tri)}
+.dash-edit-btn{padding:4px 10px;border-radius:var(--r-xs);font-size:0.72rem;border:1px solid var(--border);background:transparent;color:var(--text-sec);cursor:pointer;transition:all var(--dur-f);font-family:var(--font)}
+.dash-edit-btn:hover{border-color:var(--accent-ring);color:var(--accent);background:var(--accent-dim)}
+.dash-empty{padding:60px 20px;text-align:center;color:var(--text-tri);font-size:0.88rem}
+.dash-empty-sub{font-size:0.78rem;margin-top:8px;color:var(--text-tri);opacity:0.7}
+.dash-pagination{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--border);font-size:0.74rem;color:var(--text-tri)}
+/* ── Edit Modal ── */
+.modal-overlay{position:fixed;inset:0;z-index:var(--z-overlay);background:rgba(0,0,0,0.5);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center}
+.modal-overlay.visible{display:flex;animation:fadeIn 0.2s var(--ease-out)}
+.modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r);width:520px;max-width:92vw;max-height:80vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:scaleIn 0.3s var(--ease-out)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
+.modal-title{font-size:1rem;font-weight:600}
+.modal-close{background:none;border:none;color:var(--text-tri);cursor:pointer;font-size:1.2rem;padding:4px}
+.modal-body{padding:24px}
+.modal-field{margin-bottom:16px}
+.modal-field label{display:block;font-size:0.74rem;font-weight:600;color:var(--text-sec);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.3px}
+.modal-field input,.modal-field textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--r-xs);background:var(--bg-input);color:var(--text);font-size:0.82rem;font-family:var(--font);transition:border-color var(--dur-f)}
+.modal-field input:focus,.modal-field textarea:focus{outline:none;border-color:var(--border-active)}
+.modal-field input:disabled{opacity:0.5;cursor:not-allowed}
+.modal-field .modal-field-ro{padding:10px 14px;background:var(--bg-raised);border:1px solid var(--border-subtle);border-radius:var(--r-xs);font-size:0.78rem;color:var(--text-tri);font-family:var(--mono);word-break:break-all;max-height:80px;overflow-y:auto}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 24px;border-top:1px solid var(--border)}
+.modal-field-hint{font-size:0.68rem;color:var(--text-tri);margin-top:4px}
+@media(max-width:768px){.dashboard{padding:16px}.dash-filters{gap:6px}.dash-search{width:100%}.dash-stats{gap:8px}.dash-stat{min-width:80px;padding:10px 12px}.dash-stat-val{font-size:1.1rem}}
 .flow-selector{padding:80px 48px;max-width:900px;margin:0 auto;animation:fadeIn 0.5s var(--ease-out)}
 .flow-selector-header{text-align:center;margin-bottom:56px}
 .flow-selector-header h2{font-size:1.8rem;font-weight:700;letter-spacing:-0.5px;margin-bottom:10px}
 .flow-selector-header p{font-size:0.92rem;color:var(--text-sec);max-width:460px;margin:0 auto;line-height:1.6}
-.flow-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.flow-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .flow-card{position:relative;background:var(--bg-surface);border:1.5px solid var(--border);border-radius:var(--r);padding:32px 24px;cursor:pointer;transition:all var(--dur) var(--ease);text-align:center;overflow:hidden}
 .flow-card::before{content:'';position:absolute;inset:0;background:var(--grad-surface);opacity:0;transition:opacity var(--dur)}
 .flow-card:hover{border-color:var(--border-active);transform:translateY(-4px);box-shadow:var(--shadow-lg),0 0 60px rgba(123,110,240,0.08)}
@@ -470,6 +534,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       <div class="flow-card" onclick="enterWizard('tags')"><div class="flow-card-icon"><span>📄</span></div><div class="flow-card-title">3P Tags</div><div class="flow-card-desc">Upload de tags exportadas do Campaign Manager</div></div>
       <div class="flow-card" onclick="enterWizard('surveys')"><div class="flow-card-icon"><span>📊</span></div><div class="flow-card-title">Surveys</div><div class="flow-card-desc">Pesquisas Typeform embedded em iframes</div></div>
       <div class="flow-card" onclick="enterWizard('assets')"><div class="flow-card-icon"><span>🎨</span></div><div class="flow-card-title">Standard Images</div><div class="flow-card-desc">Upload direto de imagens e vídeos nas DSPs</div></div>
+      <div class="flow-card" onclick="openDashboard()"><div class="flow-card-icon"><span>📋</span></div><div class="flow-card-title">Dashboard</div><div class="flow-card-desc">Visualize, edite e sincronize criativos ativados</div></div>
     </div>
   </div>
 
@@ -605,6 +670,48 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
       </div>
     </div>
   </div>
+
+  <div class="dashboard" id="dashboard">
+    <div class="dashboard-header">
+      <div style="display:flex;align-items:center;gap:12px"><button class="dash-btn" onclick="closeDashboard()">← Voltar</button><span class="dashboard-title">Criativos Ativados</span></div>
+      <div class="dashboard-actions">
+        <button class="dash-btn" id="dashSyncBtn" onclick="syncCreatives()">🔄 Sync Audit Status</button>
+        <button class="dash-btn" id="dashRefreshBtn" onclick="loadCreatives()">Atualizar</button>
+      </div>
+    </div>
+    <div class="dash-stats" id="dashStats"></div>
+    <div class="dash-filters">
+      <button class="dash-filter active" data-dash-dsp="all" onclick="setDashFilter(this)">Todos</button>
+      <button class="dash-filter" data-dash-dsp="xandr" onclick="setDashFilter(this)">Xandr</button>
+      <button class="dash-filter" data-dash-dsp="dv360" onclick="setDashFilter(this)">DV360</button>
+      <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+      <button class="dash-filter" data-dash-audit="all" onclick="setDashAuditFilter(this)">All Status</button>
+      <button class="dash-filter" data-dash-audit="pending" onclick="setDashAuditFilter(this)">Pending</button>
+      <button class="dash-filter" data-dash-audit="audited" onclick="setDashAuditFilter(this)">Audited</button>
+      <button class="dash-filter" data-dash-audit="rejected" onclick="setDashAuditFilter(this)">Rejected</button>
+      <div style="flex:1"></div>
+      <input class="dash-search" id="dashSearch" placeholder="Buscar por nome..." oninput="dashSearchDebounce()">
+    </div>
+    <div class="dash-table-wrap">
+      <table class="dash-table">
+        <thead><tr><th>Nome</th><th>DSP</th><th>Tipo</th><th>Size</th><th>Audit</th><th>Criado por</th><th>Data</th><th></th></tr></thead>
+        <tbody id="dashBody"></tbody>
+      </table>
+      <div class="dash-pagination" id="dashPagination"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <div class="modal-header"><span class="modal-title">Editar Criativo</span><button class="modal-close" onclick="closeEditModal()">✕</button></div>
+      <div class="modal-body" id="editModalBody"></div>
+      <div class="modal-footer">
+        <button class="dash-btn" onclick="closeEditModal()">Cancelar</button>
+        <button class="dash-btn primary" id="editSaveBtn" onclick="saveEdit()">Salvar e Sincronizar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 <div class="toast" id="toast" role="alert" aria-live="assertive"><span id="toastMsg"></span><button class="toast-dismiss" id="toastDismiss">✕</button></div>
 
@@ -2224,6 +2331,180 @@ document.getElementById('tagsFilterSelect').addEventListener('click',()=>{
   filtered.forEach(({i})=>_selectedTagIds.add(i));
   renderPlacementsTable();toast(`${filtered.length} placement(s) selecionado(s)`,'success');
 });
+
+// ══════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════
+let dashCreatives=[],dashFilterDsp='all',dashFilterAudit='all',dashFilterSearch='',dashPage=0,dashPageSize=50,dashEditId=null,_dashSearchTimer=null;
+
+function openDashboard(){
+  document.getElementById('flowSelector').style.display='none';
+  document.getElementById('dashboard').classList.add('active');
+  loadCreatives();
+}
+function closeDashboard(){
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('flowSelector').style.display='';
+}
+function setDashFilter(el){
+  document.querySelectorAll('[data-dash-dsp]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');dashFilterDsp=el.dataset.dashDsp;dashPage=0;renderDashTable();
+}
+function setDashAuditFilter(el){
+  document.querySelectorAll('[data-dash-audit]').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');dashFilterAudit=el.dataset.dashAudit;dashPage=0;renderDashTable();
+}
+function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=setTimeout(()=>{dashFilterSearch=document.getElementById('dashSearch').value.toLowerCase().trim();dashPage=0;renderDashTable()},250)}
+
+async function loadCreatives(){
+  if(!sbClient||!currentUser)return;
+  document.getElementById('dashBody').innerHTML='<tr><td colspan="8" class="dash-empty">Carregando...</td></tr>';
+  try{
+    const{data,error}=await sbClient.from('creatives').select('*').order('created_at',{ascending:false}).limit(1000);
+    if(error)throw error;
+    dashCreatives=data||[];
+    renderDashStats();renderDashTable();
+  }catch(err){toast('Erro ao carregar criativos: '+err.message,'error')}
+}
+
+function renderDashStats(){
+  const total=dashCreatives.length;
+  const xn=dashCreatives.filter(c=>c.dsp==='xandr').length;
+  const dv=dashCreatives.filter(c=>c.dsp==='dv360').length;
+  const audited=dashCreatives.filter(c=>c.audit_status==='audited'||c.audit_status==='APPROVED').length;
+  const pending=dashCreatives.filter(c=>c.audit_status==='pending'||c.audit_status==='PENDING'||c.audit_status==='no_audit').length;
+  const rejected=dashCreatives.filter(c=>c.audit_status==='rejected'||c.audit_status==='REJECTED').length;
+  document.getElementById('dashStats').innerHTML=
+    `<div class="dash-stat"><div class="dash-stat-val">${total}</div><div class="dash-stat-label">Total</div></div>`+
+    `<div class="dash-stat"><div class="dash-stat-val">${xn}</div><div class="dash-stat-label">Xandr</div></div>`+
+    `<div class="dash-stat"><div class="dash-stat-val">${dv}</div><div class="dash-stat-label">DV360</div></div>`+
+    `<div class="dash-stat"><div class="dash-stat-val" style="color:var(--success)">${audited}</div><div class="dash-stat-label">Aprovados</div></div>`+
+    `<div class="dash-stat"><div class="dash-stat-val" style="color:var(--warning)">${pending}</div><div class="dash-stat-label">Pendentes</div></div>`+
+    `<div class="dash-stat"><div class="dash-stat-val" style="color:var(--error)">${rejected}</div><div class="dash-stat-label">Rejeitados</div></div>`;
+}
+
+function getFilteredCreatives(){
+  let list=dashCreatives;
+  if(dashFilterDsp!=='all')list=list.filter(c=>c.dsp===dashFilterDsp);
+  if(dashFilterAudit!=='all'){
+    const auditMap={pending:['pending','PENDING','no_audit'],audited:['audited','APPROVED'],rejected:['rejected','REJECTED']};
+    const vals=auditMap[dashFilterAudit]||[];
+    list=list.filter(c=>vals.includes(c.audit_status));
+  }
+  if(dashFilterSearch)list=list.filter(c=>c.name.toLowerCase().includes(dashFilterSearch));
+  return list;
+}
+
+function renderDashTable(){
+  const filtered=getFilteredCreatives();
+  const totalPages=Math.ceil(filtered.length/dashPageSize)||1;
+  if(dashPage>=totalPages)dashPage=totalPages-1;
+  const start=dashPage*dashPageSize;
+  const page=filtered.slice(start,start+dashPageSize);
+  const body=document.getElementById('dashBody');
+  if(page.length===0){
+    body.innerHTML='<tr><td colspan="8" class="dash-empty">Nenhum criativo encontrado<div class="dash-empty-sub">Ative criativos via Tags, Surveys ou Assets pra vê-los aqui</div></td></tr>';
+    document.getElementById('dashPagination').innerHTML='';
+    return;
+  }
+  body.innerHTML=page.map(c=>{
+    const d=new Date(c.created_at);
+    const dateStr=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
+    const auditClass=c.audit_status||'unknown';
+    const auditLabel=(c.audit_status||'unknown').replace('_',' ');
+    return`<tr>
+      <td class="td-name" title="${esc(c.name)}">${esc(c.name)}</td>
+      <td><span class="td-dsp ${c.dsp}">${c.dsp==='dv360'?'DV360':c.dsp==='xandr'?'Xandr':c.dsp}</span></td>
+      <td class="td-type">${c.creative_type||'-'}</td>
+      <td class="td-dims">${c.dimensions||'-'}</td>
+      <td><span class="dash-badge ${auditClass}">${auditLabel}</span></td>
+      <td class="td-date">${esc(c.created_by_name||c.created_by_email||'-')}</td>
+      <td class="td-date">${dateStr}</td>
+      <td><button class="dash-edit-btn" onclick="openEditModal('${c.id}')">Editar</button></td>
+    </tr>`}).join('');
+  document.getElementById('dashPagination').innerHTML=
+    `<span>${filtered.length} criativo${filtered.length!==1?'s':''} · Página ${dashPage+1}/${totalPages}</span>`+
+    `<div style="display:flex;gap:6px">`+
+    `<button class="dash-btn" onclick="dashPage--;renderDashTable()" ${dashPage===0?'disabled':''}>← Anterior</button>`+
+    `<button class="dash-btn" onclick="dashPage++;renderDashTable()" ${dashPage>=totalPages-1?'disabled':''}>Próxima →</button></div>`;
+}
+
+async function syncCreatives(){
+  if(!sbClient||!currentUser)return;
+  const btn=document.getElementById('dashSyncBtn');
+  btn.disabled=true;btn.textContent='Sincronizando...';
+  try{
+    const token=(await sbClient.auth.getSession()).data.session?.access_token;
+    if(!token)throw new Error('Sessão expirada');
+    const res=await fetch(SUPABASE_URL+'/functions/v1/creative-sync',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Sync failed');
+    toast(`Sync completo: ${data.updated||0} atualizado(s) de ${data.synced||0}`,'success');
+    await loadCreatives();
+  }catch(err){toast('Erro no sync: '+err.message,'error')}
+  finally{btn.disabled=false;btn.textContent='🔄 Sync Audit Status'}
+}
+
+function openEditModal(id){
+  const c=dashCreatives.find(x=>x.id===id);if(!c)return;
+  dashEditId=id;
+  const isXandr=c.dsp==='xandr';
+  const dspConfig=typeof c.dsp_config==='string'?JSON.parse(c.dsp_config||'{}'):(c.dsp_config||{});
+  let html='';
+  html+=`<div class="modal-field"><label>DSP</label><div class="modal-field-ro">${c.dsp==='dv360'?'DV360':'Xandr'} · ID: ${c.dsp_creative_id||'-'}</div></div>`;
+  html+=`<div class="modal-field"><label>Nome</label><input id="editName" value="${esc(c.name||'')}"></div>`;
+  if(isXandr){
+    html+=`<div class="modal-field"><label>Click URL</label><input id="editClickUrl" value="${esc(c.click_url||'')}"><div class="modal-field-hint">Campo click_url na Xandr</div></div>`;
+    html+=`<div class="modal-field"><label>Landing Page</label><input id="editLandingPage" value="${esc(c.landing_page||'')}"><div class="modal-field-hint">Campo landing_page_url na Xandr</div></div>`;
+  }
+  html+=`<div class="modal-field"><label>Tipo / Dimensões</label><div class="modal-field-ro">${c.creative_type||'-'} · ${c.dimensions||'-'}</div></div>`;
+  html+=`<div class="modal-field"><label>Audit Status</label><div class="modal-field-ro">${c.audit_status||'unknown'}${c.sync_error?' · ⚠️ '+esc(c.sync_error):''}</div></div>`;
+  if(c.js_tag)html+=`<div class="modal-field"><label>JS Tag</label><div class="modal-field-ro" style="max-height:60px">${esc(c.js_tag)}</div></div>`;
+  if(c.vast_tag)html+=`<div class="modal-field"><label>VAST Tag</label><div class="modal-field-ro" style="max-height:60px">${esc(c.vast_tag)}</div></div>`;
+  document.getElementById('editModalBody').innerHTML=html;
+  document.getElementById('editModal').classList.add('visible');
+}
+function closeEditModal(){document.getElementById('editModal').classList.remove('visible');dashEditId=null}
+
+async function saveEdit(){
+  if(!dashEditId||!sbClient||!currentUser)return;
+  const c=dashCreatives.find(x=>x.id===dashEditId);if(!c)return;
+  const changes={};
+  const newName=document.getElementById('editName')?.value?.trim();
+  if(newName&&newName!==c.name)changes.name=newName;
+  if(c.dsp==='xandr'){
+    const newClick=document.getElementById('editClickUrl')?.value?.trim()||'';
+    const newLp=document.getElementById('editLandingPage')?.value?.trim()||'';
+    if(newClick!==(c.click_url||''))changes.click_url=newClick;
+    if(newLp!==(c.landing_page||''))changes.landing_page=newLp;
+  }
+  if(Object.keys(changes).length===0){toast('Nenhuma alteração detectada','error');return}
+  const btn=document.getElementById('editSaveBtn');
+  btn.disabled=true;btn.textContent='Salvando...';
+  try{
+    const token=(await sbClient.auth.getSession()).data.session?.access_token;
+    if(!token)throw new Error('Sessão expirada');
+    const res=await fetch(SUPABASE_URL+'/functions/v1/creative-update',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({creativeId:dashEditId,changes})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Update failed');
+    if(data.syncedToDsp){
+      toast(`Atualizado e sincronizado com ${c.dsp==='dv360'?'DV360':'Xandr'}`,'success');
+    }else{
+      toast(`Salvo localmente, mas falha no sync: ${data.syncError||'erro desconhecido'}`,'error');
+    }
+    closeEditModal();await loadCreatives();
+  }catch(err){toast('Erro ao salvar: '+err.message,'error')}
+  finally{btn.disabled=false;btn.textContent='Salvar e Sincronizar'}
+}
+
+// Close modal on overlay click
+document.getElementById('editModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEditModal()});
 
 initAuth();
 </script>
