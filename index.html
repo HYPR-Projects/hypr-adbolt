@@ -1289,32 +1289,48 @@ async function activateDV360Assets(token){
     const assets=generatedFiles._assets;
     if(!assets?.length)return{dsp:'DV360',status:'error',detail:'Nenhum asset pra ativar'};
     const advertiserId=document.getElementById('inputDV360AdvId')?.value?.trim()||'1426474713';
-    updateProgress('dv360',0,assets.length,'Preparando...');
+    const brandName=document.getElementById('inputBrand')?.value||'';
+    const campaignName=parsedData?.campaignName||'';
+    const advertiserName=parsedData?.advertiserName||'';
+    const total=assets.length;
+    updateProgress('dv360',0,total,'Preparando...');
 
     // Convert all files to base64 first
     const creatives=[];
-    for(let i=0;i<assets.length;i++){
+    for(let i=0;i<total;i++){
       const a=assets[i];
-      updateProgress('dv360',0,assets.length,'Preparando '+(i+1)+'/'+assets.length);
+      updateProgress('dv360',0,total,'Preparando '+(i+1)+'/'+total);
       const file=a.compressedFile||a.originalFile;
       const base64=await fileToBase64(file);
       creatives.push({name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,trackers:mergeTrackers(a.trackers,'dv360')});
     }
 
-    // Send all in one request (backend processes in parallel batches of 3)
-    updateProgress('dv360',0,assets.length,'Enviando '+assets.length+' criativos...');
-    const body={advertiserId,campaignName:parsedData?.campaignName||'',advertiserName:parsedData?.advertiserName||'',brandName:document.getElementById('inputBrand')?.value||'',creatives};
-    const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-dv360-asset',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)
-    });
-    const data=await res.json();
-    const results=data.results||[];
-    const successCount=results.filter(r=>r.success).length;
+    // Send in chunks of 5 to avoid edge function timeout on large payloads
+    const CHUNK=5;
+    const allResults=[];
+    let successCount=0;
+    for(let i=0;i<creatives.length;i+=CHUNK){
+      const chunk=creatives.slice(i,i+CHUNK);
+      const chunkNum=Math.floor(i/CHUNK)+1;
+      const totalChunks=Math.ceil(creatives.length/CHUNK);
+      updateProgress('dv360',i,total,`Enviando batch ${chunkNum}/${totalChunks} (${i+1}-${Math.min(i+CHUNK,total)}/${total})`);
+      try{
+        const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-dv360-asset',{
+          method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+          body:JSON.stringify({advertiserId,campaignName,advertiserName,brandName,creatives:chunk})
+        });
+        const data=await res.json();
+        const results=data.results||[];
+        for(const r of results){allResults.push(r);if(r.success)successCount++}
+        updateProgress('dv360',i+chunk.length,total);
+      }catch(chunkErr){
+        for(const c of chunk)allResults.push({success:false,name:c.name,error:chunkErr.message||'Network error'});
+        updateProgress('dv360',i+chunk.length,total);
+      }
+    }
 
-    // Update progress with final count
-    for(let i=0;i<=successCount;i++){updateProgress('dv360',i,assets.length)}
-    finalizeProgress('dv360',successCount,results.length);
-    return{dsp:'DV360',status:successCount===results.length?'success':successCount>0?'partial':'error',detail:`${successCount}/${results.length} criativos criados`,results};
+    finalizeProgress('dv360',successCount,allResults.length);
+    return{dsp:'DV360',status:successCount===allResults.length?'success':successCount>0?'partial':'error',detail:`${successCount}/${allResults.length} criativos criados`,results:allResults};
   }catch(err){
     finalizeProgress('dv360',0,1);
     return{dsp:'DV360',status:'error',detail:err.message||'Erro de conexão'};
