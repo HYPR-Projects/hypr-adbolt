@@ -172,6 +172,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .td-name-type{font-size:0.68rem;color:var(--text-tri)}
 .td-dims{font-family:var(--mono);font-size:0.74rem;color:var(--text-sec);letter-spacing:-0.3px}
 .td-meta{font-size:0.74rem;color:var(--text-tri)}
+.td-datetime{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:0.7rem;line-height:1.4}
 .td-dsps{display:flex;flex-direction:column;gap:4px}
 .dsp-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 0;font-size:0.73rem}
 .dsp-chip-label{font-weight:600;text-transform:uppercase;color:var(--text-sec);min-width:38px;letter-spacing:0.2px}
@@ -807,7 +808,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
     </div>
     <div class="dash-table-wrap" id="dashTableWrap">
       <table class="dash-table" id="dashTable">
-        <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)"></th><th style="width:36%">Nome</th><th>Size</th><th>Status</th><th>Criado</th><th>Data</th><th></th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)"></th><th style="width:30%">Nome</th><th>Size</th><th>Status</th><th>Criado por</th><th>Criado em</th><th>Última edição</th><th></th></tr></thead>
         <tbody id="dashBody"></tbody>
       </table>
       <div class="dash-pagination" id="dashPagination"></div>
@@ -2599,10 +2600,12 @@ function buildGroups(){
   const map=new Map();
   for(const c of dashCreatives){
     const key=c.name+'||'+c.dimensions;
-    if(!map.has(key))map.set(key,{name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,dsps:{}});
+    if(!map.has(key))map.set(key,{name:c.name,dimensions:c.dimensions,creative_type:c.creative_type,created_by_name:c.created_by_name||c.created_by_email||'-',created_at:c.created_at,last_edited_at:c.last_synced_at||c.updated_at||null,last_edited_by:c.last_edited_by_name||null,dsps:{}});
     const g=map.get(key);
     g.dsps[c.dsp]={id:c.id,dsp_creative_id:c.dsp_creative_id,audit_status:c.audit_status||'unknown',click_url:c.click_url,landing_page:c.landing_page,js_tag:c.js_tag,vast_tag:c.vast_tag,sync_error:c.sync_error,dsp_config:c.dsp_config,trackers:c.trackers};
     if(new Date(c.created_at)<new Date(g.created_at))g.created_at=c.created_at;
+    const editTs=c.last_synced_at||c.updated_at;
+    if(editTs&&(!g.last_edited_at||new Date(editTs)>new Date(g.last_edited_at))){g.last_edited_at=editTs;g.last_edited_by=c.last_edited_by_name||null}
   }
   dashGroups=Array.from(map.values()).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 }
@@ -2652,7 +2655,8 @@ function renderDashTable(){
   const dn={xandr:'Xandr',dv360:'DV360',stackadapt:'SA',amazondsp:'AMZN'};
   let html='';
   page.forEach((g,gi)=>{
-    const dt=new Date(g.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
+    const dt=new Date(g.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})+' '+new Date(g.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    const editDt=g.last_edited_at?new Date(g.last_edited_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})+' '+new Date(g.last_edited_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'-';
     const dk=Object.keys(g.dsps).sort();
     const sc=dk.map(k=>'<div class="dsp-chip"><span class="dsp-dot '+(g.dsps[k].audit_status||'unknown')+'"></span><span class="dsp-chip-label">'+(dn[k]||k)+'</span><span class="dsp-chip-status">'+(g.dsps[k].audit_status||'unknown')+'</span></div>').join('');
     const gk=g.name+'||'+g.dimensions;
@@ -2665,13 +2669,14 @@ function renderDashTable(){
     html+='<td class="td-dims">'+(g.dimensions||'-')+'</td>';
     html+='<td><div class="td-dsps">'+sc+'</div></td>';
     html+='<td class="td-meta">'+esc(g.created_by_name)+'</td>';
-    html+='<td class="td-meta">'+dt+'</td>';
+    html+='<td class="td-meta td-datetime">'+dt+'</td>';
+    html+='<td class="td-meta td-datetime">'+(g.last_edited_by?esc(g.last_edited_by)+'<br>':'')+editDt+'</td>';
     html+='<td><button class="dash-edit-btn" onclick="event.stopPropagation();openEditModal(\''+ek+'\')">Editar</button></td></tr>';
     if(isExp){
       let ef=dk.map(k=>{const dd=g.dsps[k];let f='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' ID</div><div class="dash-expand-val">'+(dd.dsp_creative_id||'-')+'</div></div>';if(dd.landing_page)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' URL destino</div><div class="dash-expand-val">'+esc(dd.landing_page)+'</div></div>';if(dd.click_url)f+='<div class="dash-expand-field"><div class="dash-expand-label">'+(dn[k]||k)+' Click redirect</div><div class="dash-expand-val">'+esc(dd.click_url)+'</div></div>';if(dd.sync_error)f+='<div class="dash-expand-field"><div class="dash-expand-label">Sync Error</div><div class="dash-expand-val" style="color:var(--error)">'+esc(dd.sync_error)+'</div></div>';return f}).join('');
       const fd=g.dsps[dk[0]];const tg=fd.js_tag||fd.vast_tag||'';
       if(tg)ef+='<div class="dash-expand-field" style="grid-column:1/-1"><div class="dash-expand-label">'+(fd.vast_tag?'VAST':'JS')+' Tag</div><div class="dash-expand-val">'+esc(tg.substring(0,300))+(tg.length>300?'...':'')+'</div></div>';
-      html+='<tr class="dash-expand visible"><td></td><td colspan="6"><div class="dash-expand-inner">'+ef+'</div></td></tr>';
+      html+='<tr class="dash-expand visible"><td></td><td colspan="7"><div class="dash-expand-inner">'+ef+'</div></td></tr>';
     }
   });
   body.innerHTML=html;
@@ -2687,7 +2692,7 @@ async function syncCreatives(){
   let sk='';
   for(let i=0;i<skeletonCount;i++){
     const delay=i*0.08;
-    sk+=`<tr class="dash-skeleton-row" style="animation:fadeRow 0.2s var(--ease-out) ${delay}s both"><td></td><td><div class="dash-skeleton-bar w1" style="animation-delay:${delay}s"></div><div class="dash-skeleton-sub" style="animation-delay:${delay+0.1}s"></div></td><td><div class="dash-skeleton-bar w3" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w4" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w5" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w5" style="animation-delay:${delay}s"></div></td><td></td></tr>`;
+    sk+=`<tr class="dash-skeleton-row" style="animation:fadeRow 0.2s var(--ease-out) ${delay}s both"><td></td><td><div class="dash-skeleton-bar w1" style="animation-delay:${delay}s"></div><div class="dash-skeleton-sub" style="animation-delay:${delay+0.1}s"></div></td><td><div class="dash-skeleton-bar w3" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w4" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w5" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w5" style="animation-delay:${delay}s"></div></td><td><div class="dash-skeleton-bar w5" style="animation-delay:${delay}s"></div></td><td></td></tr>`;
   }
   body.innerHTML=sk;
   // Add centered status overlay
