@@ -1233,6 +1233,106 @@ function fileToBase64(file){
   });
 }
 
+// ── Video Compression (Canvas + MediaRecorder) ──
+const VIDEO_COMPRESS_MAX=4*1024*1024; // compress videos > 4MB
+const VIDEO_COMPRESS_TARGET=2*1024*1024; // target ~2MB
+
+function compressVideo(file,targetBytes){
+  return new Promise((resolve,reject)=>{
+    const vid=document.createElement('video');
+    vid.muted=true;vid.preload='auto';
+    vid.onloadedmetadata=()=>{
+      const dur=vid.duration;
+      // Calculate target bitrate: (targetBytes * 8) / duration, leave 10% for audio
+      const targetBitrate=Math.floor((targetBytes*8*0.9)/dur);
+      const maxBitrate=Math.min(targetBitrate,1500000); // cap at 1.5Mbps
+      vid.currentTime=0;
+      vid.oncanplay=()=>{
+        const canvas=document.createElement('canvas');
+        // Scale down if large: max 1280px wide
+        const scale=Math.min(1,1280/vid.videoWidth);
+        canvas.width=Math.round(vid.videoWidth*scale/2)*2; // even numbers
+        canvas.height=Math.round(vid.videoHeight*scale/2)*2;
+        const ctx=canvas.getContext('2d');
+
+        const stream=canvas.captureStream(24); // 24fps
+        const recorder=new MediaRecorder(stream,{
+          mimeType:'video/webm;codecs=vp8',
+          videoBitsPerSecond:maxBitrate
+        });
+        const chunks=[];
+        recorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+        recorder.onstop=()=>{
+          const blob=new Blob(chunks,{type:'video/webm'});
+          const newFile=new File([blob],file.name.replace(/\.\w+$/,'.webm'),{type:'video/webm'});
+          URL.revokeObjectURL(vid.src);
+          resolve({file:newFile,compressed:true,originalSize:file.size,newSize:blob.size});
+        };
+        recorder.onerror=e=>{URL.revokeObjectURL(vid.src);reject(e)};
+        recorder.start(100); // collect in 100ms chunks
+
+        // Draw frames
+        function drawFrame(){
+          if(vid.paused||vid.ended){recorder.stop();return}
+          ctx.drawImage(vid,0,0,canvas.width,canvas.height);
+          requestAnimationFrame(drawFrame);
+        }
+        vid.play().then(drawFrame).catch(reject);
+        // Stop when video ends
+        vid.onended=()=>{setTimeout(()=>recorder.stop(),200)};
+      };
+    };
+    vid.onerror=()=>{URL.revokeObjectURL(vid.src);reject(new Error('Video load failed'))};
+    vid.src=URL.createObjectURL(file);
+  });
+}
+
+// ── Upload to Supabase Storage ──
+async function uploadToStorage(file,token){
+  const ext=file.name.split('.').pop()||'bin';
+  const path=`uploads/${Date.now()}_${Math.random().toString(36).substr(2,6)}.${ext}`;
+  const res=await fetch(`${SUPABASE_URL}/storage/v1/object/asset-uploads/${path}`,{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':file.type,'x-upsert':'true'},
+    body:file
+  });
+  if(!res.ok){const t=await res.text();throw new Error('Storage upload failed: '+t)}
+  return path;
+}
+
+// ── Prepare asset: compress video if needed, upload to storage ──
+async function prepareAssetForUpload(asset,dsp,token,progressCb){
+  let file=asset.compressedFile||asset.originalFile;
+
+  // Compress video if over threshold
+  if(asset.type==='video'&&file.size>VIDEO_COMPRESS_MAX){
+    if(progressCb)progressCb('Comprimindo '+asset.name+'...');
+    try{
+      const result=await compressVideo(file,VIDEO_COMPRESS_TARGET);
+      file=result.file;
+      if(progressCb)progressCb(`${asset.name} comprimido: ${formatBytes(result.originalSize)} → ${formatBytes(result.newSize)}`);
+    }catch(e){
+      console.warn('Video compression failed, using original:',e);
+    }
+  }
+
+  // Upload to storage
+  if(progressCb)progressCb('Enviando '+asset.name+' pro storage...');
+  const storagePath=await uploadToStorage(file,token);
+
+  return{
+    name:asset.name,
+    type:asset.type,
+    dimensions:asset.dimensions,
+    fileName:file.name,
+    mimeType:file.type,
+    fileSize:file.size,
+    storagePath:storagePath,
+    landingPage:asset.landingPage,
+    trackers:mergeTrackers(asset.trackers||[],dsp)
+  };
+}
+
 async function activateXandrAssets(token){
   try{
     const assets=generatedFiles._assets;
@@ -1248,15 +1348,14 @@ async function activateXandrAssets(token){
       const a=assets[i];
       updateProgress('xandr',i,assets.length,a.name);
       try{
-        const file=a.compressedFile||a.originalFile;
-        const base64=await fileToBase64(file);
+        const prepared=await prepareAssetForUpload(a,'xandr',token,msg=>updateProgress('xandr',i,assets.length,msg));
         const body={
           advertiserId:7392214,
           brandUrl:brandUrl||null,
           languageId:langId,
           brandId:brandId?parseInt(brandId):null,
           sla,
-          creatives:[{name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,trackers:mergeTrackers(a.trackers,'xandr')}]
+          creatives:[prepared]
         };
         const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-xandr-asset',{
           method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)
@@ -1288,36 +1387,46 @@ async function activateDV360Assets(token){
     const total=assets.length;
     updateProgress('dv360',0,total,'Preparando...');
 
-    // Convert all files to base64 first
+    // Prepare all assets: compress videos + upload to storage
     const creatives=[];
     for(let i=0;i<total;i++){
       const a=assets[i];
-      updateProgress('dv360',0,total,'Preparando '+(i+1)+'/'+total);
-      const file=a.compressedFile||a.originalFile;
-      const base64=await fileToBase64(file);
-      creatives.push({name:a.name,type:a.type,dimensions:a.dimensions,fileName:file.name,mimeType:file.type,fileBase64:base64,landingPage:a.landingPage,trackers:mergeTrackers(a.trackers,'dv360')});
+      updateProgress('dv360',i,total,'Preparando '+(i+1)+'/'+total);
+      try{
+        const prepared=await prepareAssetForUpload(a,'dv360',token,msg=>updateProgress('dv360',i,total,msg));
+        creatives.push(prepared);
+      }catch(err){
+        creatives.push({name:a.name,_uploadError:err.message});
+      }
     }
 
-    // Send in chunks of 5 to avoid edge function timeout on large payloads
+    // Send in chunks of 5
     const CHUNK=5;
     const allResults=[];
     let successCount=0;
     for(let i=0;i<creatives.length;i+=CHUNK){
       const chunk=creatives.slice(i,i+CHUNK);
+      // Separate upload errors from valid creatives
+      const valid=chunk.filter(c=>!c._uploadError);
+      const errors=chunk.filter(c=>c._uploadError);
+      errors.forEach(c=>allResults.push({success:false,name:c.name,error:'Upload failed: '+c._uploadError}));
+
+      if(!valid.length){updateProgress('dv360',i+chunk.length,total);continue}
+
       const chunkNum=Math.floor(i/CHUNK)+1;
       const totalChunks=Math.ceil(creatives.length/CHUNK);
-      updateProgress('dv360',i,total,`Enviando batch ${chunkNum}/${totalChunks} (${i+1}-${Math.min(i+CHUNK,total)}/${total})`);
+      updateProgress('dv360',i,total,`Ativando batch ${chunkNum}/${totalChunks}`);
       try{
         const res=await fetch(SUPABASE_URL+'/functions/v1/dsp-dv360-asset',{
           method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-          body:JSON.stringify({advertiserId,campaignName,advertiserName,brandName,creatives:chunk})
+          body:JSON.stringify({advertiserId,campaignName,advertiserName,brandName,creatives:valid})
         });
         const data=await res.json();
         const results=data.results||[];
         for(const r of results){allResults.push(r);if(r.success)successCount++}
         updateProgress('dv360',i+chunk.length,total);
       }catch(chunkErr){
-        for(const c of chunk)allResults.push({success:false,name:c.name,error:chunkErr.message||'Network error'});
+        for(const c of valid)allResults.push({success:false,name:c.name,error:chunkErr.message||'Network error'});
         updateProgress('dv360',i+chunk.length,total);
       }
     }
