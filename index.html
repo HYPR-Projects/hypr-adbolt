@@ -2408,19 +2408,29 @@ function bulkSetField(field){
 function showScopePopover(tr,badgeEl,onUpdate){
   document.querySelectorAll('.tracker-scope-pop').forEach(p=>p.remove());
   const dspList=[['xandr','Xandr'],['dv360','DV360'],['stackadapt','StackAdapt'],['amazondsp','Amazon DSP']];
-  const isAll=tr.dsps==='all';
   const pop=document.createElement('div');pop.className='tracker-scope-pop';
-  pop.innerHTML=`<div class="tracker-scope-pop-item" data-pop-dsp="all"><div class="pop-cb${isAll?' checked':''}">✓</div><span>Todas</span></div><div class="tracker-scope-pop-divider"></div>${dspList.map(([k,l])=>{const on=isAll||tr.dsps.includes(k);return`<div class="tracker-scope-pop-item" data-pop-dsp="${k}"><div class="pop-cb${on?' checked':''}">✓</div><span>${l}</span></div>`}).join('')}`;
+  function renderPop(){
+    const isAll=tr.dsps==='all';
+    pop.innerHTML=`<div class="tracker-scope-pop-item" data-pop-dsp="all"><div class="pop-cb${isAll?' checked':''}">✓</div><span>Todas</span></div><div class="tracker-scope-pop-divider"></div>${dspList.map(([k,l])=>{const on=isAll||tr.dsps.includes(k);return`<div class="tracker-scope-pop-item" data-pop-dsp="${k}"><div class="pop-cb${on?' checked':''}">✓</div><span>${l}</span></div>`}).join('')}`;
+  }
+  renderPop();
   const rect=badgeEl.getBoundingClientRect();
   pop.style.position='fixed';pop.style.top=(rect.bottom+6)+'px';pop.style.left=(rect.left+rect.width/2)+'px';pop.style.transform='translateX(-50%)';
   document.body.appendChild(pop);
   pop.addEventListener('click',ev=>{
     ev.stopPropagation();const item=ev.target.closest('[data-pop-dsp]');if(!item)return;
     const dspKey=item.dataset.popDsp;
-    if(dspKey==='all'){tr.dsps='all'}else{let arr=tr.dsps==='all'?[...dspList.map(d=>d[0])]:[...tr.dsps];if(arr.includes(dspKey))arr=arr.filter(d=>d!==dspKey);else arr.push(dspKey);tr.dsps=arr.length===0||arr.length===dspList.length?'all':arr}
-    pop.remove();onUpdate();
+    if(dspKey==='all'){
+      // Toggle: if already all, deselect all; otherwise select all
+      tr.dsps=tr.dsps==='all'?[]:'all';
+    }else{
+      let arr=tr.dsps==='all'?[...dspList.map(d=>d[0])]:(Array.isArray(tr.dsps)?[...tr.dsps]:[]);
+      if(arr.includes(dspKey))arr=arr.filter(d=>d!==dspKey);else arr.push(dspKey);
+      tr.dsps=arr.length===dspList.length?'all':arr;
+    }
+    renderPop(); // re-render checkboxes without closing
   });
-  const closeHandler=ev=>{if(!pop.contains(ev.target)&&ev.target!==badgeEl){pop.remove();document.removeEventListener('click',closeHandler)}};
+  const closeHandler=ev=>{if(!pop.contains(ev.target)&&ev.target!==badgeEl){pop.remove();onUpdate();document.removeEventListener('click',closeHandler)}};
   setTimeout(()=>document.addEventListener('click',closeHandler),0);
 }
 function showBulkTrackerModal(count,label,onApply){
