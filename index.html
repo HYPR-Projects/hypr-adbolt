@@ -494,6 +494,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .tracker-chip-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .tracker-chip-rm{background:none;border:none;color:var(--text-tri);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;flex-shrink:0;transition:color var(--dur-f)}
 .tracker-chip-rm:hover{color:var(--error)}
+.tracker-format-badge{font-size:0.58rem;font-weight:700;letter-spacing:0.04em;padding:0 3px;flex-shrink:0;opacity:0.85}
 .tracker-scope-badge{flex-shrink:0;font-size:0.58rem;font-weight:600;letter-spacing:0.03em;padding:2px 5px;border-radius:3px;cursor:pointer;transition:all var(--dur-f);text-transform:uppercase;line-height:1.2;position:relative;user-select:none}
 .tracker-scope-badge.scope-all{background:var(--border);color:var(--text-sec)}
 .tracker-scope-badge.scope-partial{background:var(--accent-dim);color:var(--accent)}
@@ -914,14 +915,40 @@ async function doSignOut(){if(sbClient)await sbClient.auth.signOut();currentUser
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 function cleanCR(s){return s.replace(/_x000d_/gi,'').replace(/\r/g,'')}
 function normalizeUrl(v){v=v.trim();if(!v)return'';if(!/^https?:\/\//i.test(v)&&/^[a-zA-Z0-9]/.test(v)&&v.includes('.'))v='https://'+v;return v}
-function extractTrackerUrl(raw){
+function analyzeTracker(raw){
   const t=raw.trim();
-  if(!t.startsWith('<'))return t;
-  let m=t.match(/data-3rd-tracker=["']([^"']+)/);if(m)return m[1];
-  m=t.match(/src=["']([^"']+\.js[^"']*)/);if(m)return m[1];
-  m=t.match(/(https?:\/\/[^\s"'<>]+)/);if(m)return m[1];
-  return t;
+  // Pure URL (no HTML tags)
+  if(!t.startsWith('<')){
+    const url=t;
+    if(/\.js(\?|$)/i.test(url)||/\/js\//i.test(url))return{url,format:'url-js'};
+    if(/\.html?(\?|$)/i.test(url))return{url,format:'url-html'};
+    return{url,format:'url-image'};
+  }
+  // <script src="..."> → JavaScript URL
+  const scriptSrc=t.match(/<script[^>]+src=["']([^"']+)/i);
+  if(scriptSrc)return{url:scriptSrc[1],format:'url-js'};
+  // <script>...</script> with inline code (no src) → Raw JavaScript
+  const inlineScript=t.match(/<script[^>]*>([\s\S]+?)<\/script>/i);
+  if(inlineScript&&!scriptSrc)return{url:t,format:'raw-js'};
+  // <img src="..."> → Image URL
+  const imgSrc=t.match(/<img[^>]+src=["']([^"']+)/i);
+  if(imgSrc)return{url:imgSrc[1],format:'url-image'};
+  // data-3rd-tracker attribute
+  const dt=t.match(/data-3rd-tracker=["']([^"']+)/);
+  if(dt){const u=dt[1];if(/\.js(\?|$)/i.test(u))return{url:u,format:'url-js'};return{url:u,format:'url-image'}}
+  // iframe src → HTML URL
+  const iframeSrc=t.match(/<iframe[^>]+src=["']([^"']+)/i);
+  if(iframeSrc)return{url:iframeSrc[1],format:'url-html'};
+  // Fallback: extract any URL and classify
+  const anyUrl=t.match(/(https?:\/\/[^\s"'<>]+)/);
+  if(anyUrl){const u=anyUrl[1];if(/\.js(\?|$)/i.test(u))return{url:u,format:'url-js'};if(/\.html?(\?|$)/i.test(u))return{url:u,format:'url-html'};return{url:u,format:'url-image'}}
+  // Nothing recognizable — treat as raw JS
+  return{url:t,format:'raw-js'};
 }
+function extractTrackerUrl(raw){return analyzeTracker(raw).url}
+const FORMAT_LABELS={'url-image':'IMG','url-js':'JS','url-html':'HTML','raw-js':'Raw JS'};
+const FORMAT_COLORS={'url-image':'var(--accent)','url-js':'var(--warning)','url-html':'var(--success)','raw-js':'var(--error)'};
+function formatLabel(f){return FORMAT_LABELS[f]||f}
 function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(0)+'KB';return(b/1048576).toFixed(1)+'MB'}
 function toggleTheme(){const n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('hypr-theme',n)}
 let toastTimer=null;
@@ -1517,13 +1544,15 @@ function updateOptions(){
 function commitPendingTrackers(){
   document.querySelectorAll('[data-tracker-add]').forEach(input=>{
     const raw=input.value.trim();if(!raw)return;
-    const url=normalizeUrl(extractTrackerUrl(raw));
+    const analyzed=analyzeTracker(raw);
+    const url=normalizeUrl(analyzed.url);
     const id=parseInt(input.dataset.trackerAdd);
     const entry=assetEntries.find(a=>a.id===id);
-    if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});input.value=''}
+    if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,format:analyzed.format,dsps:'all'});input.value=''}
   });
 }
-function mergeTrackers(trackerList,dsp){const urls=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!urls.includes(tr.url))urls.push(tr.url)}});return urls}
+function mergeTrackers(trackerList,dsp){const out=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,format:'url-image',dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!out.some(o=>o.url===tr.url))out.push({url:tr.url,format:tr.format||'url-image'})}});return out}
+function mergeTrackerUrls(trackerList,dsp){return mergeTrackers(trackerList,dsp).map(t=>t.url)}
 function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasContent=hasTags||hasSurveys||hasAssets;const hasDsp=selectedDsps.size>0;const ready=hasContent&&hasDsp;
   const btnGen=document.getElementById('btnGenerate');const btnAct=document.getElementById('btnActivate');const dlCard=document.getElementById('actionDownload');const actCard=document.getElementById('actionActivate');
   if(btnGen)btnGen.disabled=!ready;if(btnAct)btnAct.disabled=!ready;
@@ -1779,7 +1808,7 @@ function renderPlacementsTable(){
       <td><span class="dim-badge">${esc(p.dimensions)}</span></td>
       <td><span class="tag-status-badge ${tagOk?'ok':'missing'}" title="${tagOk?esc(tagPreview.substring(0,300)):'Tag vazia'}">${tagOk?'Tag ✓':'Sem tag'}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(p.clickUrl)}" data-field="clickUrl" data-idx="${i}"></td>
-      <td class="tracker-cell"><div class="tracker-chips">${(p.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';return`<span class="tracker-chip"><span class="tracker-scope-badge ${scopeClass}" data-tag-scope-toggle="${i}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tag-tracker-rm="${i}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tag-tracker-add="${i}" placeholder="+ pixel URL"></div></td>
+      <td class="tracker-cell"><div class="tracker-chips">${(p.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';const fmt=tr.format||'url-image';return`<span class="tracker-chip"><span class="tracker-format-badge" style="color:${FORMAT_COLORS[fmt]||'var(--text-tri)'}" title="${fmt}">${FORMAT_LABELS[fmt]||'?'}</span><span class="tracker-scope-badge ${scopeClass}" data-tag-scope-toggle="${i}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tag-tracker-rm="${i}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tag-tracker-add="${i}" placeholder="+ pixel URL ou tag HTML"></div></td>
       <td class="asset-actions"><button class="asset-action-btn danger" title="Remover" data-tag-rm="${i}">✕</button></td>
     </tr>`}).join('');
   const selectAll=document.getElementById('tagsSelectAll');
@@ -1806,14 +1835,14 @@ function smartName(name){
 // ── Tags table bulk actions ──
 function tagsBulkAddTracker(){
   const ids=getSelectedTagIds();if(!ids.length)return;
-  showBulkTrackerModal(ids.length,'placement',function(url,dsps){
+  showBulkTrackerModal(ids.length,'placement',function(url,dsps,format){
     ids.forEach(idx=>{
       const p=parsedData.placements[idx];if(!p)return;
       const existing=p.trackers.findIndex(t=>(typeof t==='string'?t:t.url)===url);
-      if(existing>=0){p.trackers[existing]={url,dsps:dsps==='all'?'all':[...dsps]}}
-      else{p.trackers.push({url,dsps:dsps==='all'?'all':[...dsps]})}
+      if(existing>=0){p.trackers[existing]={url,format,dsps:dsps==='all'?'all':[...dsps]}}
+      else{p.trackers.push({url,format,dsps:dsps==='all'?'all':[...dsps]})}
     });
-    renderPlacementsTable();toast(`Pixel aplicado em ${ids.length} placement(s)`,'success');
+    renderPlacementsTable();toast(`${formatLabel(format)} aplicado em ${ids.length} placement(s)`,'success');
   });
 }
 function tagsBulkFindReplace(){
@@ -1953,9 +1982,9 @@ function genDV360(d){
   video.forEach(p=>allRows.push([p.placementName,'','',p.vastTag||p.jsTag,'','video','','','','','','','','']));
   return{headers:allHeaders,rows:allRows,type:'csv',files,displayCount:display.length,videoCount:video.length}}
 
-function genSA(d,brand,pixel){const h=['Creative Name','HTML or JS Code','Size','Click URL','Sponsored By','Paid By','Impression Tracking URLs'],f=d.placements.filter(p=>!STACKADAPT_EXCLUDED_SIZES.has(p.dimensions));if(f.length<d.placements.length)toast(`StackAdapt: ${d.placements.length-f.length} removido(s) (336x280)`,'error');return{headers:h,rows:f.map(p=>{const pxUrls=mergeTrackers(p.trackers||[],'stackadapt');if(pixel&&!pxUrls.includes(pixel))pxUrls.unshift(pixel);const pxStr=p.isSurvey?'':(pxUrls.length?'"'+pxUrls.join('\n')+'"':'');return[p.placementName,p.jsTag,p.dimensions,p.clickUrl,brand||d.brandName,'',pxStr]}),type:'xlsx',count:f.length,colWidths:[{wch:40},{wch:60},{wch:12},{wch:50},{wch:20},{wch:12},{wch:60}]}}
+function genSA(d,brand,pixel){const h=['Creative Name','HTML or JS Code','Size','Click URL','Sponsored By','Paid By','Impression Tracking URLs'],f=d.placements.filter(p=>!STACKADAPT_EXCLUDED_SIZES.has(p.dimensions));if(f.length<d.placements.length)toast(`StackAdapt: ${d.placements.length-f.length} removido(s) (336x280)`,'error');return{headers:h,rows:f.map(p=>{const pxUrls=mergeTrackerUrls(p.trackers||[],'stackadapt');if(pixel&&!pxUrls.includes(pixel))pxUrls.unshift(pixel);const pxStr=p.isSurvey?'':(pxUrls.length?'"'+pxUrls.join('\n')+'"':'');return[p.placementName,p.jsTag,p.dimensions,p.clickUrl,brand||d.brandName,'',pxStr]}),type:'xlsx',count:f.length,colWidths:[{wch:40},{wch:60},{wch:12},{wch:50},{wch:20},{wch:12},{wch:60}]}}
 
-function genXandr(d,pixel,pol){const pv=pol?'Yes; non-EU':'No';return{headers:['Creative Name','Secure Content','Size','Trackers','External Identifier','Political Declaration'],rows:d.placements.map(p=>{const pxUrls=mergeTrackers(p.trackers||[],'xandr');if(pixel&&!pxUrls.includes(pixel))pxUrls.unshift(pixel);const pxStr=p.isSurvey?'':(pxUrls.join('\n'));return[p.placementName,p.jsTag,p.dimensions,pxStr,'',pv]}),type:'xlsx',colWidths:[{wch:40},{wch:60},{wch:12},{wch:60},{wch:20},{wch:20}]}}
+function genXandr(d,pixel,pol){const pv=pol?'Yes; non-EU':'No';return{headers:['Creative Name','Secure Content','Size','Trackers','External Identifier','Political Declaration'],rows:d.placements.map(p=>{const pxUrls=mergeTrackerUrls(p.trackers||[],'xandr');if(pixel&&!pxUrls.includes(pixel))pxUrls.unshift(pixel);const pxStr=p.isSurvey?'':(pxUrls.join('\n'));return[p.placementName,p.jsTag,p.dimensions,pxStr,'',pv]}),type:'xlsx',colWidths:[{wch:40},{wch:60},{wch:12},{wch:60},{wch:20},{wch:20}]}}
 
 const AMAZON_MARKETPLACE_LANG={'BR':'Portuguese','US':'English','MX':'Spanish','UK':'English','DE':'German','FR':'French','ES':'Spanish','IT':'Italian','JP':'Japanese','CA':'English','AU':'English','IN':'English','NL':'Dutch','SA':'Arabic','SE':'Swedish','TR':'Turkish','AE':'English'};
 function genAmazonDSP(d){
@@ -1963,7 +1992,7 @@ function genAmazonDSP(d){
   const marketplace=document.getElementById('inputAmazonMarketplace')?.value||'BR';
   const lang=AMAZON_MARKETPLACE_LANG[marketplace]||'Portuguese';
   const h=['Advertiser ID*','Creative Template*','Name*','Marketplace*','Language*','Creative ID','External ID','Size*','Tag Source*','Click-through destination*','Third party-impression URL','AdChoices location','Additional html'];
-  const rows=d.placements.filter(p=>p.type!=='video').map(p=>{const pxUrls=mergeTrackers(p.trackers||[],'amazondsp');return[advId,'Third-party Display',p.placementName,marketplace,lang,'','',p.dimensions,p.jsTag,'Links to another website',pxUrls.join('\n'),'','']});
+  const rows=d.placements.filter(p=>p.type!=='video').map(p=>{const pxUrls=mergeTrackerUrls(p.trackers||[],'amazondsp');return[advId,'Third-party Display',p.placementName,marketplace,lang,'','',p.dimensions,p.jsTag,'Links to another website',pxUrls.join('\n'),'','']});
   return{headers:h,rows,type:'xlsx',sheetName:'THIRD-PARTY DISPLAY',colWidths:[{wch:16},{wch:18},{wch:45},{wch:15},{wch:14},{wch:12},{wch:12},{wch:12},{wch:60},{wch:28},{wch:40},{wch:16},{wch:30}]}}
 
 // ── Downloads ──
@@ -2290,7 +2319,7 @@ function renderAssetsTable(){
       <td style="white-space:nowrap"><input class="asset-input mono" style="width:75px;display:inline-block;vertical-align:middle" value="${a.dimensions}" data-field="dimensions" data-id="${a.id}">${a.type==='display'&&!isIABSize(a.dimensions)?`<span class="asset-size-warn" title="Size fora do padrão IAB. Sugestão: ${getSizeSuggestion(a.w,a.h)}">⚠️</span>${!a.resized?`<button class="asset-resize-btn" data-resize="${a.id}" data-suggest="${getSizeSuggestion(a.w,a.h)}" title="Redimensionar pra ${getSizeSuggestion(a.w,a.h)}">${getSizeSuggestion(a.w,a.h)}</button>`:''}`:(a.resized?'<span class="asset-size-ok" title="Redimensionado">✓</span>':'')}</td>
       <td><span class="asset-weight-badge ${wc}">${formatBytes(sz)}${a.compressed?' ⚡':''}</span></td>
       <td><input class="asset-input asset-url-input mono" value="${esc(a.landingPage)}" data-field="landingPage" data-id="${a.id}" placeholder="https://..."></td>
-      <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';return`<span class="tracker-chip"><span class="tracker-scope-badge ${scopeClass}" data-scope-toggle="${a.id}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL"></div></td>
+      <td class="tracker-cell"><div class="tracker-chips">${(a.trackers||[]).map((t,ti)=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;const scopeLabel=tr.dsps==='all'?'ALL':tr.dsps.map(d=>({xandr:'XN',dv360:'DV',stackadapt:'SA',amazondsp:'AZ'}[d]||d)).join('·');const scopeClass=tr.dsps==='all'?'scope-all':'scope-partial';const fmt=tr.format||'url-image';return`<span class="tracker-chip"><span class="tracker-format-badge" style="color:${FORMAT_COLORS[fmt]||'var(--text-tri)'}" title="${fmt}">${FORMAT_LABELS[fmt]||'?'}</span><span class="tracker-scope-badge ${scopeClass}" data-scope-toggle="${a.id}" data-ti="${ti}" title="Clique pra escolher DSPs">${scopeLabel}</span><span class="tracker-chip-url" title="${esc(tr.url)}">${esc(tr.url)}</span><button class="tracker-chip-rm" data-tracker-rm="${a.id}" data-ti="${ti}">✕</button></span>`}).join('')}<input class="tracker-add-input" data-tracker-add="${a.id}" placeholder="+ pixel URL ou tag HTML"></div></td>
       <td class="asset-actions">
         <button class="asset-action-btn" title="Duplicar" data-dup="${a.id}">⧉</button>
         <button class="asset-action-btn danger" title="Remover" data-rm="${a.id}">✕</button>
@@ -2475,12 +2504,13 @@ function showBulkTrackerModal(count,label,onApply){
   document.getElementById('bulkTrackerApplyBtn').addEventListener('click',()=>{
     const val=(document.getElementById('bulkTrackerUrlInput')?.value||'').trim();
     if(!val){toast('Cole a URL do pixel','error');return}
-    const url=normalizeUrl(extractTrackerUrl(val));
+    const analyzed=analyzeTracker(val);
+    const url=normalizeUrl(analyzed.url);
     const allBtn=overlay.querySelector('.bulk-scope-btn[data-scope="all"]');
     const dsps=allBtn?.classList.contains('active')?'all':[...overlay.querySelectorAll('.bulk-scope-btn.active:not([data-scope="all"])')].map(b=>b.dataset.scope);
     if(dsps!=='all'&&!dsps.length){toast('Selecione ao menos uma DSP','error');return}
     overlay.remove();
-    onApply(url,dsps);
+    onApply(url,dsps,analyzed.format);
   });
 }
 function toggleBulkScope(btn){
@@ -2524,14 +2554,14 @@ function showFindReplaceModal(count,onApply){
 // ── Assets Bulk Actions ──
 function bulkAddTracker(){
   const ids=getSelectedAssetIds();if(!ids.length)return;
-  showBulkTrackerModal(ids.length,'asset',function(url,dsps){
+  showBulkTrackerModal(ids.length,'asset',function(url,dsps,format){
     ids.forEach(id=>{
       const e=assetEntries.find(a=>a.id===id);if(!e)return;
       const existing=e.trackers.findIndex(t=>(typeof t==='string'?t:t.url)===url);
-      if(existing>=0){e.trackers[existing]={url,dsps:dsps==='all'?'all':[...(typeof dsps==='string'?[]:dsps)]}}
-      else{e.trackers.push({url,dsps:dsps==='all'?'all':[...dsps]})}
+      if(existing>=0){e.trackers[existing]={url,format,dsps:dsps==='all'?'all':[...(typeof dsps==='string'?[]:dsps)]}}
+      else{e.trackers.push({url,format,dsps:dsps==='all'?'all':[...dsps]})}
     });
-    renderAssetsTable();toast(`Pixel aplicado em ${ids.length} asset(s)`,'success');
+    renderAssetsTable();toast(`${formatLabel(format)} aplicado em ${ids.length} asset(s)`,'success');
   });
 }
 function showFindReplace(){
@@ -2805,10 +2835,11 @@ document.getElementById('assetsTableBody').addEventListener('keydown',e=>{
 });
 function commitSingleTracker(input){
   const raw=input.value.trim();if(!raw)return;
-  const url=normalizeUrl(extractTrackerUrl(raw));
+  const analyzed=analyzeTracker(raw);
+  const url=normalizeUrl(analyzed.url);
   const id=parseInt(input.dataset.trackerAdd);
   const entry=assetEntries.find(a=>a.id===id);
-  if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});renderAssetsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
+  if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,format:analyzed.format,dsps:'all'});renderAssetsTable();if(url!==raw)toast(`Detectado: ${formatLabel(analyzed.format)}`,'success')}
 }
 document.getElementById('assetsSelectAll').addEventListener('change',e=>{
   const checked=e.target.checked;
@@ -2863,10 +2894,11 @@ document.getElementById('placementsBody').addEventListener('keydown',e=>{
 });
 function commitTagTracker(input){
   const raw=input.value.trim();if(!raw)return;
-  const url=normalizeUrl(extractTrackerUrl(raw));
+  const analyzed=analyzeTracker(raw);
+  const url=normalizeUrl(analyzed.url);
   const idx=parseInt(input.dataset.tagTrackerAdd);
   const p=parsedData?.placements[idx];
-  if(p&&!p.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){p.trackers.push({url,dsps:'all'});renderPlacementsTable();if(url!==raw)toast('URL extraída da tag automaticamente','success')}
+  if(p&&!p.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){p.trackers.push({url,format:analyzed.format,dsps:'all'});renderPlacementsTable();if(url!==raw)toast(`Detectado: ${formatLabel(analyzed.format)}`,'success')}
 }
 document.getElementById('tagsSelectAll').addEventListener('change',e=>{
   const checked=e.target.checked;
