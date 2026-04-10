@@ -385,8 +385,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .survey-type-btn:hover,.survey-size-pill:hover{border-color:var(--border-active);color:var(--text)}
 .survey-type-btn.active,.survey-size-pill.active{border-color:var(--accent);background:var(--accent-dim);color:var(--text)}
 .survey-custom-wrap{margin-bottom:16px}
-.survey-custom-wrap input,.survey-add-input,.pixel-field,.option-input input[type="text"],.option-input select{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-xs);color:var(--text);font-size:0.8rem;padding:var(--input-py) var(--input-px);outline:none;transition:all var(--dur-f)}
-.survey-custom-wrap input:focus,.survey-add-input:focus,.pixel-field:focus,.option-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.survey-custom-wrap input,.survey-add-input,.option-input input[type="text"],.option-input select{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-xs);color:var(--text);font-size:0.8rem;padding:var(--input-py) var(--input-px);outline:none;transition:all var(--dur-f)}
+.survey-custom-wrap input:focus,.survey-add-input:focus:focus,.option-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
 .survey-entries{display:flex;flex-direction:column;gap:12px}
 .survey-entry{background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-sm);padding:16px}
 .survey-entry-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -408,12 +408,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 
 /* ── DSP Cards ── */
 .dsp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-items:start}
-.dsp-card-expandable{display:flex;flex-direction:column}
 .dsp-card{background:var(--bg-surface);border:1.5px solid var(--border);border-radius:var(--r);padding:24px 20px;cursor:pointer;transition:all var(--dur) var(--ease-out);user-select:none;position:relative;overflow:hidden;display:flex;align-items:center;gap:16px}
 .dsp-card:hover{border-color:var(--border-active);background:var(--bg-raised);transform:translateY(-2px)}
 .dsp-card.selected{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 1px var(--accent-ring);transform:scale(1);animation:cardSelect 0.35s var(--ease-spring)}
 @keyframes cardSelect{0%{transform:scale(0.97)}50%{transform:scale(1.02)}100%{transform:scale(1)}}
-.dsp-card-expandable .dsp-card.selected{border-radius:var(--r) var(--r) 0 0}
 .dsp-card-icon{width:44px;height:44px;border-radius:12px;background:var(--bg-raised);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.72rem;font-family:var(--mono);color:var(--text-sec);flex-shrink:0;transition:all var(--dur)}
 .dsp-card.selected .dsp-card-icon{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent)}
 .dsp-card-check{position:absolute;top:10px;right:10px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--text-on-accent);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(0.5);transition:all var(--dur) var(--ease-spring)}
@@ -759,11 +757,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
         <div class="step-card">
           <div class="dsp-grid" id="dspGrid">
           <div class="dsp-card" data-dsp="dv360" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">DV</div><div class="dsp-card-info"><div class="dsp-card-name">DV360</div><div class="dsp-card-sub">CSV · Third-Party Tags</div></div></div>
-          <div class="dsp-card-expandable"><div class="dsp-card" data-dsp="stackadapt" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">SA</div><div class="dsp-card-info"><div class="dsp-card-name">StackAdapt</div><div class="dsp-card-sub">XLSX · New Creatives</div></div></div><div class="dsp-pixel-input" id="pixelWrap_stackadapt"><label for="pixel_stackadapt">Impression Pixel <small>(todos os criativos)</small></label><input type="text" id="pixel_stackadapt" class="pixel-field" placeholder="Cole a URL ou tag do pixel"></div></div>
-          <div class="dsp-card-expandable"><div class="dsp-card" data-dsp="xandr" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">XN</div><div class="dsp-card-info"><div class="dsp-card-name">Xandr</div><div class="dsp-card-sub">XLSX · Third-Party Creative</div></div></div><div class="dsp-pixel-input" id="pixelWrap_xandr"><label for="pixel_xandr">Impression Pixel <small>(todos os criativos)</small></label><input type="text" id="pixel_xandr" class="pixel-field" placeholder="Cole a URL ou tag do pixel"></div></div>
+          <div class="dsp-card" data-dsp="stackadapt" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">SA</div><div class="dsp-card-info"><div class="dsp-card-name">StackAdapt</div><div class="dsp-card-sub">XLSX · New Creatives</div></div></div>
+          <div class="dsp-card" data-dsp="xandr" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">XN</div><div class="dsp-card-info"><div class="dsp-card-name">Xandr</div><div class="dsp-card-sub">XLSX · Third-Party Creative</div></div></div>
           <div class="dsp-card" data-dsp="amazondsp" role="button" tabindex="0"><div class="dsp-card-check">✓</div><div class="dsp-card-icon">AZ</div><div class="dsp-card-info"><div class="dsp-card-name">Amazon DSP</div><div class="dsp-card-sub">XLSX · Third-Party Display</div></div></div>
         </div>
-        <div class="pixel-sync-row" id="pixelSyncRow"><label class="checkbox-row" style="padding:4px 0;font-size:0.78rem"><input type="checkbox" class="custom-cb" id="syncPixels"> Usar mesmo pixel para StackAdapt e Xandr</label></div>
         <div class="assignment-wrap" id="assignmentSection">
           <div class="assignment-header"><span class="section-label">Atribuição por DSP</span><label class="checkbox-row" style="padding:0;font-size:0.78rem"><input type="checkbox" class="custom-cb" id="replicateAll" checked> Replicar todos</label></div>
           <div class="table-wrap" id="assignmentTableWrap" style="display:none"><table class="placements-table"><thead id="assignmentHead"></thead><tbody id="assignmentBody"></tbody></table></div>
@@ -953,10 +950,6 @@ function resetWizardState(){
   // Reset DSP card UI
   document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{card.classList.remove('selected','dsp-unavailable')});
   document.querySelectorAll('.dsp-card-check').forEach(c=>{c.style.opacity='0';c.style.transform='scale(0.5)'});
-  // Reset pixel inputs
-  ['stackadapt','xandr'].forEach(dsp=>{const w=document.getElementById(`pixelWrap_${dsp}`);if(w)w.classList.remove('visible');const f=document.getElementById(`pixel_${dsp}`);if(f)f.value=''});
-  document.getElementById('pixelSyncRow').classList.remove('visible');
-  document.getElementById('syncPixels').checked=false;
   // Reset config sections
   document.getElementById('assignmentSection').classList.remove('visible');
   ['xandrAuditDivider','xandrAuditSection','dv360ConfigDivider','dv360ConfigSection','amazonDspConfigDivider','amazonDspConfigSection','optPoliticalRow'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none'});
@@ -976,9 +969,7 @@ function enterWizard(mode){
   renderWizardSteps();navigateToStep(0);
   const brandUrlField=document.getElementById('inputXandrBrandUrl');if(brandUrlField&&!brandUrlField.value.trim()&&mode==='surveys')brandUrlField.value='https://hypr.mobi';
   const showAssets=mode==='assets';const dspSubs={dv360:['API + Template CSV','API · Upload direto'],stackadapt:['Apenas template XLSX','Em breve'],xandr:['API + Template XLSX','API · Upload direto'],amazondsp:['Apenas template XLSX','Em breve']};const unavail=new Set(['stackadapt','amazondsp']);
-  document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{const dsp=card.dataset.dsp;const sub=card.querySelector('.dsp-card-sub');if(sub)sub.textContent=dspSubs[dsp]?.[showAssets?1:0]||sub.textContent;if(showAssets&&unavail.has(dsp))card.classList.add('dsp-unavailable')});
-  document.querySelectorAll('.dsp-pixel-input').forEach(el=>{el.style.display=showAssets?'none':''});
-  document.getElementById('pixelSyncRow').style.display=showAssets?'none':'';}
+  document.querySelectorAll('.dsp-card[data-dsp]').forEach(card=>{const dsp=card.dataset.dsp;const sub=card.querySelector('.dsp-card-sub');if(sub)sub.textContent=dspSubs[dsp]?.[showAssets?1:0]||sub.textContent;if(showAssets&&unavail.has(dsp))card.classList.add('dsp-unavailable')});}
 function hasWizardData(){return!!(parsedData?.placements?.length||surveyEntries.length||assetEntries.length||selectedDsps.size)}
 function exitWizard(){if(hasWizardData()&&!confirm('Você tem dados configurados. Sair vai descartar tudo. Continuar?'))return;resetWizardState();document.getElementById('wizard').classList.remove('active');document.getElementById('flowSelector').style.display='';document.querySelectorAll('.step-view').forEach(v=>v.classList.remove('active'))}
 function renderWizardSteps(){const config=WIZARD_CONFIGS[currentMode];document.getElementById('wizardSteps').innerHTML=config.steps.map((step,i)=>`<div class="wizard-step${i===0?' active':''}" data-idx="${i}" role="button" tabindex="0" onclick="navigateToStep(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateToStep(${i})}"><div class="wizard-step-num"><span class="step-number">${i+1}</span><svg class="check-svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="wizard-step-info"><div class="wizard-step-label">${config.labels[i]}</div><div class="wizard-step-sublabel">${config.sublabels[i]}</div></div></div>${i<config.steps.length-1?'<div class="wizard-step-connector"></div>':''}`).join('')}
@@ -1087,8 +1078,8 @@ async function activateInDsps(){
     const br=document.getElementById('inputBrand').value.trim(),pol=document.getElementById('inputPolitical').checked;
     const surveyPl=hasSurveys?getSurveyPlacements():[];
     if(selectedDsps.has('dv360')){const tp=hasTags?getPlacementsForDsp('dv360'):[],all=[...tp,...surveyPl];if(all.length)generatedFiles.dv360=genDV360({placements:all})}
-    if(selectedDsps.has('stackadapt')){const tp=hasTags?getPlacementsForDsp('stackadapt'):[],px=getPixelForDsp('stackadapt'),all=[...tp,...surveyPl];if(all.length)generatedFiles.stackadapt=genSA({placements:all,brandName:parsedData?.brandName||''},br,px)}
-    if(selectedDsps.has('xandr')){const tp=hasTags?getPlacementsForDsp('xandr'):[],px=getPixelForDsp('xandr'),all=[...tp,...surveyPl];if(all.length)generatedFiles.xandr=genXandr({placements:all},px,pol)}
+    if(selectedDsps.has('stackadapt')){const tp=hasTags?getPlacementsForDsp('stackadapt'):[],all=[...tp,...surveyPl];if(all.length)generatedFiles.stackadapt=genSA({placements:all,brandName:parsedData?.brandName||''},br,'')}
+    if(selectedDsps.has('xandr')){const tp=hasTags?getPlacementsForDsp('xandr'):[],all=[...tp,...surveyPl];if(all.length)generatedFiles.xandr=genXandr({placements:all},'',pol)}
     if(selectedDsps.has('amazondsp')){const tp=hasTags?getPlacementsForDsp('amazondsp'):[],all=[...tp,...surveyPl];if(all.length)generatedFiles.amazondsp=genAmazonDSP({placements:all})}
   }
   if(isAssetMode&&!generatedFiles._assets){
@@ -1141,7 +1132,7 @@ async function activateXandr(token){
 
     if(!allPlacements.length)return{dsp:'Xandr',status:'error',detail:'Nenhum criativo pra ativar'};
 
-    const pixel=getPixelForDsp('xandr');
+    const pixel='';
     const pol=document.getElementById('inputPolitical').checked;
     const langId=parseInt(document.getElementById('inputXandrLang').value)||8;
     const brandId=document.getElementById('inputXandrBrandId').value.trim();
@@ -1377,7 +1368,6 @@ function updateOptions(){
   document.getElementById('amazonDspConfigDivider').style.display=hasAmazon?'':'none';
   document.getElementById('amazonDspConfigSection').style.display=hasAmazon?'':'none';
 }
-function getPixelForDsp(dsp){const raw=document.getElementById(`pixel_${dsp}`)?.value?.trim()||'';if(raw.startsWith('<')){const m=raw.match(/src=["']([^"']+)["']/);return m?m[1]:raw}return raw}
 // Commit any tracker values left in input fields (user pasted but didn't press Enter)
 function commitPendingTrackers(){
   document.querySelectorAll('[data-tracker-add]').forEach(input=>{
@@ -1388,7 +1378,7 @@ function commitPendingTrackers(){
     if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,dsps:'all'});input.value=''}
   });
 }
-function mergeTrackers(trackerList,dsp){const urls=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!urls.includes(tr.url))urls.push(tr.url)}});if(currentMode==='assets'){['xandr','stackadapt'].forEach(d=>{const px=getPixelForDsp(d);if(px&&!urls.includes(px))urls.push(px)})}return urls}
+function mergeTrackers(trackerList,dsp){const urls=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!urls.includes(tr.url))urls.push(tr.url)}});return urls}
 function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasContent=hasTags||hasSurveys||hasAssets;const hasDsp=selectedDsps.size>0;const ready=hasContent&&hasDsp;
   const btnGen=document.getElementById('btnGenerate');const btnAct=document.getElementById('btnActivate');const dlCard=document.getElementById('actionDownload');const actCard=document.getElementById('actionActivate');
   if(btnGen)btnGen.disabled=!ready;if(btnAct)btnAct.disabled=!ready;
@@ -1790,8 +1780,8 @@ function generate(){
   generatedFiles={};const cards=[],surveyPl=hasSurveys?getSurveyPlacements():[];
 
   if(selectedDsps.has('dv360')){const tp=hasTags?getPlacementsForDsp('dv360'):[],all=[...tp,...surveyPl];if(all.length){generatedFiles.dv360=genDV360({placements:all});cards.push({dsp:'DV360',ext:'csv',count:all.length})}}
-  if(selectedDsps.has('stackadapt')){const tp=hasTags?getPlacementsForDsp('stackadapt'):[],px=getPixelForDsp('stackadapt'),all=[...tp,...surveyPl];if(all.length){const r=genSA({placements:all,brandName:parsedData?.brandName||''},br,px);generatedFiles.stackadapt=r;cards.push({dsp:'StackAdapt',ext:'xlsx',count:r.count??r.rows.length})}}
-  if(selectedDsps.has('xandr')){const tp=hasTags?getPlacementsForDsp('xandr'):[],px=getPixelForDsp('xandr'),all=[...tp,...surveyPl];if(all.length){generatedFiles.xandr=genXandr({placements:all},px,pol);cards.push({dsp:'Xandr',ext:'xlsx',count:all.length})}}
+  if(selectedDsps.has('stackadapt')){const tp=hasTags?getPlacementsForDsp('stackadapt'):[],all=[...tp,...surveyPl];if(all.length){const r=genSA({placements:all,brandName:parsedData?.brandName||''},br,'');generatedFiles.stackadapt=r;cards.push({dsp:'StackAdapt',ext:'xlsx',count:r.count??r.rows.length})}}
+  if(selectedDsps.has('xandr')){const tp=hasTags?getPlacementsForDsp('xandr'):[],all=[...tp,...surveyPl];if(all.length){generatedFiles.xandr=genXandr({placements:all},'',pol);cards.push({dsp:'Xandr',ext:'xlsx',count:all.length})}}
   if(selectedDsps.has('amazondsp')){const tp=hasTags?getPlacementsForDsp('amazondsp'):[],all=[...tp,...surveyPl];if(all.length){generatedFiles.amazondsp=genAmazonDSP({placements:all});cards.push({dsp:'Amazon DSP',key:'amazondsp',ext:'xlsx',count:all.length})}}
 
   if(!cards.length){toast('Nenhum criativo pra gerar','error');btn.disabled=false;btn.textContent='Gerar e Baixar';return}
@@ -1938,7 +1928,7 @@ function renderResults(cards){document.getElementById('resultCards').innerHTML=c
   return`<div class="result-card" style="animation-delay:${i*120}ms"><div class="result-info"><div class="result-dsp">${c.dsp}</div><div class="result-details">${c.count} creatives · ${isAsset?'hosted':'.'+ c.ext}</div></div>${isAsset?`<span style="font-size:0.75rem;color:var(--text-muted)">Via API</span>`:`<button class="btn-download" data-dsp="${c.key||c.dsp.toLowerCase()}">Download</button>`}</div>`}).join('');document.getElementById('results').classList.add('visible')}
 
 // ── Event Listeners (DSP grid, surveys, downloads, misc) ──
-document.getElementById('dspGrid').addEventListener('click',e=>{const card=e.target.closest('.dsp-card[data-dsp]');if(card&&!e.target.closest('.dsp-pixel-input'))toggleDsp(card)});
+document.getElementById('dspGrid').addEventListener('click',e=>{const card=e.target.closest('.dsp-card[data-dsp]');if(card)toggleDsp(card)});
 document.getElementById('dspGrid').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const card=e.target.closest('.dsp-card[data-dsp]');if(card){e.preventDefault();toggleDsp(card)}}});
 document.getElementById('assignmentBody').addEventListener('change',e=>{if(e.target.classList.contains('assign-cb'))placementAssignment[e.target.dataset.key]=e.target.checked});
 document.getElementById('resultCards').addEventListener('click',e=>{const btn=e.target.closest('.btn-download[data-dsp]');if(btn){downloadFile(btn.dataset.dsp);btn.textContent='✓ Baixado';btn.classList.add('downloaded');setTimeout(()=>{btn.textContent='Download';btn.classList.remove('downloaded')},1500)}});
