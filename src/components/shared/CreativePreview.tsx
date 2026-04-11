@@ -136,7 +136,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
 <html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{overflow:hidden;background:#fff}</style></head>
 <body>${data.tagContent}</body></html>`;
       return (
-        <div className={styles.previewFrame}>
+        <div className={styles.previewFrame} style={{ position: 'relative' }}>
           {!iframeLoaded && (
             <div className={styles.loading} style={{ width: renderW, height: renderH, position: 'absolute' }}>
               <div className={styles.loadingDot} />
@@ -153,6 +153,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
+          <div className={styles.iframeOverlay} onClick={onClose} />
         </div>
       );
     }
@@ -160,7 +161,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
     // HTML5 (iframe sandbox)
     if (data.type === 'html5' && data.html5Content) {
       return (
-        <div className={styles.previewFrame}>
+        <div className={styles.previewFrame} style={{ position: 'relative' }}>
           {!iframeLoaded && (
             <div className={styles.loading} style={{ width: renderW, height: renderH, position: 'absolute' }}>
               <div className={styles.loadingDot} />
@@ -177,6 +178,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
+          <div className={styles.iframeOverlay} onClick={onClose} />
         </div>
       );
     }
