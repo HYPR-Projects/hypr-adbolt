@@ -109,7 +109,7 @@ export function StepActivate() {
         return;
       }
       // Force fresh upload each activation (legacy behavior)
-      store.assetEntries.forEach((a) => { delete a._storagePath; delete a._uploadedFile; });
+      store.resetAssetUploadState();
     }
 
     if (store.activationDone) {
@@ -145,10 +145,11 @@ export function StepActivate() {
 
     if (isAssetMode) {
       // ── Asset activation: upload to Storage first, then activate per DSP ──
-      const assets = store.assetEntries;
 
-      // Normalize landing pages (legacy behavior)
-      assets.forEach((a) => { a.landingPage = normalizeUrl(a.landingPage); });
+      // Normalize landing pages (via store action, not direct mutation)
+      store.normalizeAssetLandingPages();
+      // Re-read from store after normalization (store creates new objects)
+      const assets = useWizardStore.getState().assetEntries;
 
       // Phase 1: Upload all to storage
       if (apiDsps.length) {
