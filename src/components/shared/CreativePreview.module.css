@@ -139,7 +139,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.35);
   border-radius: inherit;
   opacity: 0;
   transition: opacity var(--dur-f);
@@ -147,46 +147,62 @@
 }
 .playBadge svg {
   color: #fff;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Thumbnail wrapper */
+/* Thumbnail wrapper — compact for table rows */
 .thumbWrap {
   position: relative;
   cursor: pointer;
   border-radius: var(--surface-radius-xs);
   overflow: hidden;
   flex-shrink: 0;
-  transition: transform var(--dur-f);
+  width: 32px;
+  height: 24px;
+  transition: transform var(--dur-f), box-shadow var(--dur-f);
 }
 .thumbWrap:hover {
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 .thumbWrap:hover .playBadge {
   opacity: 1;
 }
 
-/* HTML5/Tag placeholder thumb */
-.placeholderThumb {
-  width: 48px;
-  height: 36px;
-  display: flex;
+.thumbImg {
+  width: 32px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: var(--surface-radius-xs);
+  border: var(--surface-border) solid var(--border-subtle);
+  display: block;
+}
+
+/* Inline preview button for tags/HTML5 — matches badge weight */
+.previewBtn {
+  width: 28px;
+  height: 24px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-raised);
-  border: var(--surface-border) solid var(--border-subtle);
+  background: transparent;
+  border: var(--surface-border) solid var(--border);
   border-radius: var(--surface-radius-xs);
-  font-size: 10px;
-  font-weight: 700;
   color: var(--text-tri);
-  letter-spacing: 0.03em;
   cursor: pointer;
   transition: all var(--dur-f);
+  padding: 0;
+  flex-shrink: 0;
 }
-.placeholderThumb:hover {
+.previewBtn:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-dim);
+}
+
+/* HTML5/Tag placeholder thumb — DEPRECATED, use .previewBtn */
+.placeholderThumb {
+  display: none;
 }
 
 /* Loading state inside preview */

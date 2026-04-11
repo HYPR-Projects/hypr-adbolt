@@ -74,22 +74,6 @@ export function DashboardRow({ group: g, dspKeys, isExpanded, isSelected, onTogg
           <td />
           <td colSpan={8}>
             <div className={styles.expandInner}>
-              {(g.thumbnail_url || g.js_tag) && (
-                <div className={styles.expandPreview} onClick={onPreview}>
-                  {g.thumbnail_url ? (
-                    <img src={g.thumbnail_url} alt={g.name} className={styles.expandPreviewImg} />
-                  ) : (
-                    <div className={styles.expandPreviewTag}>
-                      <span>Preview</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                        <polyline points="15 3 21 3 21 9" />
-                        <line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              )}
               {dspKeys.map((k) => {
                 const d = g.dsps[k];
                 return (

@@ -42,28 +42,27 @@ export function PreviewThumb({ thumb, type, name, isVideo, onClick }: PreviewThu
       <div className={styles.thumbWrap} onClick={onClick} title={`Preview: ${name}`}>
         <img
           src={thumb}
-          className={isVideo ? styles.thumbVideo : undefined}
           alt={name}
-          width="48"
-          height="36"
           loading="lazy"
-          style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 'var(--surface-radius-xs)', border: 'var(--surface-border) solid var(--border-subtle)' }}
+          className={styles.thumbImg}
         />
         {isVideo && (
           <div className={styles.playBadge}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </div>
         )}
       </div>
     );
   }
 
-  // Placeholder for HTML5 / tags with no thumb
-  const label = type === 'html5' ? 'H5' : type === '3p-tag' ? 'TAG' : '?';
+  // Inline icon button for tags/HTML5 — same visual weight as badges in the row
   return (
-    <div className={styles.placeholderThumb} onClick={onClick} title={`Preview: ${name}`}>
-      {label}
-    </div>
+    <button className={styles.previewBtn} onClick={onClick} title={`Preview: ${name}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    </button>
   );
 }
 

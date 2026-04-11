@@ -515,7 +515,7 @@ export function Dashboard() {
           <thead>
             <tr>
               <th style={{ width: 32 }}><input type="checkbox" checked={pageItems.length > 0 && pageItems.every((g) => store.selectedKeys.has(g._gid))} onChange={(e) => { if (e.target.checked) store.selectAll(pageItems.map((g) => g._gid)); else store.clearSelection(); }} /></th>
-              <th style={{ width: 56 }}></th>
+              <th style={{ width: 40 }}></th>
               <th style={{ width: '26%' }}>Nome</th>
               <th style={{ width: 80 }}>Size</th>
               <th style={{ width: 70 }}>Formato</th>
