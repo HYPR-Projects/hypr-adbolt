@@ -69,7 +69,8 @@ export function Dashboard() {
   const handleSync = useCallback(async () => {
     if (!session?.access_token) return;
     store.setSyncing(true);
-    toast('Sincronizando todos os criativos nas DSPs...', '');
+    const total = store.creatives.length;
+    toast(`Verificando ${total} registros nas DSPs...`, '');
     const t0 = Date.now();
     try {
       const result = await syncCreativesApi(session.access_token, 'full');
@@ -82,7 +83,7 @@ export function Dashboard() {
       await store.loadCreatives();
     } catch (err) { toast('Erro no sync: ' + (err as Error).message, 'error'); }
     finally { store.setSyncing(false); }
-  }, [session?.access_token, toast]);
+  }, [session?.access_token, toast, store.creatives.length]);
 
   // ── Filtered data ──
   const filtered = store.getFilteredGroups();
@@ -411,7 +412,7 @@ export function Dashboard() {
               <svg className={styles.spinner} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="14" height="14">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
-              Sincronizando...
+              {store.creatives.length} registros...
             </>
           ) : 'Sync Status'}
         </button>
