@@ -148,9 +148,23 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .dash-pill.active{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent);box-shadow:0 2px 8px var(--accent-ring)}
 .dash-pill:hover:not(.active){color:var(--text-sec);border-color:var(--border-active);background:var(--accent-glow)}
 .dash-divider{width:1px;height:18px;background:var(--border);margin:0 4px}
-.dash-filter-select{padding:6px 28px 6px 12px;border-radius:var(--r-pill);font-size:0.73rem;font-weight:500;border:1px solid var(--border);background:var(--bg-input);color:var(--text-tri);font-family:var(--font);cursor:pointer;transition:all var(--dur-f);appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
-.dash-filter-select:focus{outline:none;border-color:var(--accent-ring);box-shadow:0 0 0 3px var(--accent-glow)}
-.dash-filter-select:not([data-default]){color:var(--text);border-color:var(--accent-ring);background-color:var(--accent-dim)}
+.dash-ms{position:relative;display:inline-flex}
+.dash-ms-trigger{padding:6px 14px;border-radius:var(--r-pill);font-size:0.73rem;font-weight:500;border:1px solid var(--border);background:transparent;color:var(--text-tri);font-family:var(--font);cursor:pointer;transition:all var(--dur-f);display:flex;align-items:center;gap:6px;user-select:none;white-space:nowrap}
+.dash-ms-trigger:hover{color:var(--text-sec);border-color:var(--border-active);background:var(--accent-glow)}
+.dash-ms-trigger.has-selection{color:var(--text);border-color:var(--accent-ring);background:var(--accent-dim)}
+.dash-ms-trigger svg{width:10px;height:10px;opacity:0.5;transition:transform var(--dur-f)}
+.dash-ms.open .dash-ms-trigger svg{transform:rotate(180deg)}
+.dash-ms-badge{background:var(--accent);color:var(--text-on-accent);font-size:0.6rem;font-weight:700;min-width:16px;height:16px;border-radius:var(--r-pill);display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+.dash-ms-drop{position:absolute;top:calc(100% + 6px);left:0;min-width:200px;max-height:260px;overflow-y:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:var(--shadow-lg);z-index:var(--z-dropdown);padding:6px;display:none;animation:slideUp 0.15s var(--ease-out)}
+.dash-ms.open .dash-ms-drop{display:block}
+.dash-ms-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-xs);font-size:0.75rem;color:var(--text-sec);cursor:pointer;transition:background var(--dur-f);user-select:none}
+.dash-ms-item:hover{background:var(--accent-dim)}
+.dash-ms-item.checked{color:var(--text);font-weight:500}
+.dash-ms-item .ms-cb{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--border);background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--dur-f)}
+.dash-ms-item.checked .ms-cb{background:var(--accent);border-color:var(--accent)}
+.dash-ms-item.checked .ms-cb::after{content:'✓';color:var(--text-on-accent);font-size:9px;font-weight:700}
+.dash-ms-clear{display:flex;align-items:center;justify-content:center;padding:6px 10px;font-size:0.68rem;color:var(--text-tri);cursor:pointer;border-top:1px solid var(--border-subtle);margin-top:4px;transition:color var(--dur-f)}
+.dash-ms-clear:hover{color:var(--accent)}
 .dash-search{padding:var(--input-py) var(--sp-4);border-radius:var(--r-pill);font-size:0.78rem;border:1px solid var(--border);background:var(--bg-input);color:var(--text);width:200px;font-family:var(--font);transition:all var(--dur-f)}
 .dash-search:focus{outline:none;border-color:var(--accent-ring);box-shadow:0 0 0 3px var(--accent-glow)}
 /* Table */
@@ -885,9 +899,9 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
       <button class="dash-pill" data-dash-audit="approved" onclick="setDashAuditFilter(this)">Approved</button>
       <button class="dash-pill" data-dash-audit="rejected" onclick="setDashAuditFilter(this)">Rejected</button>
       <span class="dash-divider"></span>
-      <select class="dash-filter-select" id="dashFilterSize" data-default onchange="setDashDropdownFilter()"><option value="">Todos os sizes</option></select>
-      <select class="dash-filter-select" id="dashFilterFormat" data-default onchange="setDashDropdownFilter()"><option value="">Todos formatos</option></select>
-      <select class="dash-filter-select" id="dashFilterCreator" data-default onchange="setDashDropdownFilter()"><option value="">Todos criadores</option></select>
+      <div class="dash-ms" id="msSize"><button class="dash-ms-trigger" onclick="toggleMultiSelect('msSize')">Size <svg viewBox="0 0 10 6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg></button><div class="dash-ms-drop" id="msSizeDrop"></div></div>
+      <div class="dash-ms" id="msFormat"><button class="dash-ms-trigger" onclick="toggleMultiSelect('msFormat')">Formato <svg viewBox="0 0 10 6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg></button><div class="dash-ms-drop" id="msFormatDrop"></div></div>
+      <div class="dash-ms" id="msCriador"><button class="dash-ms-trigger" onclick="toggleMultiSelect('msCriador')">Criador <svg viewBox="0 0 10 6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg></button><div class="dash-ms-drop" id="msCriadorDrop"></div></div>
       <div style="flex:1"></div>
       <input class="dash-search" id="dashSearch" placeholder="Buscar..." oninput="dashSearchDebounce()" aria-label="Buscar criativos">
     </div>
@@ -3114,26 +3128,49 @@ function setDashAuditFilter(el){
 }
 function dashSearchDebounce(){clearTimeout(_dashSearchTimer);_dashSearchTimer=setTimeout(()=>{dashFilterSearch=document.getElementById('dashSearch').value.toLowerCase().trim();dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable()},200)}
 
-let dashFilterSize='',dashFilterFormat='',dashFilterCreator='';
-function setDashDropdownFilter(){
-  const sEl=document.getElementById('dashFilterSize'),fEl=document.getElementById('dashFilterFormat'),cEl=document.getElementById('dashFilterCreator');
-  dashFilterSize=sEl.value;dashFilterFormat=fEl.value;dashFilterCreator=cEl.value;
-  sEl.toggleAttribute('data-default',!sEl.value);fEl.toggleAttribute('data-default',!fEl.value);cEl.toggleAttribute('data-default',!cEl.value);
+let dashFilterSize=new Set(),dashFilterFormat=new Set(),dashFilterCreator=new Set();
+function toggleMultiSelect(id){
+  const el=document.getElementById(id);const wasOpen=el.classList.contains('open');
+  document.querySelectorAll('.dash-ms.open').forEach(m=>m.classList.remove('open'));
+  if(!wasOpen)el.classList.add('open');
+}
+function toggleMsItem(filterId,value){
+  const map={msSize:dashFilterSize,msFormat:dashFilterFormat,msCriador:dashFilterCreator};
+  const set=map[filterId];if(!set)return;
+  if(set.has(value))set.delete(value);else set.add(value);
+  renderMsDropdown(filterId);updateMsTrigger(filterId);
   dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable();
 }
-function populateDashDropdowns(){
-  const sizes=new Set(),formats=new Set(),creators=new Set();
-  for(const g of dashGroups){
-    if(g.dimensions)sizes.add(g.dimensions);
-    formats.add(getFormatLabel(g));
-    if(g.created_by_name&&g.created_by_name!=='-')creators.add(g.created_by_name);
-  }
-  const sEl=document.getElementById('dashFilterSize'),fEl=document.getElementById('dashFilterFormat'),cEl=document.getElementById('dashFilterCreator');
-  const sortedSizes=[...sizes].sort((a,b)=>{const[aw]=a.split('x').map(Number);const[bw]=b.split('x').map(Number);return(aw||0)-(bw||0)});
-  sEl.innerHTML='<option value="">Todos os sizes</option>'+sortedSizes.map(s=>'<option value="'+s+'"'+(s===dashFilterSize?' selected':'')+'>'+s+'</option>').join('');
-  fEl.innerHTML='<option value="">Todos formatos</option>'+[...formats].sort().map(f=>'<option value="'+f+'"'+(f===dashFilterFormat?' selected':'')+'>'+f+'</option>').join('');
-  cEl.innerHTML='<option value="">Todos criadores</option>'+[...creators].sort().map(c=>'<option value="'+esc(c)+'"'+(c===dashFilterCreator?' selected':'')+'>'+esc(c)+'</option>').join('');
+function clearMsFilter(filterId){
+  const map={msSize:dashFilterSize,msFormat:dashFilterFormat,msCriador:dashFilterCreator};
+  const set=map[filterId];if(set)set.clear();
+  renderMsDropdown(filterId);updateMsTrigger(filterId);
+  dashPage=0;dashExpandedKey=null;clearDashSelection();renderDashTable();
 }
+function updateMsTrigger(filterId){
+  const map={msSize:dashFilterSize,msFormat:dashFilterFormat,msCriador:dashFilterCreator};
+  const labels={msSize:'Size',msFormat:'Formato',msCriador:'Criador'};
+  const set=map[filterId];const trigger=document.querySelector('#'+filterId+' .dash-ms-trigger');
+  if(!trigger)return;const count=set.size;
+  trigger.classList.toggle('has-selection',count>0);
+  trigger.innerHTML=labels[filterId]+(count>0?' <span class="dash-ms-badge">'+count+'</span>':'')+' <svg viewBox="0 0 10 6"><path d="M0 0l5 6 5-6z" fill="currentColor"/></svg>';
+}
+function renderMsDropdown(filterId){
+  const drop=document.getElementById(filterId+'Drop');if(!drop)return;
+  const map={msSize:dashFilterSize,msFormat:dashFilterFormat,msCriador:dashFilterCreator};
+  const set=map[filterId];
+  const values=[];
+  if(filterId==='msSize'){const s=new Set();dashGroups.forEach(g=>{if(g.dimensions)s.add(g.dimensions)});values.push(...[...s].sort((a,b)=>{const[aw]=a.split('x').map(Number);const[bw]=b.split('x').map(Number);return(aw||0)-(bw||0)}))}
+  else if(filterId==='msFormat'){const s=new Set();dashGroups.forEach(g=>s.add(getFormatLabel(g)));values.push(...[...s].sort())}
+  else if(filterId==='msCriador'){const s=new Set();dashGroups.forEach(g=>{if(g.created_by_name&&g.created_by_name!=='-')s.add(g.created_by_name)});values.push(...[...s].sort())}
+  drop.innerHTML=values.map(v=>{
+    const checked=set.has(v);
+    return'<div class="dash-ms-item'+(checked?' checked':'')+'" onclick="toggleMsItem(\''+filterId+'\',\''+esc(v).replace(/'/g,"\\'")+'\')"><span class="ms-cb"></span>'+esc(v)+'</div>';
+  }).join('')+(set.size>0?'<div class="dash-ms-clear" onclick="event.stopPropagation();clearMsFilter(\''+filterId+'\')">Limpar filtro</div>':'');
+}
+function populateDashDropdowns(){renderMsDropdown('msSize');renderMsDropdown('msFormat');renderMsDropdown('msCriador');updateMsTrigger('msSize');updateMsTrigger('msFormat');updateMsTrigger('msCriador')}
+// Close multi-select on click outside
+document.addEventListener('click',e=>{if(!e.target.closest('.dash-ms'))document.querySelectorAll('.dash-ms.open').forEach(m=>m.classList.remove('open'))});
 
 // Template generator from dashboard selection
 function openTemplateModal(){
@@ -3305,9 +3342,9 @@ function getFilteredGroups(){
   let list=dashGroups;
   if(dashFilterDsp!=='all')list=list.filter(g=>g.dsps[dashFilterDsp]);
   if(dashFilterAudit!=='all')list=list.filter(g=>Object.values(g.dsps).some(d=>d.audit_status===dashFilterAudit));
-  if(dashFilterSize)list=list.filter(g=>g.dimensions===dashFilterSize);
-  if(dashFilterFormat)list=list.filter(g=>getFormatLabel(g)===dashFilterFormat);
-  if(dashFilterCreator)list=list.filter(g=>g.created_by_name===dashFilterCreator);
+  if(dashFilterSize.size)list=list.filter(g=>dashFilterSize.has(g.dimensions));
+  if(dashFilterFormat.size)list=list.filter(g=>dashFilterFormat.has(getFormatLabel(g)));
+  if(dashFilterCreator.size)list=list.filter(g=>dashFilterCreator.has(g.created_by_name));
   if(dashFilterSearch)list=list.filter(g=>g.name.toLowerCase().includes(dashFilterSearch));
   return list;
 }
