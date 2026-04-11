@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useWizardStore } from '@/stores/wizard';
 import { useUIStore } from '@/stores/ui';
 import { StepNav } from '@/components/shared/StepNav';
@@ -17,6 +17,16 @@ export function StepSurveys() {
   } = useWizardStore();
   const config = useWizardStore((s) => s.getStepConfig());
   const toast = useUIStore((s) => s.toast);
+
+  const [openVariantDD, setOpenVariantDD] = useState<string | null>(null);
+
+  useEffect(() => {
+    const close = () => setOpenVariantDD(null);
+    const closeEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenVariantDD(null); };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', closeEsc);
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', closeEsc); };
+  }, []);
 
   const activeTypes = new Set(surveyEntries.map((e) => e.type));
 
@@ -163,13 +173,42 @@ export function StepSurveys() {
               {entry.urls.map((u, i) => (
                 <div key={u.formId} className={styles.urlRow}>
                   <div className={styles.urlInfo}>
-                    <span className={`${styles.urlTitle} ${!u.title ? styles.loading : ''}`}>
-                      {u.title || 'Buscando...'}
-                    </span>
-                    {u.variant && (
-                      <span className={`${styles.urlVariant} ${u.variant === 'Controle' ? styles.ctrl : ''}`}>
-                        {u.variant}
-                      </span>
+                    <input
+                      className={`${styles.urlTitleInput} ${!u.title ? styles.loading : ''}`}
+                      value={u.title || ''}
+                      placeholder="Buscando..."
+                      onChange={(e) => updateSurveyUrlTitle(entry.id, u.formId, e.target.value, u.variant)}
+                    />
+                    <button
+                      className={`${styles.urlVariantBtn} ${
+                        u.variant === 'Controle' ? styles.variantControle :
+                        u.variant === 'Exposto' ? styles.variantExposto :
+                        styles.variantEmpty
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const key = `urlvar-${u.formId}`;
+                        setOpenVariantDD(openVariantDD === key ? null : key);
+                      }}
+                    >
+                      {u.variant || 'Variante'}
+                      <svg viewBox="0 0 10 6" width="8" height="8"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                    </button>
+                    {openVariantDD === `urlvar-${u.formId}` && (
+                      <div className={styles.urlVariantDrop} onClick={(e) => e.stopPropagation()}>
+                        {['Controle', 'Exposto', ''].map((v) => (
+                          <div
+                            key={v || '_none'}
+                            className={`${styles.urlVariantItem} ${u.variant === v ? styles.urlVariantItemActive : ''}`}
+                            onClick={() => {
+                              updateSurveyUrlTitle(entry.id, u.formId, u.title, v);
+                              setOpenVariantDD(null);
+                            }}
+                          >
+                            {v || 'Sem variante'}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                   <button

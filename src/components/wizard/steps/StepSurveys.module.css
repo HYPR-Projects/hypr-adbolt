@@ -131,20 +131,71 @@
   gap: 8px;
   flex: 1;
   min-width: 0;
+  position: relative;
 }
 
-.urlTitle {
+.urlTitleInput {
   font-size: 0.78rem;
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+  color: var(--text);
+  font-family: var(--font);
+  transition: border-color var(--dur-f);
+}
+.urlTitleInput:hover { border-color: var(--border); }
+.urlTitleInput:focus { outline: none; border-color: var(--accent-ring); background: var(--bg-input); }
+.urlTitleInput.loading { color: var(--text-tri); font-style: italic; }
+
+.urlVariantBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color var(--dur-f);
+  flex-shrink: 0;
+  font-family: var(--font);
   white-space: nowrap;
 }
+.urlVariantBtn svg { opacity: 0.4; flex-shrink: 0; }
+.urlVariantBtn:hover { border-color: var(--border-active); }
+.variantExposto { background: var(--accent-dim); color: var(--accent); }
+.variantControle { background: var(--warning-dim); color: var(--warning); }
+.variantEmpty { background: var(--bg-raised); color: var(--text-tri); border-color: var(--border); }
 
-.urlTitle.loading {
-  color: var(--text-tri);
-  font-style: italic;
+.urlVariantDrop {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 130px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 4px;
+  box-shadow: var(--shadow-md);
+  animation: fadeIn 0.12s var(--ease-out);
 }
+.urlVariantItem {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  color: var(--text);
+}
+.urlVariantItem:hover { background: var(--bg-raised); }
+.urlVariantItemActive { background: var(--accent-dim); color: var(--accent); }
 
 .urlVariant {
   font-size: 0.65rem;
