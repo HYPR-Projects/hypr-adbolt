@@ -90,6 +90,12 @@
 .expandLabel { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tri); font-weight: 600; min-width: 90px; flex-shrink: 0; }
 .expandVal { color: var(--text-sec); word-break: break-all; }
 
+/* Exchange review statuses */
+.exchangeList { display: flex; flex-direction: column; gap: 4px; }
+.exchangeItem { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; }
+.exchangeName { color: var(--text-sec); }
+.exchangeStatus { font-size: 0.65rem; color: var(--text-tri); }
+
 /* DSP tag colors */
 .dspTag { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: var(--r-xs); text-transform: uppercase; letter-spacing: 0.03em; }
 .xandr { background: rgba(255,111,97,0.12); color: #ff6f61; }

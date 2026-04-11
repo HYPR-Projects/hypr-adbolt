@@ -596,6 +596,25 @@ function DashboardRow({ group: g, dspKeys, isExpanded, isSelected, onToggleExpan
                     {d.click_url && <div className={styles.expandField}><span className={styles.expandLabel}>Click redirect</span><span className={styles.expandVal}>{d.click_url}</span></div>}
                     {!d.landing_page && !d.click_url && <div className={styles.expandField}><span className={styles.expandLabel}>URLs</span><span style={{ color: 'var(--text-tri)' }}>Nenhuma URL configurada</span></div>}
                     {d.sync_error && <div className={styles.expandField}><span className={styles.expandLabel}>Sync Error</span><span style={{ color: 'var(--error)' }}>{d.sync_error}</span></div>}
+                    {(() => {
+                      const cfg = (d.dsp_config || {}) as Record<string, unknown>;
+                      const exchanges = (cfg.exchangeReviewStatuses || []) as Array<{ exchange: string; status: string }>;
+                      if (!exchanges.length) return null;
+                      return (
+                        <div className={styles.expandField}>
+                          <span className={styles.expandLabel}>Exchange review</span>
+                          <div className={styles.exchangeList}>
+                            {exchanges.map((ex, ei) => (
+                              <div key={ei} className={styles.exchangeItem}>
+                                <span className={`${styles.auditDot} ${styles[ex.status]}`} />
+                                <span className={styles.exchangeName}>{ex.exchange}</span>
+                                <span className={styles.exchangeStatus}>{ex.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
