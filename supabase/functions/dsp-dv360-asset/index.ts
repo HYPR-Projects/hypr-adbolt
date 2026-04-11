@@ -53,6 +53,8 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
     const isVideo = input.type === 'video';
     const [w,h] = input.dimensions.split('x').map(Number);
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
+    // Normalize landingPage URL
+    const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
     // Collect tracker URLs for appendedTag
     const allTrackerUrls: Array<{type: string; url: string}> = [];
     const seen = new Set<string>();
@@ -93,7 +95,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       displayName: input.name, entityStatus: 'ENTITY_STATUS_ACTIVE', hostingSource: 'HOSTING_SOURCE_HOSTED',
       creativeType: isVideo ? 'CREATIVE_TYPE_VIDEO' : 'CREATIVE_TYPE_STANDARD',
       assets: [{asset:{mediaId}, role:'ASSET_ROLE_MAIN'}],
-      exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:input.landingPage||'https://example.com'}]
+      exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:lp||'https://example.com'}]
     };
     if (!isVideo) creative.dimensions = {widthPixels:w||1, heightPixels:h||1};
     // Hosted creatives use appendedTag for tracking (maps to "Append HTML tracking tag" in DV360 UI)
@@ -139,6 +141,7 @@ Deno.serve(async(req)=>{
     const body = await req.json();
     const advId = body.advertiserId||Deno.env.get('DV360_ADVERTISER_ID')||'1426474713';
     const {campaignName='',advertiserName='',brandName='',creatives=[]} = body;
+    const normLp = (u: string|null|undefined) => { if (!u) return null; const t = u.trim(); if (!t) return null; if (!/^https?:\/\//i.test(t)) return 'https://' + t; return t; };
     if (!creatives.length) return new Response(JSON.stringify({error:'No creatives'}),{status:400,headers:{...CORS,'Content-Type':'application/json'}});
     const {data:bd} = await sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,brand_name:brandName||null,total_creatives:0,dsps_activated:['dv360']}).select('id').single();
     const batchId = bd?.id||null;
@@ -164,7 +167,7 @@ Deno.serve(async(req)=>{
           dsp:'dv360', dsp_creative_id:String(r.creativeId), name:r.name,
           creative_type:i.type==='video'?'video':i.type==='html5'?'html5':'display',
           dimensions:i.dimensions, js_tag:null, vast_tag:null,
-          click_url:i.landingPage||null, landing_page:i.landingPage||null,
+          click_url:normLp(i.landingPage), landing_page:normLp(i.landingPage),
           trackers:normT.length?JSON.stringify(normT):'[]',
           asset_filename:i.fileName, asset_mime_type:i.mimeType, asset_size_bytes:i.fileSize||null,
           dsp_config:JSON.stringify({advertiser_id:advId}),

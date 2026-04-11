@@ -43,11 +43,13 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
   try {
     const [w,h] = input.dimensions.split('x').map(Number);
     const bytes = await getFileBytes(sb, input);
+    // Normalize landingPage URL
+    const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
     const rawTrackers = [...(input.trackers||[]), ...(input.tracker?[input.tracker]:[])].filter(Boolean);
     const normalizedTrackers = rawTrackers.map(t => normalizeTrackerInput(t)).filter(n => n.url);
     let assetType = input.type;
     if (input.mimeType?.startsWith('video/') && assetType !== 'video') assetType = 'video';
-    console.log(`[xandr] Processing: ${input.name}, type=${assetType}, size=${bytes.length}, brandUrl=${brandUrl}, landingPage=${input.landingPage}`);
+    console.log(`[xandr] Processing: ${input.name}, type=${assetType}, size=${bytes.length}, brandUrl=${brandUrl}, landingPage=${lp}`);
 
     if (assetType === 'html5') {
       const boundary = '----XH5'+Date.now();
@@ -62,7 +64,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       const ud = await ur.json();
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload: ${JSON.stringify(ud.response||ud).substring(0,500)}`,step:'upload'};
-      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:8606},media_assets:[{media_asset_id:ma.id}],click_url:input.landingPage||'',landing_page_url:brandUrl||input.landingPage||'',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
+      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:8606},media_assets:[{media_asset_id:ma.id}],click_url:lp||'',landing_page_url:brandUrl||lp||'',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
       if(langId)cr.language={id:langId}; if(brandId)cr.brand_id=brandId;
       if(normalizedTrackers.length)cr.pixels=normalizedTrackers.slice(0,5).map(t=>({url:t.url,secure_url:t.url.replace(/^http:/,'https:'),format:t.format}));
       const res = await fetch(`${XANDR_API}/creative-html?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:token},body:JSON.stringify({'creative-html':cr})});
@@ -102,8 +104,8 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
           })),
         };
       }
-      const assetLp = input.landingPage || brandUrl || '';
-      const auditUrl = brandUrl || input.landingPage || '';
+      const assetLp = lp || brandUrl || '';
+      const auditUrl = brandUrl || lp || '';
       const vastCreative: Record<string,unknown> = {
         name: input.name, advertiser_id: advId, template: {id: 6439},
         media_assets: [{media_asset_id: ma.id}],
@@ -127,7 +129,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
 
     } else {
       const b64 = base64Encode(bytes);
-      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:4},format:'image',content:b64,file_name:input.fileName,click_url:input.landingPage||'',landing_page_url:brandUrl||input.landingPage||'',mobile:brandUrl?{alternative_landing_page_url:brandUrl}:undefined,audit_status:'pending',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
+      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:4},format:'image',content:b64,file_name:input.fileName,click_url:lp||'',landing_page_url:brandUrl||lp||'',mobile:brandUrl?{alternative_landing_page_url:brandUrl}:undefined,audit_status:'pending',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
       if(langId)cr.language={id:langId}; if(brandId)cr.brand_id=brandId;
       if(normalizedTrackers.length)cr.pixels=normalizedTrackers.slice(0,5).map(t=>({url:t.url,secure_url:t.url.replace(/^http:/,'https:'),format:t.format}));
       const res = await fetch(`${XANDR_API}/creative?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:token},body:JSON.stringify({creative:cr})});
@@ -151,12 +153,15 @@ Deno.serve(async(req)=>{
     if (ae||!user) return new Response(JSON.stringify({error:'Auth failed'}),{status:401,headers:{...CORS,'Content-Type':'application/json'}});
     const body = await req.json();
     const {advertiserId=7392214, brandUrl=null, languageId=8, brandId=null, sla=0, campaignName='', advertiserName='', creatives=[]} = body;
+    // Normalize URLs: add https:// if missing protocol
+    const normUrl = (u: string|null) => { if (!u) return null; const t = u.trim(); if (!t) return null; if (!/^https?:\/\//i.test(t)) return 'https://' + t; return t; };
+    const safeBrandUrl = normUrl(brandUrl);
     if (!creatives.length) return new Response(JSON.stringify({error:'No creatives'}),{status:400,headers:{...CORS,'Content-Type':'application/json'}});
     const {data:bd} = await sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,total_creatives:0,dsps_activated:['xandr']}).select('id').single();
     const batchId = bd?.id||null;
     const token = await getXandrToken();
     const results: Result[] = [];
-    for (const c of creatives) results.push(await processCreative(token,advertiserId,c,brandUrl,languageId,brandId,sla,sb));
+    for (const c of creatives) results.push(await processCreative(token,advertiserId,c,safeBrandUrl,languageId,brandId,sla,sb));
     const ok = results.filter(r=>r.success&&r._input);
     if (ok.length>0 && batchId) {
       const rows = ok.map(r=>{
@@ -167,10 +172,10 @@ Deno.serve(async(req)=>{
           dsp:'xandr', dsp_creative_id:String(r.creativeId), name:r.name,
           creative_type:i.type==='video'?'video':i.type==='html5'?'html5':'display',
           dimensions:i.dimensions, js_tag:null, vast_tag:null,
-          click_url:i.landingPage||null, landing_page:brandUrl||i.landingPage||null,
+          click_url:normUrl(i.landingPage), landing_page:safeBrandUrl||normUrl(i.landingPage),
           trackers:normT.length?JSON.stringify(normT):'[]',
           asset_filename:i.fileName, asset_mime_type:i.mimeType, asset_size_bytes:i.fileSize||null,
-          dsp_config:JSON.stringify({member_id:MEMBER_ID,advertiser_id:advertiserId,language_id:languageId,brand_id:brandId,brand_url:brandUrl,sla}),
+          dsp_config:JSON.stringify({member_id:MEMBER_ID,advertiser_id:advertiserId,language_id:languageId,brand_id:brandId,brand_url:safeBrandUrl,sla}),
           status:'active', audit_status:'pending', thumbnail_url:i.thumbnailUrl||null, last_synced_at:new Date().toISOString()};
       });
       await sb.from('creatives').insert(rows);
