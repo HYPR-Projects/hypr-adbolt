@@ -146,7 +146,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           )}
           <iframe
             srcDoc={srcdoc}
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             width={renderW}
             height={renderH}
             style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
@@ -170,7 +170,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           )}
           <iframe
             srcDoc={data.html5Content}
-            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             width={renderW}
             height={renderH}
             style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
