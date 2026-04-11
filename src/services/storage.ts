@@ -3,6 +3,44 @@ import { mergeTrackers } from '@/parsers/tracker';
 import { SUPABASE_URL } from '@/services/supabase';
 
 /**
+ * Upload a thumbnail (base64 data URL) to the public 'thumbnails' bucket.
+ * Returns the full public URL.
+ */
+export async function uploadThumbnail(
+  dataUrl: string,
+  token: string,
+): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:')) return '';
+
+  const [header, b64] = dataUrl.split(',');
+  const mime = header.match(/data:(.*?);/)?.[1] || 'image/jpeg';
+  const ext = mime.includes('png') ? 'png' : 'jpg';
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+
+  const path = `t/${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
+
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/thumbnails/${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'Content-Type': mime,
+      'x-upsert': 'true',
+    },
+    body: blob,
+  });
+
+  if (!res.ok) {
+    console.warn('Thumbnail upload failed:', await res.text());
+    return '';
+  }
+
+  return `${SUPABASE_URL}/storage/v1/object/public/thumbnails/${path}`;
+}
+
+/**
  * Upload a file to Supabase Storage (asset-uploads bucket).
  * Returns the storage path.
  * Ported from legacy: async function uploadToStorage(file, token) — lines 1364-1374

@@ -1,6 +1,6 @@
 import { SUPABASE_FUNCTIONS_URL } from '@/services/supabase';
 import type { AssetEntry, ActivationResult } from '@/types';
-import { uploadAssetToStorage, buildCreativePayload } from '@/services/storage';
+import { uploadAssetToStorage, buildCreativePayload, uploadThumbnail } from '@/services/storage';
 
 interface DV360AssetConfig {
   advertiserId: string;
@@ -29,8 +29,8 @@ export async function activateDV360Assets(
 
     const total = assets.length;
 
-    // Build payloads with already-uploaded storagePaths
-    const creatives: Array<ReturnType<typeof buildCreativePayload> & { _uploadError?: string }> = [];
+    // Build payloads with already-uploaded storagePaths + thumbnails
+    const creatives: Array<ReturnType<typeof buildCreativePayload> & { _uploadError?: string; thumbnailUrl?: string }> = [];
     for (let i = 0; i < total; i++) {
       const a = assets[i];
       try {
@@ -39,7 +39,13 @@ export async function activateDV360Assets(
             onProgress?.(i, total, msg)
           );
         }
-        creatives.push(buildCreativePayload(a, 'dv360'));
+        const payload = buildCreativePayload(a, 'dv360');
+        // Upload thumbnail
+        let thumbnailUrl = '';
+        if (a.thumb) {
+          thumbnailUrl = await uploadThumbnail(a.thumb, token);
+        }
+        creatives.push({ ...payload, thumbnailUrl });
       } catch (err) {
         creatives.push({
           ...buildCreativePayload(a, 'dv360'),

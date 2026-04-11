@@ -26,7 +26,7 @@ function normalizeTrackerInput(t: unknown): {url: string; format: string; eventT
   return {url: obj.url || '', format: obj.format || pixelFormat(obj.url || ''), eventType: obj.eventType};
 }
 
-interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers:unknown[]; tracker?:string; duration?:number; }
+interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers:unknown[]; tracker?:string; duration?:number; thumbnailUrl?:string; }
 interface Result { name:string; success:boolean; creativeId?:number; error?:string; step?:string; _input?:Input; }
 
 async function getFileBytes(sb:any, input:Input): Promise<Uint8Array> {
@@ -171,7 +171,7 @@ Deno.serve(async(req)=>{
           trackers:normT.length?JSON.stringify(normT):'[]',
           asset_filename:i.fileName, asset_mime_type:i.mimeType, asset_size_bytes:i.fileSize||null,
           dsp_config:JSON.stringify({member_id:MEMBER_ID,advertiser_id:advertiserId,language_id:languageId,brand_id:brandId,brand_url:brandUrl,sla}),
-          status:'active', audit_status:'pending', last_synced_at:new Date().toISOString()};
+          status:'active', audit_status:'pending', thumbnail_url:i.thumbnailUrl||null, last_synced_at:new Date().toISOString()};
       });
       await sb.from('creatives').insert(rows);
       await sb.from('creative_batches').update({total_creatives:ok.length}).eq('id',batchId);
