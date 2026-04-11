@@ -2470,7 +2470,7 @@ function renderAssetsTable(){
   tbody.innerHTML=filtered.map((a,i)=>{
     const sz=a.compressedFile?a.compressedFile.size:a.size;
     const wc=getWeightClass(a);
-    const thumbHtml=a.thumb?`<img src="${a.thumb}" class="asset-thumb${a.type==='video'?' asset-thumb-video':''}" alt="${esc(a.name)}" width="48" height="36">`:'-';
+    const thumbHtml=a.thumb?`<img src="${a.thumb}" class="asset-thumb${a.type==='video'?' asset-thumb-video':''}" alt="${esc(a.name)}" width="48" height="36" loading="lazy">`:'-';
     const checked=_selectedAssetIds.has(a.id)?' checked':'';
     return`<tr style="animation-delay:${i*40}ms" data-asset-id="${a.id}">
       <td class="cb-col"><input type="checkbox" class="custom-cb asset-cb" data-id="${a.id}"${checked}></td>
