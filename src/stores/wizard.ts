@@ -169,7 +169,23 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     });
   },
 
-  setStep: (step) => set({ currentStep: step }),
+  setStep: (step) => {
+    const s = get();
+    const config = WIZARD_CONFIGS[s.mode];
+    if (step < 0 || step >= config.steps.length) return;
+    if (s.activating) return;
+
+    // Validate prerequisites when advancing
+    if (step > s.currentStep) {
+      const targetStep = config.steps[step];
+      const content = !!(s.parsedData?.placements?.length || s.surveyEntries.length || s.assetEntries.length);
+      const dsp = s.selectedDsps.size > 0;
+      if ((targetStep === 'dsps' || targetStep === 'config' || targetStep === 'activate') && !content) return;
+      if ((targetStep === 'config' || targetStep === 'activate') && !dsp) return;
+    }
+
+    set({ currentStep: step });
+  },
 
   // ── Tags ──
 

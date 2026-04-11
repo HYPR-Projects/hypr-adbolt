@@ -16,6 +16,7 @@ export function StepTags() {
     removeTagPlacements, updatePlacement,
     tagsFilterType, tagsFilterSize, tagsFilterText, setTagsFilter,
     currentStep, setStep, hasContent, hasDsp,
+    setConfig,
   } = useWizardStore();
   const config = useWizardStore((s) => s.getStepConfig());
   const toast = useUIStore((s) => s.toast);
@@ -61,6 +62,10 @@ export function StepTags() {
           );
         } else {
           setParsedData(result);
+          // Auto-fill brand from parsed data (legacy: inputBrand.value = result.brandName)
+          if (result.brandName) {
+            setConfig({ brand: result.brandName });
+          }
           toast(`${result.placements.length} placements extraídos (${source})`, 'success');
         }
       } catch (err) {
@@ -69,7 +74,7 @@ export function StepTags() {
       }
     };
     reader.readAsArrayBuffer(file);
-  }, [parsedData, setParsedData, mergeParsedData, toast]);
+  }, [parsedData, setParsedData, mergeParsedData, setConfig, toast]);
 
   // ── Filtering ──
   const allPlacements = parsedData?.placements || [];

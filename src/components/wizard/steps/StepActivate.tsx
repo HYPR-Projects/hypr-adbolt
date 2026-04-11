@@ -10,6 +10,7 @@ import { genAmazonDSP } from '@/generators/amazon';
 import { downloadCSV, downloadXLSX } from '@/generators/download';
 import { activateXandrTags } from '@/services/activation/xandr-tags';
 import { activateDV360Tags } from '@/services/activation/dv360-tags';
+import { normalizeUrl } from '@/lib/utils';
 import type { ActivationResult } from '@/types';
 import { DSP_LABELS } from '@/types';
 import styles from './StepActivate.module.css';
@@ -84,6 +85,14 @@ export function StepActivate() {
 
     store.setActivating(true);
     window.addEventListener('beforeunload', preventUnload);
+
+    // Normalize Xandr brandUrl before sending (legacy: auto-prepends https://)
+    if (store.selectedDsps.has('xandr')) {
+      const normalized = normalizeUrl(store.xandrBrandUrl);
+      if (normalized !== store.xandrBrandUrl) {
+        store.setConfig({ xandrBrandUrl: normalized });
+      }
+    }
 
     // Init progress
     const apiDsps = dsps.filter((d) => d === 'xandr' || d === 'dv360');
