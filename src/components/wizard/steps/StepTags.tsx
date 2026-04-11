@@ -519,7 +519,7 @@ export function StepTags() {
         visible={trackerOpen}
         onClose={() => setTrackerOpen(false)}
         count={selectedTagIds.size}
-        availableDsps={[...selectedDsps] as DspType[]}
+        availableDsps={['xandr', 'dv360', 'stackadapt', 'amazondsp']}
         onApply={(url, format, scope) => {
           selectedTagIds.forEach((idx) => {
             addPlacementTracker(idx, { url, format, dsps: scope });

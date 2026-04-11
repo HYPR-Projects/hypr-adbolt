@@ -503,7 +503,7 @@ export function StepAssets() {
         visible={trackerOpen}
         onClose={() => setTrackerOpen(false)}
         count={selectedAssetIds.size}
-        availableDsps={[...selectedDsps] as DspType[]}
+        availableDsps={['xandr', 'dv360', 'stackadapt', 'amazondsp']}
         onApply={(url, format, scope) => {
           selectedAssetIds.forEach((id) => {
             addAssetTracker(id, { url, format, dsps: scope });
