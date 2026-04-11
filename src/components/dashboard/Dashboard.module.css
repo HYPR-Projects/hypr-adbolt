@@ -56,9 +56,10 @@
 .table tbody tr:hover { background: var(--accent-glow); }
 .empty { text-align: center; padding: 60px 20px !important; color: var(--text-sec); }
 
-.nameWrap { min-width: 0; overflow: hidden; }
+.nameWrap { min-width: 0; overflow: hidden; max-width: 100%; }
 .name { font-weight: 500; display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .nameType { font-size: 0.68rem; color: var(--text-tri); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nameTd { overflow: hidden; max-width: 0; }
 .chevron { flex-shrink: 0; color: var(--text-tri); transition: transform 0.2s var(--ease-out); }
 .expanded .chevron { transform: rotate(90deg); color: var(--accent); }
 .dimCol { font-family: var(--mono); font-size: 0.75rem; white-space: nowrap; }

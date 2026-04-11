@@ -353,7 +353,7 @@ function DashboardRow({ group: g, dspKeys, isExpanded, isSelected, onToggleExpan
         <td onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect()} />
         </td>
-        <td>
+        <td className={styles.nameTd}>
           <div className={styles.nameWrap}>
             <div className={styles.name} title={g.name}>
               <svg className={styles.chevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="16" height="16">
