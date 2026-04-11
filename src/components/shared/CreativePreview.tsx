@@ -136,7 +136,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
 <html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{overflow:hidden;background:#fff}</style></head>
 <body>${data.tagContent}</body></html>`;
       return (
-        <div className={styles.previewFrame} style={{ position: 'relative' }}>
+        <div className={styles.previewFrame}>
           {!iframeLoaded && (
             <div className={styles.loading} style={{ width: renderW, height: renderH, position: 'absolute' }}>
               <div className={styles.loadingDot} />
@@ -146,14 +146,13 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           )}
           <iframe
             srcDoc={srcdoc}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-popups"
             width={renderW}
             height={renderH}
             style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
-          <div className={styles.iframeOverlay} onClick={onClose} />
         </div>
       );
     }
@@ -161,7 +160,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
     // HTML5 (iframe sandbox)
     if (data.type === 'html5' && data.html5Content) {
       return (
-        <div className={styles.previewFrame} style={{ position: 'relative' }}>
+        <div className={styles.previewFrame}>
           {!iframeLoaded && (
             <div className={styles.loading} style={{ width: renderW, height: renderH, position: 'absolute' }}>
               <div className={styles.loadingDot} />
@@ -171,14 +170,13 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           )}
           <iframe
             srcDoc={data.html5Content}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-popups"
             width={renderW}
             height={renderH}
             style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
-          <div className={styles.iframeOverlay} onClick={onClose} />
         </div>
       );
     }
