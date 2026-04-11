@@ -14,9 +14,11 @@ export function MultiSelect({ label, values, selected, onToggle, onClear }: Mult
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    const handleClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('click', handleClick); document.removeEventListener('keydown', handleKey); };
   }, []);
 
   return (

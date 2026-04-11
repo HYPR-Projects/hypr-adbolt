@@ -76,7 +76,7 @@
 
 .dimmed {
   opacity: 0.35;
-  pointer-events: none;
+  cursor: not-allowed;
 }
 
 .num {

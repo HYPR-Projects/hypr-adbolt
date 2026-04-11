@@ -1,4 +1,5 @@
 import { useWizardStore } from '@/stores/wizard';
+import { useUIStore } from '@/stores/ui';
 import styles from './WizardSidebar.module.css';
 
 interface WizardSidebarProps {
@@ -12,6 +13,7 @@ export function WizardSidebar({ onExit }: WizardSidebarProps) {
   const assetEntries = useWizardStore((s) => s.assetEntries);
   const surveyEntries = useWizardStore((s) => s.surveyEntries);
   const selectedDsps = useWizardStore((s) => s.selectedDsps);
+  const toast = useUIStore((s) => s.toast);
 
   const MODE_LABELS: Record<string, string> = {
     tags: 'Embeds & Tags',
@@ -36,6 +38,26 @@ export function WizardSidebar({ onExit }: WizardSidebarProps) {
     if ((stepKey === 'dsps' || stepKey === 'config' || stepKey === 'activate') && !content) return false;
     if ((stepKey === 'config' || stepKey === 'activate') && !dsp) return false;
     return true;
+  };
+
+  const getBlockReason = (stepKey: string): string | null => {
+    const content = hasContent();
+    const dsp = hasDsp();
+    if ((stepKey === 'dsps' || stepKey === 'config' || stepKey === 'activate') && !content) {
+      return mode === 'assets' ? 'Faça upload de assets primeiro' : 'Adicione placements primeiro';
+    }
+    if ((stepKey === 'config' || stepKey === 'activate') && !dsp) return 'Selecione ao menos uma DSP';
+    return null;
+  };
+
+  const handleStepClick = (idx: number) => {
+    const stepKey = config.steps[idx];
+    if (idx > currentStep && !isStepReachable(stepKey, idx)) {
+      const reason = getBlockReason(stepKey);
+      if (reason) toast(reason, 'error');
+      return;
+    }
+    setStep(idx);
   };
 
   return (
@@ -67,8 +89,8 @@ export function WizardSidebar({ onExit }: WizardSidebarProps) {
                 className={cls}
                 role="button"
                 tabIndex={0}
-                onClick={() => setStep(i)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i); } }}
+                onClick={() => handleStepClick(i)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStepClick(i); } }}
               >
                 <div className={styles.num}>
                   {completed ? (

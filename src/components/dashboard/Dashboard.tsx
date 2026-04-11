@@ -404,26 +404,34 @@ export function Dashboard() {
 
       {/* Stats */}
       <div className={styles.stats}>
-        <div className={`${styles.stat} ${styles.statHero}`}>
+        <div
+          className={`${styles.stat} ${styles.statHero} ${store.filterAudit === 'all' ? styles.statActive : ''}`}
+          onClick={() => store.setFilterAudit('all')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') store.setFilterAudit('all'); }}
+        >
           <div className={styles.statVal}>{totalGroups}</div>
           <div className={styles.statLabel}>Criativos</div>
         </div>
-        <div className={styles.stat}>
-          <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cSuccess}`} /><div className={styles.statLabel}>Approved</div></div>
-          <div className={styles.statVal}>{approved}</div>
-        </div>
-        <div className={styles.stat}>
-          <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cAccent}`} /><div className={styles.statLabel}>Partial</div></div>
-          <div className={styles.statVal}>{partial}</div>
-        </div>
-        <div className={styles.stat}>
-          <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cWarning}`} /><div className={styles.statLabel}>Pending</div></div>
-          <div className={styles.statVal}>{pending}</div>
-        </div>
-        <div className={styles.stat}>
-          <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cError}`} /><div className={styles.statLabel}>Rejected</div></div>
-          <div className={styles.statVal}>{rejected}</div>
-        </div>
+        {([
+          { key: 'approved', color: 'cSuccess', label: 'Approved', value: approved },
+          { key: 'partial', color: 'cAccent', label: 'Partial', value: partial },
+          { key: 'pending', color: 'cWarning', label: 'Pending', value: pending },
+          { key: 'rejected', color: 'cError', label: 'Rejected', value: rejected },
+        ] as const).map((s) => (
+          <div
+            key={s.key}
+            className={`${styles.stat} ${store.filterAudit === s.key ? styles.statActive : ''}`}
+            onClick={() => store.setFilterAudit(store.filterAudit === s.key ? 'all' : s.key)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') store.setFilterAudit(store.filterAudit === s.key ? 'all' : s.key); }}
+          >
+            <div className={styles.statTop}><div className={`${styles.statDot} ${styles[s.color]}`} /><div className={styles.statLabel}>{s.label}</div></div>
+            <div className={styles.statVal}>{s.value}</div>
+          </div>
+        ))}
       </div>
 
       {/* Toolbar */}
@@ -436,7 +444,7 @@ export function Dashboard() {
         <span className={styles.divider} />
         {['all', 'pending', 'partial', 'approved', 'rejected'].map((a) => (
           <button key={a} className={`${styles.pill} ${store.filterAudit === a ? styles.active : ''}`} onClick={() => store.setFilterAudit(a)}>
-            {a === 'all' ? 'All' : a.charAt(0).toUpperCase() + a.slice(1)}
+            {a === 'all' ? 'Todos' : a.charAt(0).toUpperCase() + a.slice(1)}
           </button>
         ))}
         <span className={styles.divider} />
