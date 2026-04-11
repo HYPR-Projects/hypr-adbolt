@@ -23,7 +23,7 @@
   max-width: 1400px;
   margin: 0 auto;
   position: relative;
-  min-height: calc(100vh - 56px - 56px);
+  min-height: calc(100vh - 58px - 58px);
   animation: slideInRight var(--dur) var(--ease-out);
 }
 
@@ -40,13 +40,13 @@
 
 @media (min-width: 1440px) {
   .stepView {
-    padding: var(--sp-8) var(--sp-10);
+    padding: var(--section-gap-lg) var(--sp-10) var(--section-gap);
   }
 }
 
 @media (min-width: 1800px) {
   .stepView {
-    padding: var(--sp-8) 80px;
+    padding: var(--section-gap-lg) 80px var(--section-gap);
   }
 }
 
