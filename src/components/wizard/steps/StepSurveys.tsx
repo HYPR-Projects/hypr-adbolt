@@ -221,21 +221,22 @@ export function StepSurveys() {
         onAdd={(items) => {
           let addedCount = 0;
           for (const item of items) {
-            // Find or create the survey entry for this type
-            let entry = surveyEntries.find((e) => e.type === item.type);
+            // Always read fresh from store (previous iteration may have created entries)
+            const currentEntries = useWizardStore.getState().surveyEntries;
+
+            let entry = currentEntries.find((e) => e.type === item.type);
             if (!entry) {
               addSurveyEntry(item.type);
-              // Re-read from store after add
               const state = useWizardStore.getState();
               entry = state.surveyEntries[state.surveyEntries.length - 1];
             }
             if (!entry) continue;
 
-            // Check if already added
             if (entry.urls.some((u) => u.formId === item.formId)) continue;
 
-            // Check global duplicates
-            const globalDupe = surveyEntries.find((e) => e.id !== entry!.id && e.urls.some((u) => u.formId === item.formId));
+            const globalDupe = useWizardStore.getState().surveyEntries.find(
+              (e) => e.id !== entry!.id && e.urls.some((u) => u.formId === item.formId)
+            );
             if (globalDupe) continue;
 
             addSurveyUrl(entry.id, {
@@ -245,10 +246,7 @@ export function StepSurveys() {
               variant: item.variant,
             });
 
-            // Update size if specified
             if (item.size) updateSurveySize(entry.id, item.size);
-
-            // Auto-fill brand
             autoFillBrand(item.title);
             addedCount++;
           }
