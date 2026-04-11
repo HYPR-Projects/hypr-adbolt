@@ -158,26 +158,38 @@ export function Dashboard() {
         if (ext === 'ZIP') return 'HTML5';
         return ext;
       }
-      if (g.creative_type === 'video') return 'VAST';
+      if (g.creative_type === 'video' && !g.js_tag) return 'VAST';
       return '3P Tag';
     })();
-    const isTag = formatLabel === '3P Tag' || formatLabel === 'VAST';
-    const isHtml5 = formatLabel === 'HTML5';
 
     const base = { name: g.name, dimensions: g.dimensions };
 
-    if (isTag && g.js_tag) {
-      return { ...base, type: '3p-tag' as const, tagContent: g.js_tag };
-    }
+    // Has thumbnail → show as image (works for images, videos, GIFs)
     if (g.thumbnail_url) {
-      if (g.creative_type === 'video') {
-        return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, thumbUrl: g.thumbnail_url };
-      }
       return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined };
     }
-    if (isHtml5) {
+
+    // 3P tag with js_tag content → render in sandboxed iframe
+    if (g.js_tag) {
+      return { ...base, type: '3p-tag' as const, tagContent: g.js_tag };
+    }
+
+    // Also check DSP details for js_tag (tags are stored per-DSP)
+    const dspWithTag = Object.values(g.dsps).find(d => d.js_tag);
+    if (dspWithTag?.js_tag) {
+      return { ...base, type: '3p-tag' as const, tagContent: dspWithTag.js_tag };
+    }
+
+    // VAST tag — can't render visually, show info
+    const dspWithVast = Object.values(g.dsps).find(d => d.vast_tag);
+    if (dspWithVast?.vast_tag) {
+      return { ...base, type: '3p-tag' as const, tagContent: `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#666;font-size:14px">VAST Tag — visual preview não disponível</div>` };
+    }
+
+    if (formatLabel === 'HTML5') {
       return { ...base, type: 'html5' as const, html5Content: '' };
     }
+
     return { ...base, type: 'display' as const, thumbUrl: undefined };
   }, []);
 
