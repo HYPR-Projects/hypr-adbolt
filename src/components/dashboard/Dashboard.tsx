@@ -32,12 +32,24 @@ export function Dashboard() {
 
   const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load on mount — runs once
+  // Load on mount — runs once + reload when tab becomes visible
   useEffect(() => {
     store.loadCreatives();
     // Auto-sync every 5 min
     autoSyncRef.current = setInterval(() => silentSync(), 300000);
-    return () => { if (autoSyncRef.current) clearInterval(autoSyncRef.current); };
+
+    // Reload data when tab becomes visible (user may have activated from another tab)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        store.loadCreatives();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      if (autoSyncRef.current) clearInterval(autoSyncRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   // Keyboard pagination (←/→ when no input is focused)
