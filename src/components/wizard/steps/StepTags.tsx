@@ -39,6 +39,7 @@ export function StepTags() {
   const [mtCode, setMtCode] = useState('');
   const [mtClick, setMtClick] = useState('');
   const mtCodeRef = useRef<HTMLTextAreaElement>(null);
+  const [mtErrors, setMtErrors] = useState<Record<string, boolean>>({});
 
   // ── Auto-detect dimensions + click URL from tag content ──
   const autoDetectFromTag = useCallback((tag: string) => {
@@ -63,7 +64,7 @@ export function StepTags() {
   // ── Add manual tag ──
   const handleAddManualTag = useCallback(() => {
     const tag = mtCode.trim();
-    if (!tag) { toast('Cole a tag HTML/JS/VAST no campo', 'error'); mtCodeRef.current?.focus(); return; }
+    if (!tag) { setMtErrors({ code: true }); toast('Cole a tag HTML/JS/VAST no campo', 'error'); mtCodeRef.current?.focus(); return; }
     let w = parseInt(mtWidth) || 0;
     let h = parseInt(mtHeight) || 0;
     if (!w || !h) {
@@ -75,7 +76,8 @@ export function StepTags() {
       if (w) setMtWidth(String(w));
       if (h) setMtHeight(String(h));
     }
-    if (!w || !h) { toast('Informe a largura e altura do criativo', 'error'); return; }
+    if (!w || !h) { setMtErrors({ width: !w, height: !h }); toast('Informe a largura e altura do criativo', 'error'); return; }
+    setMtErrors({});
     const dims = w + 'x' + h;
     let clickUrl = mtClick.trim();
     if (!clickUrl) {
@@ -264,11 +266,11 @@ export function StepTags() {
           </div>
           <div className={styles.manualField} style={{ width: 90 }}>
             <label>Largura</label>
-            <input type="number" value={mtWidth} onChange={(e) => setMtWidth(e.target.value)} placeholder="300" />
+            <input className={mtErrors.width ? styles.inputError : ''} type="number" value={mtWidth} onChange={(e) => { setMtWidth(e.target.value); setMtErrors((p) => ({ ...p, width: false })); }} placeholder="300" />
           </div>
           <div className={styles.manualField} style={{ width: 90 }}>
             <label>Altura</label>
-            <input type="number" value={mtHeight} onChange={(e) => setMtHeight(e.target.value)} placeholder="250" />
+            <input className={mtErrors.height ? styles.inputError : ''} type="number" value={mtHeight} onChange={(e) => { setMtHeight(e.target.value); setMtErrors((p) => ({ ...p, height: false })); }} placeholder="250" />
           </div>
           <div className={styles.manualField} style={{ width: 110 }}>
             <label>Tipo</label>
@@ -281,9 +283,10 @@ export function StepTags() {
         <div className={styles.manualField} style={{ width: '100%', marginBottom: 12 }}>
           <label>Tag HTML / JS / VAST URL</label>
           <textarea
+            className={mtErrors.code ? styles.inputError : ''}
             ref={mtCodeRef}
             value={mtCode}
-            onChange={(e) => { setMtCode(e.target.value); autoDetectFromTag(e.target.value); }}
+            onChange={(e) => { setMtCode(e.target.value); setMtErrors((p) => ({ ...p, code: false })); autoDetectFromTag(e.target.value); }}
             rows={3}
             placeholder="Cole a tag completa aqui (HTML, JS tag, ou VAST URL)"
           />

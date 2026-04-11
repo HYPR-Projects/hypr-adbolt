@@ -323,6 +323,11 @@
   box-shadow: 0 4px 12px var(--accent-ring);
 }
 
+.inputError {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 1px var(--error-dim);
+}
+
 /* Tracker column in tags table */
 .trackerCell {
   max-width: 220px;

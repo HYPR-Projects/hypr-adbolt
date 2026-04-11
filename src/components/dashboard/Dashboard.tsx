@@ -39,6 +39,21 @@ export function Dashboard() {
     return () => { if (autoSyncRef.current) clearInterval(autoSyncRef.current); };
   }, []);
 
+  // Keyboard pagination (←/→ when no input is focused)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'ArrowLeft') store.setPage(Math.max(0, store.page - 1));
+      else if (e.key === 'ArrowRight') {
+        const maxPage = Math.ceil(store.getFilteredGroups().length / store.pageSize) - 1;
+        store.setPage(Math.min(maxPage, store.page + 1));
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   const silentSync = useCallback(async () => {
     if (store.isSyncing || !session?.access_token) return;
     const hasPending = store.creatives.some((c) => c.audit_status !== 'approved');
