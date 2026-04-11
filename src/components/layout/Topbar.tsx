@@ -19,7 +19,7 @@ export function Topbar() {
 
   return (
     <header className={styles.topbar} role="banner">
-      <div className={styles.brand}>
+      <div className={styles.brand} onClick={() => setView('home')} style={{ cursor: 'pointer' }}>
         <div className={styles.logo}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{ filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.4))' }}>
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
