@@ -61,14 +61,16 @@ export async function activateDV360Assets(
       allResults.push({ success: false, name: c.name, error: 'Upload failed: ' + c._uploadError })
     );
 
-    // Videos: one at a time with 3s delay
-    for (let i = 0; i < videoCreatives.length; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 3000));
-      processed++;
-      onProgress?.(processed, total, `Criando video ${i + 1}/${videoCreatives.length} na DV360: ${videoCreatives[i].name}`);
-
-      try {
-        const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
+    // Videos: pairs of 2 with 1.5s stagger (edge function has retry for CONCURRENCY)
+    const VIDEO_PARALLEL = 2;
+    for (let i = 0; i < videoCreatives.length; i += VIDEO_PARALLEL) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+      const batch = videoCreatives.slice(i, i + VIDEO_PARALLEL);
+      const batchPromises = batch.map((vc, bi) => {
+        const idx = i + bi;
+        processed++;
+        onProgress?.(processed, total, `Criando video ${idx + 1}/${videoCreatives.length} na DV360: ${vc.name}`);
+        return fetch(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
           body: JSON.stringify({
@@ -76,21 +78,23 @@ export async function activateDV360Assets(
             campaignName: config.campaignName,
             advertiserName: config.advertiserName,
             brandName: config.brandName,
-            creatives: [videoCreatives[i]],
+            creatives: [vc],
           }),
+        }).then(async (res) => {
+          const data = await res.json();
+          for (const r of data.results || []) {
+            allResults.push(r);
+            if (r.success) successCount++;
+          }
+        }).catch((err) => {
+          allResults.push({
+            success: false,
+            name: vc.name,
+            error: (err as Error).message || 'Network error',
+          });
         });
-        const data = await res.json();
-        for (const r of data.results || []) {
-          allResults.push(r);
-          if (r.success) successCount++;
-        }
-      } catch (err) {
-        allResults.push({
-          success: false,
-          name: videoCreatives[i].name,
-          error: (err as Error).message || 'Network error',
-        });
-      }
+      });
+      await Promise.all(batchPromises);
     }
 
     // Display/HTML5: chunks of 5
