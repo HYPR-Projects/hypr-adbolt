@@ -1,0 +1,234 @@
+/* ══════════════════════════════════════════════
+   BulkModals — Rename, Find & Replace, Tracker
+   ══════════════════════════════════════════════ */
+
+.field {
+  margin-bottom: var(--sp-4);
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-sec);
+  margin-bottom: var(--sp-1);
+  letter-spacing: 0.02em;
+}
+
+.hint {
+  font-weight: 400;
+  color: var(--text-tri);
+  margin-left: 4px;
+}
+
+.input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: var(--input-py) var(--input-px);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--dur-f);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.input::placeholder {
+  color: var(--text-tri);
+  opacity: 0.6;
+}
+
+/* ── Variables hint (rename) ── */
+.varsHint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+
+.varTag {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: all var(--dur-f);
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.varTag:hover {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* ── Preview list (rename) ── */
+.preview {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3) var(--sp-4);
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: var(--sp-3);
+}
+
+.previewEmpty {
+  color: var(--text-tri);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.previewItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.previewItem + .previewItem {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.previewOld {
+  color: var(--text-tri);
+  font-family: var(--mono);
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.previewArrow {
+  color: var(--accent);
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.previewNew {
+  color: var(--success);
+  font-family: var(--mono);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewMore {
+  color: var(--text-tri);
+  font-size: 0.7rem;
+  margin-top: 4px;
+}
+
+/* ── DSP scope selector (tracker) ── */
+.scopeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.scopeBtn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+  border-radius: var(--r-xs);
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-f);
+}
+
+.scopeBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.scopeBtnActive {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Footer actions ── */
+.footerRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.btnCancel {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+  border-radius: var(--r-xs);
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-f);
+}
+
+.btnCancel:hover {
+  border-color: var(--text-tri);
+  color: var(--text);
+}
+
+.btnPrimary {
+  background: var(--accent);
+  border: none;
+  color: var(--text-on-accent);
+  border-radius: var(--r-xs);
+  padding: 8px 22px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--dur-f);
+}
+
+.btnPrimary:hover {
+  background: var(--accent-hover);
+}
+
+.btnPrimary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Find & Replace layout ── */
+.frRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--sp-2);
+  align-items: end;
+}
+
+.frArrow {
+  color: var(--text-tri);
+  font-size: 1rem;
+  padding-bottom: 8px;
+}
+
+/* ── Separator ── */
+.separator {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--sp-4) 0;
+}

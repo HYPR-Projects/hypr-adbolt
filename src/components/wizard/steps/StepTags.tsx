@@ -5,11 +5,12 @@ import { UploadZone } from '@/components/shared/UploadZone';
 import { FilterBar } from '@/components/shared/FilterBar';
 import { BulkBar } from '@/components/shared/BulkBar';
 import { StepNav } from '@/components/shared/StepNav';
+import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/shared/BulkModals';
 import { parseCM360 } from '@/parsers/cm360';
 import { parseGenericTags } from '@/parsers/generic';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl } from '@/lib/utils';
-import type { Placement, Tracker } from '@/types';
+import type { Placement, Tracker, DspType } from '@/types';
 import styles from './StepTags.module.css';
 
 export function StepTags() {
@@ -20,7 +21,7 @@ export function StepTags() {
     addPlacementTracker, removePlacementTracker,
     tagsFilterType, tagsFilterSize, tagsFilterText, setTagsFilter,
     currentStep, setStep, hasContent, hasDsp,
-    setConfig,
+    setConfig, selectedDsps,
   } = useWizardStore();
   const config = useWizardStore((s) => s.getStepConfig());
   const toast = useUIStore((s) => s.toast);
@@ -204,34 +205,17 @@ export function StepTags() {
     (nextStep === 'config' && (!hasContent() || !hasDsp())) ||
     (nextStep === 'activate' && (!hasContent() || !hasDsp()));
 
+  // ── Modal state ──
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [frOpen, setFrOpen] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(false);
+
   // ── Bulk actions ──
   const selectedCount = selectedTagIds.size;
   const bulkActions = [
-    { label: '+ Tracker', onClick: () => {
-      const ids = [...selectedTagIds];
-      const raw = prompt(`Pixel/tracker URL pra aplicar em ${ids.length} placement(s):`);
-      if (!raw) return;
-      const analyzed = analyzeTracker(raw);
-      const url = normalizeUrl(analyzed.url);
-      ids.forEach((idx) => addPlacementTracker(idx, { url, format: analyzed.format, dsps: 'all' }));
-      toast(`Tracker aplicado em ${ids.length} placement(s)`, 'success');
-    }},
-    { label: 'Find & Replace', onClick: () => {
-      const ids = [...selectedTagIds];
-      const find = prompt(`Buscar no nome de ${ids.length} placement(s):`);
-      if (!find) return;
-      const replace = prompt(`Substituir "${find}" por:`);
-      if (replace === null) return;
-      let count = 0;
-      ids.forEach((idx) => {
-        const p = parsedData?.placements[idx];
-        if (p && p.placementName.includes(find)) {
-          updatePlacement(idx, 'placementName', p.placementName.split(find).join(replace));
-          count++;
-        }
-      });
-      toast(`${count} nome(s) atualizado(s)`, count ? 'success' : '');
-    }},
+    { label: '+ Tracker', onClick: () => setTrackerOpen(true) },
+    { label: 'Renomear', onClick: () => setRenameOpen(true) },
+    { label: 'Find & Replace', onClick: () => setFrOpen(true) },
     { label: 'Remover', onClick: () => {
       const ids = [...selectedTagIds];
       if (confirm(`Remover ${ids.length} placement(s)?`)) {
@@ -470,6 +454,59 @@ export function StepTags() {
         nextDisabled={nextDisabled}
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
+      />
+
+      {/* ── Bulk Modals ── */}
+      <RenameModal
+        visible={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        items={[...selectedTagIds].map((idx) => {
+          const p = parsedData?.placements[idx];
+          return p ? { id: idx, name: p.placementName, dimensions: p.dimensions, type: p.type } : null;
+        }).filter(Boolean) as Array<{ id: number | string; name: string; dimensions?: string; type?: string }>}
+        onApply={(getNewName) => {
+          const ids = [...selectedTagIds];
+          let count = 0;
+          ids.forEach((idx, i) => {
+            const p = parsedData?.placements[idx];
+            if (p) {
+              const item = { id: idx, name: p.placementName, dimensions: p.dimensions, type: p.type };
+              updatePlacement(idx, 'placementName', getNewName(item, i));
+              count++;
+            }
+          });
+          toast(`${count} nome(s) alterado(s)`, 'success');
+        }}
+      />
+
+      <FindReplaceModal
+        visible={frOpen}
+        onClose={() => setFrOpen(false)}
+        count={selectedTagIds.size}
+        onApply={(find, replace) => {
+          let count = 0;
+          selectedTagIds.forEach((idx) => {
+            const p = parsedData?.placements[idx];
+            if (p && p.placementName.includes(find)) {
+              updatePlacement(idx, 'placementName', p.placementName.split(find).join(replace));
+              count++;
+            }
+          });
+          toast(`${count} nome(s) atualizado(s)`, count ? 'success' : '');
+        }}
+      />
+
+      <BulkTrackerModal
+        visible={trackerOpen}
+        onClose={() => setTrackerOpen(false)}
+        count={selectedTagIds.size}
+        availableDsps={[...selectedDsps] as DspType[]}
+        onApply={(url, format, scope) => {
+          selectedTagIds.forEach((idx) => {
+            addPlacementTracker(idx, { url, format, dsps: scope });
+          });
+          toast(`Tracker aplicado em ${selectedTagIds.size} placement(s)`, 'success');
+        }}
       />
     </div>
   );

@@ -1,19 +1,20 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useWizardStore } from '@/stores/wizard';
 import { useUIStore } from '@/stores/ui';
 import { UploadZone } from '@/components/shared/UploadZone';
 import { FilterBar } from '@/components/shared/FilterBar';
 import { BulkBar } from '@/components/shared/BulkBar';
 import { StepNav } from '@/components/shared/StepNav';
+import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/shared/BulkModals';
 import {
   getAssetType, readFileDimensions, generateThumb,
-  isIABSize, getSizeSuggestion, resizeAssetImage,
+  isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
 } from '@/hooks/useAssetProcessing';
 import { extractZipToFiles, processHTML5Zip } from '@/hooks/useHTML5Zip';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, formatBytes } from '@/lib/utils';
 import { ASSET_DSP_LIMITS } from '@/types';
-import type { AssetEntry } from '@/types';
+import type { AssetEntry, DspType } from '@/types';
 import styles from './StepAssets.module.css';
 
 export function StepAssets() {
@@ -174,6 +175,46 @@ export function StepAssets() {
     }
   };
 
+  // ── Modal state ──
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [frOpen, setFrOpen] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(false);
+
+  // ── Bulk Compress ──
+  const handleBulkCompress = async () => {
+    const ids = [...selectedAssetIds];
+    const displayAssets = ids
+      .map((id) => assetEntries.find((a) => a.id === id))
+      .filter((a): a is AssetEntry => !!a && a.type === 'display');
+    if (!displayAssets.length) { toast('Selecione assets display pra comprimir (vídeo não é comprimível)', ''); return; }
+
+    const maxBytes = Math.min(
+      ...[...selectedDsps].map((d) => (ASSET_DSP_LIMITS[d] || {}).display || Infinity).filter((v) => v !== Infinity),
+      400 * 1024, // fallback Xandr
+    );
+
+    let compressed = 0;
+    for (const a of displayAssets) {
+      const result = await compressImage(a.originalFile, maxBytes);
+      if (result.compressed) {
+        updateAsset(a.id, {
+          compressedFile: result.file,
+          size: result.file.size,
+          compressed: true,
+        });
+        compressed++;
+      }
+    }
+    toast(compressed ? `${compressed} imagem(ns) comprimida(s)` : 'Todos já estão dentro do limite', compressed ? 'success' : '');
+  };
+
+  // ── Bulk Duplicate ──
+  const handleBulkDuplicate = () => {
+    const ids = [...selectedAssetIds];
+    ids.forEach((id) => duplicateAsset(id));
+    toast(`${ids.length} asset(s) duplicado(s)`, 'success');
+  };
+
   // ── Bulk actions ──
   const selectedCount = selectedAssetIds.size;
   const bulkActions = [
@@ -186,6 +227,11 @@ export function StepAssets() {
         toast(`Landing page aplicada em ${selectedCount} asset(s)`, 'success');
       },
     },
+    { label: '+ Tracker', onClick: () => setTrackerOpen(true) },
+    { label: 'Renomear', onClick: () => setRenameOpen(true) },
+    { label: 'Find & Replace', onClick: () => setFrOpen(true) },
+    { label: 'Duplicar', onClick: handleBulkDuplicate },
+    { label: 'Comprimir', onClick: handleBulkCompress },
     {
       label: 'Remover', onClick: () => {
         if (!confirm(`Remover ${selectedCount} asset(s)?`)) return;
@@ -396,6 +442,54 @@ export function StepAssets() {
         nextDisabled={nextDisabled}
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
+      />
+
+      {/* ── Bulk Modals ── */}
+      <RenameModal
+        visible={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        items={[...selectedAssetIds].map((id) => assetEntries.find((a) => a.id === id)).filter(Boolean).map((a) => ({
+          id: a!.id, name: a!.name, dimensions: a!.dimensions, type: a!.type,
+        }))}
+        onApply={(getNewName) => {
+          const ids = [...selectedAssetIds];
+          const items = ids.map((id) => assetEntries.find((a) => a.id === id)).filter(Boolean);
+          items.forEach((a, i) => {
+            const newName = getNewName({ id: a!.id, name: a!.name, dimensions: a!.dimensions, type: a!.type }, i);
+            updateAsset(a!.id, { name: newName });
+          });
+          toast(`${items.length} nome(s) alterado(s)`, 'success');
+        }}
+      />
+
+      <FindReplaceModal
+        visible={frOpen}
+        onClose={() => setFrOpen(false)}
+        count={selectedAssetIds.size}
+        onApply={(find, replace) => {
+          let count = 0;
+          selectedAssetIds.forEach((id) => {
+            const a = assetEntries.find((e) => e.id === id);
+            if (a && a.name.includes(find)) {
+              updateAsset(id, { name: a.name.split(find).join(replace) });
+              count++;
+            }
+          });
+          toast(`${count} nome(s) atualizado(s)`, count ? 'success' : '');
+        }}
+      />
+
+      <BulkTrackerModal
+        visible={trackerOpen}
+        onClose={() => setTrackerOpen(false)}
+        count={selectedAssetIds.size}
+        availableDsps={[...selectedDsps] as DspType[]}
+        onApply={(url, format, scope) => {
+          selectedAssetIds.forEach((id) => {
+            addAssetTracker(id, { url, format, dsps: scope });
+          });
+          toast(`Tracker aplicado em ${selectedAssetIds.size} asset(s)`, 'success');
+        }}
       />
     </div>
   );
