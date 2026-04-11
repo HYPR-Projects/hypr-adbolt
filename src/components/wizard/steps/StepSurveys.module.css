@@ -332,7 +332,7 @@
 .pickerColBrand { width: 18%; }
 .pickerColType { width: 16%; }
 .pickerColVariant { width: 14%; }
-.pickerColDate { width: auto; }
+.pickerColDate { width: auto; padding-right: 16px !important; }
 
 .pickerRowSel { background: var(--accent-glow); }
 .pickerName {
@@ -342,7 +342,7 @@
   white-space: nowrap;
 }
 .pickerBrand { font-size: 0.75rem; color: var(--text-sec); }
-.pickerDate { text-align: right; font-size: 0.72rem; color: var(--text-tri); }
+.pickerDate { text-align: right; font-size: 0.72rem; color: var(--text-tri); padding-right: 16px !important; }
 
 /* Inline dropdown */
 .ddWrap { position: relative; display: inline-block; }
