@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 // Zustand store refs from useDashboardStore() are stable — exhaustive-deps
 // flags them incorrectly. Disabling for this file only.
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useDashboardStore, getFormatLabel } from '@/stores/dashboard';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -16,11 +16,13 @@ import { genXandr } from '@/generators/xandr';
 import { genStackAdapt } from '@/generators/stackadapt';
 import { genAmazonDSP } from '@/generators/amazon';
 import { downloadCSV, downloadXLSX } from '@/generators/download';
-import { DSP_LABELS, DSP_SHORT_LABELS } from '@/types';
+import { DSP_LABELS } from '@/types';
 import type { CreativeGroup, DspType } from '@/types';
 import type { Placement } from '@/types';
+import { DashboardRow } from './DashboardRow';
+import { MultiSelect } from './MultiSelect';
+import { formatTimeAgo } from './helpers';
 import styles from './Dashboard.module.css';
-import { useState } from 'react';
 
 export function Dashboard() {
   const store = useDashboardStore();
@@ -707,143 +709,4 @@ export function Dashboard() {
       </Modal>
     </section>
   );
-}
-
-// ── Sub-components ──
-
-function DashboardRow({ group: g, dspKeys, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, delay }: {
-  group: CreativeGroup; dspKeys: DspType[]; isExpanded: boolean; isSelected: boolean;
-  onToggleExpand: () => void; onToggleSelect: () => void; onEdit: () => void; delay: number;
-}) {
-  return (
-    <>
-      <tr style={{ animationDelay: `${delay}ms` }} className={isExpanded ? styles.expanded : ''} onClick={onToggleExpand}>
-        <td onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={isSelected} onChange={() => onToggleSelect()} />
-        </td>
-        <td className={styles.nameTd}>
-          <div className={styles.nameWrap}>
-            <div className={styles.name} title={g.name}>
-              <svg className={styles.chevron} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="16" height="16">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-              {g.name}
-            </div>
-            <div className={styles.nameType}>{g.creative_type} · {dspKeys.length} DSP{dspKeys.length > 1 ? 's' : ''}</div>
-          </div>
-        </td>
-        <td className={styles.dimCol}>{g.dimensions || '-'}</td>
-        <td><span className={styles.formatBadge}>{getFormatLabel(g)}</span></td>
-        <td>
-          <div className={styles.dspChips}>
-            {dspKeys.map((k) => {
-              const d = g.dsps[k];
-              return (
-                <div key={k} className={styles.dspChip}>
-                  <span className={`${styles.auditDot} ${styles[d.audit_status]}`} />
-                  <span className={styles.chipLabel}>{DSP_SHORT_LABELS[k]}</span>
-                  <span className={styles.chipStatus}>{d.audit_status}</span>
-                </div>
-              );
-            })}
-          </div>
-        </td>
-        <td className={styles.metaCol}>{g.created_by_name}</td>
-        <td className={styles.metaCol}>{formatDate(g.created_at)}</td>
-        <td><button className={styles.editBtn} onClick={(e) => { e.stopPropagation(); onEdit(); }}>Editar</button></td>
-      </tr>
-      {isExpanded && (
-        <tr className={styles.expandRow}>
-          <td />
-          <td colSpan={7}>
-            <div className={styles.expandInner}>
-              {dspKeys.map((k) => {
-                const d = g.dsps[k];
-                return (
-                  <div key={k} className={styles.expandDsp}>
-                    <div className={styles.expandDspHeader}>
-                      <span className={`${styles.dspTag} ${styles[k]}`}>{DSP_LABELS[k]}</span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tri)' }}>ID: {d.dsp_creative_id || '-'}</span>
-                    </div>
-                    {d.landing_page && <div className={styles.expandField}><span className={styles.expandLabel}>URL destino</span><span className={styles.expandVal}>{d.landing_page}</span></div>}
-                    {d.click_url && <div className={styles.expandField}><span className={styles.expandLabel}>Click redirect</span><span className={styles.expandVal}>{d.click_url}</span></div>}
-                    {!d.landing_page && !d.click_url && <div className={styles.expandField}><span className={styles.expandLabel}>URLs</span><span style={{ color: 'var(--text-tri)' }}>Nenhuma URL configurada</span></div>}
-                    {d.sync_error && <div className={styles.expandField}><span className={styles.expandLabel}>Sync Error</span><span style={{ color: 'var(--error)' }}>{d.sync_error}</span></div>}
-                    {(() => {
-                      const cfg = (d.dsp_config || {}) as Record<string, unknown>;
-                      const exchanges = (cfg.exchangeReviewStatuses || []) as Array<{ exchange: string; status: string }>;
-                      if (!exchanges.length) return null;
-                      return (
-                        <div className={styles.expandField}>
-                          <span className={styles.expandLabel}>Exchange review</span>
-                          <div className={styles.exchangeList}>
-                            {exchanges.map((ex, ei) => (
-                              <div key={ei} className={styles.exchangeItem}>
-                                <span className={`${styles.auditDot} ${styles[ex.status]}`} />
-                                <span className={styles.exchangeName}>{ex.exchange}</span>
-                                <span className={styles.exchangeStatus}>{ex.status}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                );
-              })}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-function MultiSelect({ label, values, selected, onToggle, onClear }: {
-  label: string; values: string[]; selected: Set<string>;
-  onToggle: (value: string) => void; onClear: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, []);
-
-  return (
-    <div className={styles.ms} ref={ref}>
-      <button className={`${styles.msTrigger} ${selected.size > 0 ? styles.hasSelection : ''}`} onClick={() => setOpen(!open)}>
-        {label}{selected.size > 0 && <span className={styles.msBadge}>{selected.size}</span>}
-        <svg viewBox="0 0 10 6" width="10" height="10" style={{ opacity: 0.5 }}><path d="M0 0l5 6 5-6z" fill="currentColor" /></svg>
-      </button>
-      {open && (
-        <div className={styles.msDrop}>
-          {values.map((v) => (
-            <div key={v} className={`${styles.msItem} ${selected.has(v) ? styles.checked : ''}`} onClick={() => onToggle(v)}>
-              <span className={styles.msCb}>{selected.has(v) ? '✓' : ''}</span>
-              {v}
-            </div>
-          ))}
-          {selected.size > 0 && <div className={styles.msClear} onClick={() => { onClear(); setOpen(false); }}>Limpar filtro</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Helpers ──
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) + ' ' +
-    d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTimeAgo(ts: number): string {
-  const sec = Math.floor((Date.now() - ts) / 1000);
-  if (sec < 5) return 'agora';
-  if (sec < 60) return `há ${sec}s`;
-  return `há ${Math.floor(sec / 60)}min`;
 }

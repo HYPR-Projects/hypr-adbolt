@@ -9,8 +9,8 @@ import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/sh
 import {
   getAssetType, readFileDimensions, generateThumb,
   isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
-} from '@/hooks/useAssetProcessing';
-import { extractZipToFiles, processHTML5Zip } from '@/hooks/useHTML5Zip';
+} from '@/lib/asset-processing';
+import { extractZipToFiles, processHTML5Zip } from '@/lib/html5-zip';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, formatBytes } from '@/lib/utils';
 import { ASSET_DSP_LIMITS, DSP_SHORT_LABELS } from '@/types';
