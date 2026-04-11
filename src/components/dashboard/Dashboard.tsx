@@ -52,13 +52,16 @@ export function Dashboard() {
   const handleSync = useCallback(async () => {
     if (!session?.access_token) return;
     store.setSyncing(true);
+    toast('Sincronizando status nas DSPs...', '');
+    const t0 = Date.now();
     try {
       const result = await syncCreativesApi(session.access_token);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       const parts: string[] = [];
       if (result.updated) parts.push(`${result.updated} atualizado${result.updated > 1 ? 's' : ''}`);
       if (result.deleted) parts.push(`${result.deleted} deletado${result.deleted > 1 ? 's' : ''}`);
       if (!result.updated && !result.deleted) parts.push('Tudo em dia');
-      toast(`${parts.join(', ')} (${result.synced} verificados)`, 'success');
+      toast(`${parts.join(', ')} (${result.synced} verificados em ${elapsed}s)`, 'success');
       await store.loadCreatives();
     } catch (err) { toast('Erro no sync: ' + (err as Error).message, 'error'); }
     finally { store.setSyncing(false); }
@@ -73,6 +76,7 @@ export function Dashboard() {
   // ── Stats ──
   const totalGroups = store.groups.length;
   const approved = store.creatives.filter((c) => c.audit_status === 'approved').length;
+  const partial = store.creatives.filter((c) => c.audit_status === 'partial').length;
   const pending = store.creatives.filter((c) => c.audit_status === 'pending').length;
   const rejected = store.creatives.filter((c) => c.audit_status === 'rejected').length;
 
@@ -327,7 +331,14 @@ export function Dashboard() {
           onClick={handleSync}
           disabled={store.isSyncing}
         >
-          {store.isSyncing ? 'Syncing...' : 'Sync Status'}
+          {store.isSyncing ? (
+            <>
+              <svg className={styles.spinner} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" width="14" height="14">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              Sincronizando...
+            </>
+          ) : 'Sync Status'}
         </button>
       </div>
 
@@ -340,6 +351,10 @@ export function Dashboard() {
         <div className={styles.stat}>
           <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cSuccess}`} /><div className={styles.statLabel}>Approved</div></div>
           <div className={styles.statVal}>{approved}</div>
+        </div>
+        <div className={styles.stat}>
+          <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cAccent}`} /><div className={styles.statLabel}>Partial</div></div>
+          <div className={styles.statVal}>{partial}</div>
         </div>
         <div className={styles.stat}>
           <div className={styles.statTop}><div className={`${styles.statDot} ${styles.cWarning}`} /><div className={styles.statLabel}>Pending</div></div>
@@ -359,7 +374,7 @@ export function Dashboard() {
           </button>
         ))}
         <span className={styles.divider} />
-        {['all', 'pending', 'approved', 'rejected'].map((a) => (
+        {['all', 'pending', 'partial', 'approved', 'rejected'].map((a) => (
           <button key={a} className={`${styles.pill} ${store.filterAudit === a ? styles.active : ''}`} onClick={() => store.setFilterAudit(a)}>
             {a === 'all' ? 'All' : a.charAt(0).toUpperCase() + a.slice(1)}
           </button>
@@ -377,6 +392,7 @@ export function Dashboard() {
 
       {/* Table */}
       <div className={styles.tableWrap}>
+        {store.isSyncing && <div className={styles.syncProgress}><div className={styles.syncProgressBar} /></div>}
         <table className={styles.table}>
           <thead>
             <tr>
