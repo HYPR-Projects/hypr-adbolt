@@ -1,7 +1,7 @@
 .zone {
-  border: 1.5px dashed var(--border);
-  border-radius: var(--r);
-  padding: 48px 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--surface-radius);
+  padding: 56px 24px;
   text-align: center;
   cursor: pointer;
   transition: all var(--dur) var(--ease);
@@ -32,13 +32,13 @@
 }
 
 .icon {
-  font-size: 2.2rem;
+  font-size: 2.4rem;
   margin-bottom: 12px;
   display: block;
 }
 
 .text {
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
   color: var(--text-sec);
 }
 
@@ -62,7 +62,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
   font-weight: 500;
 }
 

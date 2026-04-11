@@ -12,7 +12,7 @@
 
 .label {
   display: block;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text-sec);
   margin-bottom: var(--sp-1);
@@ -28,11 +28,11 @@
 .input {
   width: 100%;
   background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   padding: var(--input-py) var(--input-px);
   font-family: var(--mono);
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   color: var(--text);
   outline: none;
   transition: border-color var(--dur-f);
@@ -60,7 +60,7 @@
   background: var(--accent-dim);
   color: var(--accent);
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--r-pill);
@@ -79,7 +79,7 @@
 .preview {
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--r-sm);
+  border-radius: var(--surface-radius-sm);
   padding: var(--sp-3) var(--sp-4);
   max-height: 200px;
   overflow-y: auto;
@@ -88,7 +88,7 @@
 
 .previewEmpty {
   color: var(--text-tri);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-style: italic;
 }
 
@@ -97,12 +97,12 @@
   align-items: center;
   gap: var(--sp-2);
   padding: 3px 0;
-  font-size: 0.76rem;
+  font-size: var(--fs-sm);
   line-height: 1.4;
 }
 
 .previewItem + .previewItem {
-  border-top: 1px solid var(--border-subtle);
+  border-top: var(--surface-border) solid var(--border-subtle);
 }
 
 .previewOld {
@@ -117,7 +117,7 @@
 
 .previewArrow {
   color: var(--accent);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   flex-shrink: 0;
 }
 
@@ -132,7 +132,7 @@
 
 .previewMore {
   color: var(--text-tri);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   margin-top: 4px;
 }
 
@@ -146,11 +146,11 @@
 
 .scopeBtn {
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: var(--surface-border) solid var(--border);
   color: var(--text-sec);
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   padding: 6px 14px;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--dur-f);
@@ -176,11 +176,11 @@
 
 .btnCancel {
   background: none;
-  border: 1px solid var(--border);
+  border: var(--surface-border) solid var(--border);
   color: var(--text-sec);
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   padding: 8px 18px;
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--dur-f);
@@ -195,9 +195,9 @@
   background: var(--accent);
   border: none;
   color: var(--text-on-accent);
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   padding: 8px 22px;
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   cursor: pointer;
   transition: all var(--dur-f);
@@ -229,7 +229,7 @@
 /* ── Separator ── */
 .separator {
   border: none;
-  border-top: 1px solid var(--border-subtle);
+  border-top: var(--surface-border) solid var(--border-subtle);
   margin: var(--sp-4) 0;
 }
 
@@ -243,11 +243,11 @@
 
 .eventBtn {
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: var(--surface-border) solid var(--border);
   color: var(--text-sec);
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   padding: 7px 6px;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--dur-f);

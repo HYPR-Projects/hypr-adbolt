@@ -1,14 +1,14 @@
 .panel {
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
   padding: 24px;
   margin-bottom: 20px;
   animation: slideUp 0.3s var(--ease-out);
 }
 
 .title {
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 600;
   margin-bottom: 18px;
 }
@@ -30,12 +30,12 @@
 
 .name {
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
 }
 
 .count {
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--text-sec);
 }
 
@@ -67,7 +67,7 @@
 
 .current {
   font-family: var(--mono);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   color: var(--text-tri);
   margin-top: 5px;
   min-height: 16px;
@@ -79,4 +79,4 @@
 
 /* Keyframes (local to CSS module to avoid scoping issues) */
 @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
-@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

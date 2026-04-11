@@ -7,9 +7,9 @@
 .card {
   position: relative;
   background: var(--bg-surface);
-  border: 1.5px solid var(--border);
-  border-radius: var(--r);
-  padding: 20px;
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
+  padding: 22px;
   cursor: pointer;
   transition: all var(--dur) var(--ease);
   display: flex;
@@ -57,7 +57,7 @@
   background: var(--bg-raised);
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--border);
+  border: var(--surface-border) solid var(--border);
 }
 
 .check {
@@ -82,12 +82,12 @@
 .icon {
   width: 44px;
   height: 44px;
-  border-radius: var(--r-sm);
+  border-radius: var(--surface-radius-sm);
   background: var(--bg-raised);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 700;
   color: var(--text-sec);
   flex-shrink: 0;
@@ -105,12 +105,12 @@
 }
 
 .name {
-  font-size: 0.88rem;
+  font-size: var(--fs-base);
   font-weight: 600;
 }
 
 .sub {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--text-tri);
   margin-top: 2px;
 }

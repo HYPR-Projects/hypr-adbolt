@@ -1,12 +1,12 @@
-.header { margin-bottom: var(--sp-8); }
-.header h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 6px; }
-.header p { font-size: 0.88rem; color: var(--text-sec); line-height: 1.6; }
+.header { margin-bottom: var(--section-gap-lg); }
+.header h2 { font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.6px; margin-bottom: var(--header-gap); }
+.header p { font-size: var(--fs-base); color: var(--text-sec); line-height: 1.7; opacity: 0.7; }
 
 .card {
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: var(--sp-6);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
+  padding: var(--card-padding);
 }
 
 /* Type buttons */
@@ -19,11 +19,11 @@
 
 .typeBtn {
   padding: 12px 16px;
-  border-radius: var(--r-sm);
-  border: 1.5px solid var(--border);
+  border-radius: var(--surface-radius-sm);
+  border: var(--surface-border) solid var(--border);
   background: var(--bg-raised);
   color: var(--text-sec);
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   cursor: pointer;
   transition: all var(--dur) var(--ease);
@@ -50,11 +50,11 @@
 .customInput {
   width: 100%;
   padding: var(--input-py) var(--input-px);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   background: var(--bg-input);
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-family: var(--font);
   transition: border-color var(--dur-f);
 }
@@ -73,8 +73,8 @@
 
 .entry {
   background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-sm);
   padding: 16px;
   animation: slideUp 0.3s var(--ease-out);
 }
@@ -100,7 +100,7 @@
   font-size: 14px;
   width: 28px;
   height: 28px;
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -120,7 +120,7 @@
   justify-content: space-between;
   padding: 8px 12px;
   background: var(--bg-base);
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   margin-bottom: 6px;
   animation: fadeRow 0.3s var(--ease-out);
 }
@@ -135,13 +135,13 @@
 }
 
 .urlTitleInput {
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-weight: 500;
   flex: 1;
   min-width: 0;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   padding: 2px 6px;
   color: var(--text);
   font-family: var(--font);
@@ -156,8 +156,8 @@
   align-items: center;
   gap: 3px;
   padding: 2px 8px;
-  border-radius: var(--r-xs);
-  font-size: 0.65rem;
+  border-radius: var(--surface-radius-xs);
+  font-size: var(--fs-min);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -181,16 +181,16 @@
   z-index: var(--z-dropdown);
   min-width: 130px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-sm);
   padding: 4px;
   box-shadow: var(--shadow-md);
   animation: fadeIn 0.12s var(--ease-out);
 }
 .urlVariantItem {
   padding: 6px 10px;
-  font-size: 0.75rem;
-  border-radius: var(--r-xs);
+  font-size: var(--fs-sm);
+  border-radius: var(--surface-radius-xs);
   cursor: pointer;
   color: var(--text);
 }
@@ -198,12 +198,12 @@
 .urlVariantItemActive { background: var(--accent-dim); color: var(--accent); }
 
 .urlVariant {
-  font-size: 0.65rem;
+  font-size: var(--fs-min);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 2px 8px;
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   background: var(--accent-dim);
   color: var(--accent);
   flex-shrink: 0;
@@ -240,11 +240,11 @@
 .addInput {
   flex: 1;
   padding: var(--input-py) var(--input-px);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   background: var(--bg-input);
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   font-family: var(--font);
   transition: border-color var(--dur-f);
 }
@@ -263,10 +263,10 @@
 .sizePill {
   padding: 5px 10px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--border);
+  border: var(--surface-border) solid var(--border);
   background: transparent;
   color: var(--text-tri);
-  font-size: 0.68rem;
+  font-size: var(--fs-min);
   font-family: var(--mono);
   cursor: pointer;
   transition: all var(--dur-f);
@@ -299,7 +299,7 @@
   gap: 12px;
   margin: 32px 0 20px;
   color: var(--text-tri);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 .pickerDivider::before,
 .pickerDivider::after {
@@ -311,8 +311,8 @@
 
 .pickerCard {
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
   overflow: hidden;
   animation: slideUp 0.4s var(--ease-out);
 }
@@ -326,15 +326,15 @@
   gap: 12px;
 }
 .pickerTitle { font-size: 0.88rem; font-weight: 600; }
-.pickerSub { font-size: 0.72rem; color: var(--text-tri); margin-top: 2px; }
+.pickerSub { font-size: var(--fs-xs); color: var(--text-tri); margin-top: 2px; }
 .pickerFilter {
   width: 160px;
   padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   background: var(--bg-input);
   color: var(--text);
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-family: var(--font);
   transition: border-color var(--dur-f);
 }
@@ -343,7 +343,7 @@
 .pickerLoading, .pickerError {
   padding: 40px 20px;
   text-align: center;
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   color: var(--text-tri);
 }
 .pickerError { color: var(--error); }
@@ -356,7 +356,7 @@
 .pickerTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
   table-layout: fixed;
 }
 .pickerTable thead tr {
@@ -370,7 +370,7 @@
   text-align: left;
   font-weight: 500;
   color: var(--text-tri);
-  font-size: 0.68rem;
+  font-size: var(--fs-min);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -392,8 +392,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pickerBrand { font-size: 0.75rem; color: var(--text-sec); }
-.pickerDate { text-align: right; font-size: 0.72rem; color: var(--text-tri); padding-right: 16px !important; }
+.pickerBrand { font-size: var(--fs-sm); color: var(--text-sec); }
+.pickerDate { text-align: right; font-size: var(--fs-xs); color: var(--text-tri); padding-right: 16px !important; }
 
 /* Inline dropdown */
 .ddWrap { position: relative; display: inline-block; }
@@ -403,7 +403,7 @@
   gap: 4px;
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  font-size: 0.68rem;
+  font-size: var(--fs-min);
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
@@ -427,8 +427,8 @@
   z-index: var(--z-dropdown);
   min-width: 160px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-sm);
   padding: 4px;
   box-shadow: var(--shadow-md);
   animation: fadeIn 0.15s var(--ease-out);
@@ -436,9 +436,9 @@
 .ddInput {
   width: 100%;
   padding: 6px 10px;
-  font-size: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  font-size: var(--fs-sm);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   background: var(--bg-input);
   color: var(--text);
   margin-bottom: 4px;
@@ -448,8 +448,8 @@
 .ddInput:focus { outline: none; border-color: var(--accent-ring); }
 .ddItem {
   padding: 6px 10px;
-  font-size: 0.75rem;
-  border-radius: var(--r-xs);
+  font-size: var(--fs-sm);
+  border-radius: var(--surface-radius-xs);
   cursor: pointer;
   color: var(--text);
 }
@@ -465,16 +465,16 @@
   justify-content: space-between;
   gap: 12px;
 }
-.pickerCount { font-size: 0.75rem; color: var(--text-tri); }
+.pickerCount { font-size: var(--fs-sm); color: var(--text-tri); }
 .pickerActions { display: flex; gap: 8px; align-items: center; }
 .pickerSizePills { display: flex; gap: 4px; align-items: center; }
-.pickerSizeLabel { font-size: 0.68rem; color: var(--text-sec); margin-right: 2px; }
+.pickerSizeLabel { font-size: var(--fs-min); color: var(--text-sec); margin-right: 2px; }
 .pickerAddBtn {
   padding: 6px 16px;
-  font-size: 0.75rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   border: none;
-  border-radius: var(--r-xs);
+  border-radius: var(--surface-radius-xs);
   background: var(--accent);
   color: var(--text-on-accent);
   cursor: pointer;
@@ -486,5 +486,5 @@
 
 /* Keyframes (local to CSS module to avoid scoping issues) */
 @keyframes fadeRow { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

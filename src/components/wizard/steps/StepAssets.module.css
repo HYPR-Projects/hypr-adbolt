@@ -1,13 +1,13 @@
-.header { margin-bottom: var(--sp-8); }
-.header h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 6px; }
-.header p { font-size: 0.88rem; color: var(--text-sec); line-height: 1.6; }
+.header { margin-bottom: var(--section-gap-lg); }
+.header h2 { font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.6px; margin-bottom: var(--header-gap); }
+.header p { font-size: var(--fs-base); color: var(--text-sec); line-height: 1.7; opacity: 0.7; }
 
 .tableSection { margin-top: 20px; }
 
-.tableWrap { overflow-x: auto; border-radius: var(--r-sm); border: 1px solid var(--border); }
+.tableWrap { overflow-x: auto; border-radius: var(--surface-radius-sm); border: var(--surface-border) solid var(--border); }
 
-.table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
-.table th { text-align: left; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tri); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); font-weight: 600; background: var(--bg-surface); position: sticky; top: 0; z-index: 1; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.table th { text-align: left; font-size: var(--fs-min); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tri); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); font-weight: 600; background: var(--bg-surface); position: sticky; top: 0; z-index: 1; }
 .table td { padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border-subtle); color: var(--text-sec); }
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr { transition: background var(--dur-f); opacity: 0; animation: fadeRow 0.3s var(--ease-out) forwards; }
@@ -15,46 +15,46 @@
 
 .cbCol { width: 40px; text-align: center; }
 
-.cellInput { width: 100%; padding: var(--sp-1) var(--sp-2); border: 1px solid transparent; border-radius: var(--r-xs); background: transparent; color: var(--text); font-size: 0.75rem; font-family: var(--font); transition: border-color var(--dur-f); }
+.cellInput { width: 100%; padding: var(--sp-1) var(--sp-2); border: 1px solid transparent; border-radius: var(--surface-radius-xs); background: transparent; color: var(--text); font-size: var(--fs-sm); font-family: var(--font); transition: border-color var(--dur-f); }
 .cellInput:hover { border-color: var(--border); }
 .cellInput:focus { outline: none; border-color: var(--accent-ring); background: var(--bg-input); }
 .mono { font-family: var(--mono); font-size: 0.73rem; }
 
-.thumb { width: 48px; height: 36px; object-fit: cover; border-radius: var(--r-xs); border: 1px solid var(--border-subtle); }
+.thumb { width: 48px; height: 36px; object-fit: cover; border-radius: var(--surface-radius-xs); border: 1px solid var(--border-subtle); }
 .thumbVideo { border-color: var(--warning); }
 
-.typeBadge { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: var(--r-xs); }
+.typeBadge { font-size: var(--fs-min); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: var(--surface-radius-xs); }
 .display { background: var(--accent-dim); color: var(--accent); }
 .video { background: var(--warning-dim); color: var(--warning); }
 .html5 { background: rgba(230, 167, 0, 0.12); color: #e6a700; }
 
-.formatBadge { font-size: 0.65rem; font-weight: 600; padding: 2px 6px; border-radius: var(--r-xs); background: var(--bg-raised); color: var(--text-tri); font-family: var(--mono); }
+.formatBadge { font-size: var(--fs-min); font-weight: 600; padding: 2px 6px; border-radius: var(--surface-radius-xs); background: var(--bg-raised); color: var(--text-tri); font-family: var(--mono); }
 
-.weightBadge { font-size: 0.72rem; font-family: var(--mono); padding: 2px 8px; border-radius: var(--r-xs); }
+.weightBadge { font-size: var(--fs-xs); font-family: var(--mono); padding: 2px 8px; border-radius: var(--surface-radius-xs); }
 .ok { color: var(--success); }
 .warn { color: var(--warning); background: var(--warning-dim); }
 .over { color: var(--error); background: var(--error-dim); }
 
-.resizeBtn { font-size: 0.62rem; font-weight: 600; color: var(--accent); background: var(--accent-dim); border: 1px solid var(--accent-ring); border-radius: var(--r-xs); padding: 1px 6px; margin-left: 4px; cursor: pointer; transition: all var(--dur-f); font-family: var(--mono); }
+.resizeBtn { font-size: var(--fs-min); font-weight: 600; color: var(--accent); background: var(--accent-dim); border: 1px solid var(--accent-ring); border-radius: var(--surface-radius-xs); padding: 1px 6px; margin-left: 4px; cursor: pointer; transition: all var(--dur-f); font-family: var(--mono); }
 .resizeBtn:hover { background: var(--accent); color: var(--text-on-accent); }
 
-.sizeOk { color: var(--success); margin-left: 4px; font-size: 0.75rem; }
+.sizeOk { color: var(--success); margin-left: 4px; font-size: var(--fs-sm); }
 
 /* Tracker chips */
 .trackerCell { min-width: 180px; }
 .trackerChips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.trackerChip { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--r-xs); padding: 2px 5px 2px 3px; font-family: var(--mono); font-size: 0.68rem; color: var(--text-sec); max-width: 220px; }
-.trackerScope { background: var(--accent-dim); color: var(--accent); font-size: 0.58rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.04em; flex-shrink: 0; font-family: var(--font); }
-.trackerEvent { background: var(--warning-dim); color: var(--warning); font-size: 0.55rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.02em; flex-shrink: 0; font-family: var(--font); text-transform: uppercase; }
+.trackerChip { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-base); border: var(--surface-border) solid var(--border); border-radius: var(--surface-radius-xs); padding: 2px 5px 2px 3px; font-family: var(--mono); font-size: var(--fs-min); color: var(--text-sec); max-width: 220px; }
+.trackerScope { background: var(--accent-dim); color: var(--accent); font-size: var(--fs-min); font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.04em; flex-shrink: 0; font-family: var(--font); }
+.trackerEvent { background: var(--warning-dim); color: var(--warning); font-size: var(--fs-min); font-weight: 700; padding: 1px 4px; border-radius: 3px; letter-spacing: 0.02em; flex-shrink: 0; font-family: var(--font); text-transform: uppercase; }
 .trackerUrl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .trackerRm { background: none; border: none; color: var(--text-tri); cursor: pointer; font-size: 10px; padding: 0 2px; line-height: 1; flex-shrink: 0; transition: color var(--dur-f); }
 .trackerRm:hover { color: var(--error); }
-.trackerInput { background: transparent; border: 1px solid var(--border); border-radius: var(--r-xs); color: var(--text); font-family: var(--mono); font-size: 0.68rem; padding: var(--sp-1) var(--sp-2); width: 80px; outline: none; min-width: 50px; flex: 1; transition: border-color var(--dur-f); }
+.trackerInput { background: transparent; border: var(--surface-border) solid var(--border); border-radius: var(--surface-radius-xs); color: var(--text); font-family: var(--mono); font-size: var(--fs-min); padding: var(--sp-1) var(--sp-2); width: 80px; outline: none; min-width: 50px; flex: 1; transition: border-color var(--dur-f); }
 .trackerInput:focus { border-color: var(--accent); }
-.trackerInput::placeholder { color: var(--text-tri); font-size: 0.62rem; }
+.trackerInput::placeholder { color: var(--text-tri); font-size: var(--fs-min); }
 
 .actions { white-space: nowrap; }
-.actionBtn { background: none; border: 1px solid transparent; color: var(--text-tri); cursor: pointer; font-size: 13px; width: 28px; height: 28px; border-radius: var(--r-xs); display: inline-flex; align-items: center; justify-content: center; transition: all var(--dur-f); }
+.actionBtn { background: none; border: 1px solid transparent; color: var(--text-tri); cursor: pointer; font-size: 13px; width: 28px; height: 28px; border-radius: var(--surface-radius-xs); display: inline-flex; align-items: center; justify-content: center; transition: all var(--dur-f); }
 .actionBtn:hover { border-color: var(--border); color: var(--text-sec); background: var(--accent-glow); }
 .danger:hover { border-color: var(--error); color: var(--error); background: var(--error-dim); }
 

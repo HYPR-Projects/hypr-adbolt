@@ -8,9 +8,9 @@
 
 .search {
   padding: var(--input-py) var(--sp-4);
-  border-radius: var(--r-pill);
-  font-size: 0.78rem;
-  border: 1px solid var(--border);
+  border-radius: var(--surface-radius-sm);
+  font-size: var(--fs-sm);
+  border: var(--surface-border) solid var(--border);
   background: var(--bg-input);
   color: var(--text);
   width: 200px;
@@ -31,11 +31,11 @@
 
 .pill {
   padding: 6px 12px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
+  border-radius: var(--surface-radius-sm);
+  border: var(--surface-border) solid var(--border);
   background: transparent;
   color: var(--text-tri);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-family: var(--font);
   cursor: pointer;
   transition: all var(--dur-f);
@@ -55,11 +55,11 @@
 
 .sizeSelect {
   padding: 5px 28px 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-sm);
   background: var(--bg-input);
   color: var(--text-sec);
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-family: var(--font);
   cursor: pointer;
   appearance: none;
@@ -75,18 +75,18 @@
 }
 
 .count {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   color: var(--text-tri);
   font-family: var(--mono);
 }
 
 .selectBtn {
   padding: 6px 12px;
-  border-radius: var(--r-xs);
-  border: 1px solid var(--border);
+  border-radius: var(--surface-radius-xs);
+  border: var(--surface-border) solid var(--border);
   background: transparent;
   color: var(--text-sec);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-family: var(--font);
   cursor: pointer;
   transition: all var(--dur-f);
@@ -100,11 +100,11 @@
 
 .clearBtn {
   padding: 6px 12px;
-  border-radius: var(--r-xs);
-  border: 1px solid var(--error);
+  border-radius: var(--surface-radius-xs);
+  border: var(--surface-border) solid var(--error);
   background: transparent;
   color: var(--error);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-family: var(--font);
   cursor: pointer;
   transition: all var(--dur-f);

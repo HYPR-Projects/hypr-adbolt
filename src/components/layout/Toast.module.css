@@ -5,8 +5,8 @@
   z-index: var(--z-toast);
   background: var(--bg-surface);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-sm);
   padding: 14px 44px 14px 18px;
   font-size: 0.82rem;
   box-shadow: var(--shadow-lg);
@@ -56,7 +56,7 @@
   display: inline-block;
   background: rgba(255, 255, 255, 0.2);
   color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: var(--surface-border) solid rgba(255, 255, 255, 0.15);
   border-radius: var(--r-xs);
   padding: 4px 12px;
   margin-left: 10px;

@@ -1,7 +1,7 @@
 .wizard {
   display: grid;
   grid-template-columns: 260px 1fr;
-  height: calc(100vh - 56px);
+  height: calc(100vh - 58px);
   animation: fadeIn 0.3s var(--ease-out);
 }
 
@@ -19,8 +19,7 @@
 }
 
 .stepView {
-  padding: var(--sp-8) var(--sp-9);
-  padding-bottom: var(--sp-5);
+  padding: var(--section-gap-lg) var(--sp-9) var(--section-gap);
   max-width: 1400px;
   margin: 0 auto;
   position: relative;

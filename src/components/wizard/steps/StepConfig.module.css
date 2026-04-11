@@ -17,9 +17,9 @@
 
 .card {
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: var(--sp-6);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
+  padding: var(--card-padding);
 }
 
 .row {
@@ -35,7 +35,7 @@
 }
 
 .label {
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--text);
   flex-shrink: 0;
@@ -53,11 +53,11 @@
 .input {
   flex: 1;
   padding: var(--input-py) var(--input-px);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius-xs);
   background: var(--bg-input);
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   font-family: var(--font);
   transition: border-color var(--dur-f);
   max-width: 360px;
@@ -85,7 +85,7 @@ select.input {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.82rem;
+  font-size: var(--fs-base);
   color: var(--text-sec);
   cursor: pointer;
   padding: 12px 0;
@@ -98,7 +98,7 @@ select.input {
 }
 
 .sectionLabel {
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--accent);

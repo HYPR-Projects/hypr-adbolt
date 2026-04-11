@@ -12,8 +12,8 @@
 
 .modal {
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
   max-width: 560px;
   width: 92%;
   max-height: 85vh;
@@ -28,12 +28,12 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-5) var(--sp-6);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--surface-border) solid var(--border);
   flex-shrink: 0;
 }
 
 .title {
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   font-weight: 600;
 }
 
@@ -63,7 +63,7 @@
   justify-content: flex-end;
   gap: var(--sp-2);
   padding: var(--sp-5) var(--sp-6);
-  border-top: 1px solid var(--border);
+  border-top: var(--surface-border) solid var(--border);
   flex-shrink: 0;
 }
 
