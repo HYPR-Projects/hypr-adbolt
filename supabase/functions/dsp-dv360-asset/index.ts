@@ -53,7 +53,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
     const isVideo = input.type === 'video';
     const [w,h] = input.dimensions.split('x').map(Number);
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
-    // All trackers go to thirdPartyUrls (DV360 v4 format)
+    // Collect tracker URLs for appendedTag
     const allTrackerUrls: Array<{type: string; url: string}> = [];
     const seen = new Set<string>();
     for (const t of normalizedTrackers) {
@@ -96,7 +96,17 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:input.landingPage||'https://example.com'}]
     };
     if (!isVideo) creative.dimensions = {widthPixels:w||1, heightPixels:h||1};
-    if (allTrackerUrls.length) creative.thirdPartyUrls = allTrackerUrls;
+    // Hosted creatives use appendedTag for tracking (maps to "Append HTML tracking tag" in DV360 UI)
+    if (allTrackerUrls.length) {
+      const tagParts = allTrackerUrls.map(t => {
+        const lower = t.url.toLowerCase();
+        if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
+          return `<scr` + `ipt src="${t.url}"></scr` + `ipt>`;
+        }
+        return `<img src="${t.url}" width="1" height="1" style="display:none" />`;
+      });
+      creative.appendedTag = tagParts.join('\n');
+    }
 
     const createBody = JSON.stringify(creative);
     const MAX_RETRIES = 3;
