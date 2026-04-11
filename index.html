@@ -335,6 +335,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;background:va
 .step-nav-btn.primary{background:var(--accent);color:var(--text-on-accent);border-color:var(--accent)}
 .step-nav-btn.primary:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 4px 12px var(--accent-ring)}
 .step-nav-btn svg{width:16px;height:16px;flex-shrink:0}
+.step-nav-btn:disabled{opacity:0.35;cursor:not-allowed;transform:none;filter:none;box-shadow:none}
 .step-nav-spacer{flex:1}
 
 /* ── Upload / Cards / Tables ── */
@@ -1079,7 +1080,7 @@ function updateWizardStepStates(){
     el.classList.toggle('dimmed',!reachable&&i>activeWizardStep);
   });
 }
-function updateVisibility(){updateWizardStepStates();updateGenerateBtn();if(currentMode==='assets'&&assetEntries.length>0)renderAssetsTable()}
+function updateVisibility(){updateWizardStepStates();updateGenerateBtn();renderStepNav();if(currentMode==='assets'&&assetEntries.length>0)renderAssetsTable()}
 // ── Activation (progress, DSP API calls, results) ──
 function showActivationProgress(dsps,totalPerDsp){
   const panel=document.getElementById('activationProgress');
