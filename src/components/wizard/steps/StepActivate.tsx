@@ -10,8 +10,9 @@ import { genAmazonDSP } from '@/generators/amazon';
 import { downloadCSV, downloadXLSX } from '@/generators/download';
 import { activateXandrTags } from '@/services/activation/xandr-tags';
 import { activateDV360Tags } from '@/services/activation/dv360-tags';
+import { buildSurveyIframe } from '@/services/typeform';
 import { normalizeUrl } from '@/lib/utils';
-import type { ActivationResult } from '@/types';
+import type { ActivationResult, Placement } from '@/types';
 import { DSP_LABELS } from '@/types';
 import styles from './StepActivate.module.css';
 import { useState } from 'react';
@@ -36,7 +37,29 @@ export function StepActivate() {
 
   const config = store.getStepConfig();
   const isAssetMode = store.mode === 'assets';
-  const allPlacements = store.parsedData?.placements || [];
+
+  // Build placements from tags and/or surveys (legacy: allPlacements = [...tagPlacements, ...surveyPl])
+  const tagPlacements: Placement[] = store.mode !== 'surveys' && store.mode !== 'assets' && store.parsedData
+    ? store.parsedData.placements
+    : [];
+
+  const surveyPlacements: Placement[] = store.mode !== 'tags' && store.mode !== 'assets'
+    ? store.surveyEntries.flatMap((s) =>
+        s.urls.filter((u) => u.formId).map((u) => ({
+          placementId: `survey_${u.formId}`,
+          placementName: u.title || `Survey_${s.type}`,
+          dimensions: s.size,
+          jsTag: buildSurveyIframe(u.formId, s.size),
+          clickUrl: 'https://hypr.mobi',
+          type: 'display' as const,
+          vastTag: '',
+          trackers: [],
+          isSurvey: true,
+        }))
+      )
+    : [];
+
+  const allPlacements = [...tagPlacements, ...surveyPlacements];
 
   // ── Generate & Download Templates ──
   const handleGenerate = () => {
