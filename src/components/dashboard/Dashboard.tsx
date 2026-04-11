@@ -133,8 +133,12 @@ export function Dashboard() {
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState('');
   const [editFields, setEditFields] = useState<Record<string, Record<string, string>>>({});
+  const [editTrackers, setEditTrackers] = useState<Record<string, string[]>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editBulkKeys, setEditBulkKeys] = useState<string[] | null>(null);
+  const [bulkLandingPage, setBulkLandingPage] = useState('');
+  const [bulkTrackerRaw, setBulkTrackerRaw] = useState('');
+  const [bulkTrackerMode, setBulkTrackerMode] = useState<'add' | 'replace'>('add');
 
   // ── Rename modal state ──
   const [renameVisible, setRenameVisible] = useState(false);
@@ -257,13 +261,20 @@ export function Dashboard() {
     setEditBulkKeys(null);
     setEditName(group.name);
     const fields: Record<string, Record<string, string>> = {};
+    const trackers: Record<string, string[]> = {};
     for (const [dsp, d] of Object.entries(group.dsps)) {
       fields[dsp] = {
         landing_page: d.landing_page || d.click_url || '',
         click_url: dsp === 'xandr' ? (d.click_url || '') : '',
+        vast_tag: d.vast_tag || '',
       };
+      let tList = d.trackers || [];
+      if (typeof tList === 'string') try { tList = JSON.parse(tList); } catch { tList = []; }
+      if (!Array.isArray(tList)) tList = [];
+      trackers[dsp] = tList.map((t: any) => typeof t === 'string' ? t : t.url || '').filter(Boolean);
     }
     setEditFields(fields);
+    setEditTrackers(trackers);
     setEditVisible(true);
     store.setEditGroup(group);
   };
@@ -273,6 +284,10 @@ export function Dashboard() {
     setEditBulkKeys(keys);
     setEditName('');
     setEditFields({});
+    setEditTrackers({});
+    setBulkLandingPage('');
+    setBulkTrackerRaw('');
+    setBulkTrackerMode('add');
     setEditVisible(true);
   };
 
@@ -289,14 +304,54 @@ export function Dashboard() {
     for (const g of groups) {
       for (const [dsp, d] of Object.entries(g.dsps)) {
         const changes: Record<string, unknown> = {};
+
+        // Name
         if (editName && (editBulkKeys || editName !== g.name)) changes.name = editName;
-        const dspFields = editFields[dsp];
-        if (dspFields?.landing_page !== undefined && dspFields.landing_page !== (d.landing_page || d.click_url || '')) {
-          changes.landing_page = normalizeUrl(dspFields.landing_page);
+
+        if (editBulkKeys) {
+          // Bulk mode: apply shared LP and trackers
+          if (bulkLandingPage.trim()) {
+            changes.landing_page = normalizeUrl(bulkLandingPage);
+          }
+          if (bulkTrackerRaw.trim()) {
+            // Parse existing trackers for this creative
+            let existingTrackers = d.trackers || [];
+            if (typeof existingTrackers === 'string') try { existingTrackers = JSON.parse(existingTrackers); } catch { existingTrackers = []; }
+            if (!Array.isArray(existingTrackers)) existingTrackers = [];
+            const existingUrls = existingTrackers.map((t: any) => typeof t === 'string' ? t : t.url || '').filter(Boolean);
+
+            const newUrl = normalizeUrl(bulkTrackerRaw.trim());
+            if (bulkTrackerMode === 'replace') {
+              changes.trackers = [newUrl];
+            } else {
+              if (!existingUrls.includes(newUrl)) {
+                changes.trackers = [...existingUrls, newUrl];
+              }
+            }
+          }
+        } else {
+          // Single mode: per-DSP fields
+          const dspFields = editFields[dsp];
+          if (dspFields?.landing_page !== undefined && dspFields.landing_page !== (d.landing_page || d.click_url || '')) {
+            changes.landing_page = normalizeUrl(dspFields.landing_page);
+          }
+          if (dsp === 'xandr' && dspFields?.click_url !== undefined && dspFields.click_url !== (d.click_url || '')) {
+            changes.click_url = normalizeUrl(dspFields.click_url);
+          }
+          if (dsp === 'dv360' && dspFields?.vast_tag !== undefined && dspFields.vast_tag !== (d.vast_tag || '')) {
+            changes.vast_tag = dspFields.vast_tag;
+          }
+          // Trackers (compare with original)
+          const newTrackerUrls = editTrackers[dsp] || [];
+          let origTrackers = d.trackers || [];
+          if (typeof origTrackers === 'string') try { origTrackers = JSON.parse(origTrackers); } catch { origTrackers = []; }
+          if (!Array.isArray(origTrackers)) origTrackers = [];
+          const origUrls = origTrackers.map((t: any) => typeof t === 'string' ? t : t.url || '').filter(Boolean);
+          if (JSON.stringify(newTrackerUrls.sort()) !== JSON.stringify(origUrls.sort())) {
+            changes.trackers = newTrackerUrls;
+          }
         }
-        if (dsp === 'xandr' && dspFields?.click_url !== undefined && dspFields.click_url !== (d.click_url || '')) {
-          changes.click_url = normalizeUrl(dspFields.click_url);
-        }
+
         if (!Object.keys(changes).length) continue;
         try {
           await updateCreative(token, d.id, changes);
@@ -313,7 +368,7 @@ export function Dashboard() {
     setEditSaving(false);
     store.clearSelection();
     await store.loadCreatives();
-  }, [session?.access_token, editName, editFields, editBulkKeys, store.editGroup, toast]);
+  }, [session?.access_token, editName, editFields, editTrackers, editBulkKeys, bulkLandingPage, bulkTrackerRaw, bulkTrackerMode, store.editGroup, toast]);
 
   return (
     <section className={styles.dashboard} aria-label="Dashboard de criativos">
@@ -447,28 +502,117 @@ export function Dashboard() {
       </div>
 
       {/* Edit Modal */}
-      <Modal visible={editVisible} onClose={() => setEditVisible(false)} title={editBulkKeys ? `Editar ${editBulkKeys.length} criativos` : 'Editar Criativo'}>
+      <Modal visible={editVisible} onClose={() => setEditVisible(false)} title={editBulkKeys ? `Editar ${editBulkKeys.length} criativos` : 'Editar Criativo'} maxWidth="600px">
         <div className={styles.editField}>
           <label>Nome {editBulkKeys ? '(aplica a todos)' : '(aplica em todas as DSPs)'}</label>
           <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder={editBulkKeys ? 'Deixe vazio pra manter' : ''} />
         </div>
-        {!editBulkKeys && store.editGroup && Object.entries(store.editGroup.dsps).map(([dsp, d]) => (
+
+        {editBulkKeys ? (
+          /* ── Bulk edit: shared LP + tracker ── */
+          <>
+            <div className={styles.editField}>
+              <label>Landing Page <span style={{ fontWeight: 400, color: 'var(--text-tri)', fontSize: '0.68rem' }}>(aplica em todos, deixe vazio pra manter)</span></label>
+              <input value={bulkLandingPage} onChange={(e) => setBulkLandingPage(e.target.value)} placeholder="https://..." style={{ fontFamily: 'var(--mono)', fontSize: '0.8rem' }} />
+            </div>
+            <div className={styles.editField}>
+              <label>Impression Tracker <span style={{ fontWeight: 400, color: 'var(--text-tri)', fontSize: '0.68rem' }}>(sincroniza com as DSPs)</span></label>
+              <div className={styles.bulkScopeToggle}>
+                <button
+                  className={`${styles.bulkScopeBtn} ${bulkTrackerMode === 'add' ? styles.bulkScopeBtnActive : ''}`}
+                  onClick={() => setBulkTrackerMode('add')}
+                >Adicionar aos existentes</button>
+                <button
+                  className={`${styles.bulkScopeBtn} ${bulkTrackerMode === 'replace' ? styles.bulkScopeBtnActive : ''}`}
+                  onClick={() => setBulkTrackerMode('replace')}
+                >Substituir todos</button>
+              </div>
+              <input
+                value={bulkTrackerRaw}
+                onChange={(e) => setBulkTrackerRaw(e.target.value)}
+                placeholder="Cole a URL ou tag do pixel..."
+                style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }}
+              />
+            </div>
+          </>
+        ) : store.editGroup && Object.entries(store.editGroup.dsps).map(([dsp, d]) => (
+          /* ── Single edit: per-DSP fields ── */
           <div key={dsp} className={styles.editDspSection}>
             <div className={styles.editDspHeader}>
               <span className={`${styles.dspTag} ${styles[dsp]}`}>{DSP_LABELS[dsp as DspType]}</span>
               <span className={`${styles.auditDot} ${styles[d.audit_status]}`} />
               <span style={{ fontSize: '0.72rem', color: 'var(--text-tri)' }}>{d.audit_status}</span>
+              {d.dsp_creative_id && <span style={{ fontSize: '0.68rem', color: 'var(--text-tri)', marginLeft: 'auto', fontFamily: 'var(--mono)' }}>ID: {d.dsp_creative_id}</span>}
             </div>
             <div className={styles.editField}>
               <label>Landing Page URL</label>
-              <input value={editFields[dsp]?.landing_page || ''} onChange={(e) => setEditFields((prev) => ({ ...prev, [dsp]: { ...prev[dsp], landing_page: e.target.value } }))} />
+              <input value={editFields[dsp]?.landing_page || ''} onChange={(e) => setEditFields((prev) => ({ ...prev, [dsp]: { ...prev[dsp], landing_page: e.target.value } }))} style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }} />
             </div>
             {dsp === 'xandr' && (
               <div className={styles.editField}>
                 <label>Click URL</label>
-                <input value={editFields[dsp]?.click_url || ''} onChange={(e) => setEditFields((prev) => ({ ...prev, [dsp]: { ...prev[dsp], click_url: e.target.value } }))} />
+                <input value={editFields[dsp]?.click_url || ''} onChange={(e) => setEditFields((prev) => ({ ...prev, [dsp]: { ...prev[dsp], click_url: e.target.value } }))} style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }} />
               </div>
             )}
+            {dsp === 'dv360' && store.editGroup?.creative_type === 'video' && (
+              <div className={styles.editField}>
+                <label>VAST Tag URL</label>
+                <input value={editFields[dsp]?.vast_tag || ''} onChange={(e) => setEditFields((prev) => ({ ...prev, [dsp]: { ...prev[dsp], vast_tag: e.target.value } }))} style={{ fontFamily: 'var(--mono)', fontSize: '0.78rem' }} />
+              </div>
+            )}
+            <div className={styles.editField}>
+              <label>Impression Trackers<span className={styles.trackerHint}>(sincroniza com a DSP ao salvar)</span></label>
+              <div className={styles.trackerList}>
+                {(editTrackers[dsp] || []).map((url, ti) => (
+                  <div key={ti} className={styles.trackerRow}>
+                    <input value={url} readOnly />
+                    <button
+                      className={styles.trackerRm}
+                      onClick={() => {
+                        setEditTrackers((prev) => ({
+                          ...prev,
+                          [dsp]: (prev[dsp] || []).filter((_, i) => i !== ti),
+                        }));
+                      }}
+                      title="Remover"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.trackerAdd}>
+                <input
+                  id={`editTrackerNew_${dsp}`}
+                  placeholder="Cole a URL do pixel..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (!val) return;
+                      const url = normalizeUrl(val);
+                      setEditTrackers((prev) => ({
+                        ...prev,
+                        [dsp]: [...(prev[dsp] || []).filter((u) => u !== url), url],
+                      }));
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+                <button
+                  className={styles.trackerAddBtn}
+                  onClick={() => {
+                    const inp = document.getElementById(`editTrackerNew_${dsp}`) as HTMLInputElement;
+                    const val = inp?.value.trim();
+                    if (!val) return;
+                    const url = normalizeUrl(val);
+                    setEditTrackers((prev) => ({
+                      ...prev,
+                      [dsp]: [...(prev[dsp] || []).filter((u) => u !== url), url],
+                    }));
+                    inp.value = '';
+                  }}
+                >+</button>
+              </div>
+            </div>
+            {d.sync_error && <div className={styles.syncError}>Sync error: {d.sync_error}</div>}
           </div>
         ))}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>

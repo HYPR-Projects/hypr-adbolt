@@ -130,6 +130,29 @@
 .btnPrimary:hover { filter: brightness(1.1); }
 .btnPrimary:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
 
+/* Tracker rows in edit modal */
+.trackerList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.trackerRow { display: flex; align-items: center; gap: 6px; }
+.trackerRow input { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg-input); color: var(--text); font-size: 0.76rem; font-family: var(--mono); }
+.trackerRow input:read-only { color: var(--text-sec); }
+.trackerRow input:focus { outline: none; border-color: var(--accent-ring); }
+.trackerRm { background: none; border: none; color: var(--text-tri); cursor: pointer; font-size: 14px; padding: 2px 6px; transition: color var(--dur-f); flex-shrink: 0; }
+.trackerRm:hover { color: var(--error); }
+.trackerAdd { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.trackerAdd input { flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--r-xs); background: var(--bg-input); color: var(--text); font-size: 0.76rem; font-family: var(--mono); }
+.trackerAdd input:focus { outline: none; border-color: var(--accent-ring); }
+.trackerAddBtn { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: var(--r-xs); padding: 4px 12px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all var(--dur-f); flex-shrink: 0; }
+.trackerAddBtn:hover { background: var(--accent); color: var(--text-on-accent); }
+.syncError { font-size: 0.72rem; color: var(--error); padding: 6px 0; }
+.trackerHint { font-weight: 400; color: var(--text-tri); font-size: 0.68rem; margin-left: 4px; }
+
+/* Bulk edit sections */
+.bulkDspSection { background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); padding: 14px; margin-bottom: 12px; }
+.bulkScopeToggle { display: flex; gap: 4px; margin: 6px 0 10px; }
+.bulkScopeBtn { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-sec); border-radius: var(--r-xs); padding: 5px 12px; font-size: 0.72rem; font-weight: 500; cursor: pointer; transition: all var(--dur-f); }
+.bulkScopeBtn:hover { border-color: var(--accent); color: var(--accent); }
+.bulkScopeBtnActive { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
 @media (max-width: 768px) {
   .dashboard { padding: 0 16px 16px; }
   .stats { grid-template-columns: 1fr 1fr; }
