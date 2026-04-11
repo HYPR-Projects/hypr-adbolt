@@ -1574,7 +1574,7 @@ function commitPendingTrackers(){
     if(entry&&!entry.trackers.some(t=>(typeof t==='string'?t:t.url)===url)){entry.trackers.push({url,format:analyzed.format,dsps:'all'});input.value=''}
   });
 }
-function mergeTrackers(trackerList,dsp){const out=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,format:'url-image',dsps:'all'}:t;if(tr.dsps==='all'||tr.dsps.includes(dsp)){if(!out.some(o=>o.url===tr.url))out.push({url:tr.url,format:tr.format||'url-image'})}});return out}
+function mergeTrackers(trackerList,dsp){const out=[];(trackerList||[]).forEach(t=>{const tr=typeof t==='string'?{url:t,format:'url-image',dsps:'all'}:t;const scope=tr.dsps||'all';if(scope==='all'||(typeof scope==='string'&&scope.includes(dsp))||(Array.isArray(scope)&&scope.includes(dsp))){if(tr.url&&!out.some(o=>o.url===tr.url))out.push({url:tr.url,format:tr.format||'url-image'})}});return out}
 function mergeTrackerUrls(trackerList,dsp){return mergeTrackers(trackerList,dsp).map(t=>t.url)}
 function updateGenerateBtn(){const hasTags=currentMode!=='surveys'&&currentMode!=='assets'&&!!parsedData;const hasSurveys=currentMode!=='tags'&&currentMode!=='assets'&&surveyEntries.length>0;const hasAssets=currentMode==='assets'&&assetEntries.length>0;const hasContent=hasTags||hasSurveys||hasAssets;const hasDsp=selectedDsps.size>0;const ready=hasContent&&hasDsp;
   const btnGen=document.getElementById('btnGenerate');const btnAct=document.getElementById('btnActivate');const dlCard=document.getElementById('actionDownload');const actCard=document.getElementById('actionActivate');
