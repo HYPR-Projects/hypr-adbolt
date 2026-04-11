@@ -61,30 +61,60 @@ export interface TypeformSurvey {
 
 /**
  * Parse a Typeform survey title into brand, type, and variant.
- * Pattern: HYPR_Survey_{Brand parts}_{Type}_{Variant}_{Period}
+ *
+ * Real patterns observed:
+ *   HYPR_Survey_JLR_RRS_Awareness_Controle_Abr26
+ *   HYPR_Survey_Reckitt_Big_Promo_Probabilidade_Abr26_Exposto
+ *   HYPR_Survey_Electrolux_Flag_Colombia_Abr26_Exposto
+ *   HYPR_Survey_PicPay_DarkTes_WillBank_Controle
+ *   Amazon_ConsumerDay2026_Survey_Favorability_Exposto
+ *   Kenvue_Baby_Promo_Survey_Intent_Controle_Abr26
+ *   JLR_AON_Defender_V2_DefenderOnly_Awareness_Mar26_Exposto
+ *   Nestle_Nutren_Senior_Survey_Awareness_Drogaria-SaoPaulo
  */
 export function parseSurveyTitle(title: string): { brand: string; type: string; variant: string; displayName: string } {
   const variant = detectVariant(title);
 
-  // Remove HYPR_Survey_ prefix
-  let clean = title.replace(/^HYPR[_\s]*Survey[_\s]*/i, '');
-  // Remove period suffixes like _Abr26, _Mar26
-  clean = clean.replace(/[_\s]*(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez)\d{2}$/i, '');
-  // Remove variant from end
-  clean = clean.replace(/[_\s]*(Controle|Control|Exposto|Exposed)$/i, '');
+  // Remove HYPR_ and/or Survey_ prefix (can appear in either order or both)
+  let clean = title
+    .replace(/^HYPR[_\s]*/i, '')
+    .replace(/^Survey[_\s]*/i, '');
 
-  const parts = clean.split('_').filter(Boolean);
+  const displayName = clean.replace(/_/g, ' ');
 
-  // Known survey types
+  // Split into parts and strip noise tokens
+  let parts = clean.split('_').filter(Boolean);
+
+  // Remove variant tokens wherever they appear
+  parts = parts.filter((p) => !/^(Controle|Control|Exposto|Exposed)$/i.test(p));
+
+  // Remove period tokens (Abr26, Mar26, Jan25, etc.) wherever they appear
+  parts = parts.filter((p) => !/^(Jan|Fev|Mar|Abr|Mai|Jun|Jul|Ago|Set|Out|Nov|Dez)\d{2}$/i.test(p));
+
+  // Remove stray "Survey" in the middle (e.g. "Kenvue_Baby_Promo_Survey_Intent")
+  parts = parts.filter((p) => p.toLowerCase() !== 'survey');
+
+  // Known survey type words
   const typeWords = new Set([
-    'awareness', 'associacao', 'associação', 'atitude', 'favoritismo',
-    'intencao', 'intenção', 'preferencia', 'preferência', 'probabilidade',
-    'intent', 'consideration', 'recall', 'favorability',
+    'awareness', 'associacao', 'associação', 'association', 'atitude',
+    'favoritismo', 'intencao', 'intenção', 'intent',
+    'preferencia', 'preferência', 'probabilidade',
+    'consideration', 'recall', 'favorability',
   ]);
 
-  // Walk from end to find the type, everything before is brand
+  // Normalization map for display
+  const typeNorm: Record<string, string> = {
+    associacao: 'Associação', association: 'Associação',
+    intencao: 'Intenção', intent: 'Intenção',
+    preferencia: 'Preferência', favorability: 'Favorability',
+    probabilidade: 'Probabilidade', consideration: 'Consideration',
+    awareness: 'Awareness', atitude: 'Atitude',
+    favoritismo: 'Favoritismo', recall: 'Recall',
+  };
+
+  // Find the FIRST type word (scan left-to-right — type is usually after brand)
   let typeIdx = -1;
-  for (let i = parts.length - 1; i >= 0; i--) {
+  for (let i = 0; i < parts.length; i++) {
     if (typeWords.has(parts[i].toLowerCase())) {
       typeIdx = i;
       break;
@@ -93,27 +123,21 @@ export function parseSurveyTitle(title: string): { brand: string; type: string; 
 
   let brand: string;
   let type: string;
-  if (typeIdx > 0) {
+  if (typeIdx >= 0) {
     brand = parts.slice(0, typeIdx).join(' ');
-    type = parts[typeIdx];
-    // Capitalize first letter
-    type = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-    // Fix common PT words
-    if (type === 'Associacao') type = 'Associação';
-    if (type === 'Intencao') type = 'Intenção';
-    if (type === 'Preferencia') type = 'Preferência';
-    if (type === 'Probabilidade') type = 'Probabilidade';
+    const rawType = parts[typeIdx].toLowerCase();
+    type = typeNorm[rawType] || parts[typeIdx].charAt(0).toUpperCase() + parts[typeIdx].slice(1);
   } else {
-    // Can't detect type — use last part as type, rest as brand
-    brand = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
-    type = parts[parts.length - 1] || '';
+    // No type detected — brand is everything, type is empty (user must set manually)
+    brand = parts.join(' ');
+    type = '';
   }
 
-  // Remove common filler words from brand
-  brand = brand.replace(/\b(Promo|Big|Flag|DarkTes)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
-  if (!brand) brand = parts.length > 0 ? parts[0] : 'Desconhecido';
+  // Clean up brand: remove filler words that aren't useful for identification
+  brand = brand.replace(/\b(Promo|Big)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  if (!brand && parts.length > 0) brand = parts[0];
 
-  return { brand, type, variant, displayName: clean.replace(/_/g, ' ') };
+  return { brand, type, variant, displayName };
 }
 
 /**
