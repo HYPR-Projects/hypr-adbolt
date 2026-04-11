@@ -53,7 +53,7 @@ html{font-size:15px;scroll-behavior:smooth}
   --font:'Urbanist',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;
   --ease-out:cubic-bezier(0.16,1,0.3,1);--ease-spring:cubic-bezier(0.34,1.56,0.64,1);--ease:cubic-bezier(0.4,0,0.2,1);
   --dur-f:150ms;--dur:300ms;--dur-s:500ms;
-  --z-sticky:10;--z-overlay:100;--z-toast:200;--z-login:300;
+  --z-sticky:10;--z-dropdown:50;--z-overlay:100;--z-modal:150;--z-toast:200;--z-login:300;
 }
 body{font-family:var(--font);background:var(--bg-base);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;background:var(--grad-radial);z-index:0}
@@ -3177,16 +3177,30 @@ function openTemplateModal(){
   const keys=Array.from(dashSelectedKeys);
   const groups=dashGroups.filter(g=>keys.includes(g._gid));
   if(!groups.length){toast('Selecione criativos primeiro','error');return}
-  // Check if any have 3P tags
   const withTags=groups.filter(g=>Object.values(g.dsps).some(d=>d.js_tag||d.vast_tag));
   if(!withTags.length){toast('Nenhum criativo selecionado possui tags 3P','error');return}
+  document.getElementById('tplModalOverlay')?.remove();
+  const n=withTags.length;
   const overlay=document.createElement('div');overlay.className='tpl-modal-overlay';overlay.id='tplModalOverlay';
   overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};
-  let _tplDsp='';
-  const render=()=>{
-    overlay.innerHTML='<div class="tpl-modal"><h3>Gerar Template</h3><div class="tpl-modal-sub">'+withTags.length+' criativo'+(withTags.length>1?'s':'')+' com tags · Selecione a DSP de destino</div><div class="tpl-dsp-grid"><div class="tpl-dsp-card'+(_tplDsp==='xandr'?' selected':'')+'" onclick="this.parentElement.querySelectorAll(\'.tpl-dsp-card\').forEach(c=>c.classList.remove(\'selected\'));this.classList.add(\'selected\');document.getElementById(\'tplDspVal\').value=\'xandr\';document.getElementById(\'tplPreview\').style.display=\'block\';document.getElementById(\'tplGenBtn\').disabled=false;document.getElementById(\'tplPreviewContent\').textContent=\'Xandr Bulk XLSX · \'+'+withTags.length+'+\' criativos\'"><div class="tpl-dsp-icon">XN</div><div><div class="tpl-dsp-name">Xandr</div><div class="tpl-dsp-desc">Bulk XLSX template</div></div></div><div class="tpl-dsp-card'+(_tplDsp==='dv360'?' selected':'')+'" onclick="this.parentElement.querySelectorAll(\'.tpl-dsp-card\').forEach(c=>c.classList.remove(\'selected\'));this.classList.add(\'selected\');document.getElementById(\'tplDspVal\').value=\'dv360\';document.getElementById(\'tplPreview\').style.display=\'block\';document.getElementById(\'tplGenBtn\').disabled=false;document.getElementById(\'tplPreviewContent\').textContent=\'DV360 Bulk CSV · \'+'+withTags.length+'+\' criativos\'"><div class="tpl-dsp-icon">DV</div><div><div class="tpl-dsp-name">DV360</div><div class="tpl-dsp-desc">Bulk CSV template</div></div></div><div class="tpl-dsp-card" onclick="this.parentElement.querySelectorAll(\'.tpl-dsp-card\').forEach(c=>c.classList.remove(\'selected\'));this.classList.add(\'selected\');document.getElementById(\'tplDspVal\').value=\'stackadapt\';document.getElementById(\'tplPreview\').style.display=\'block\';document.getElementById(\'tplGenBtn\').disabled=false;document.getElementById(\'tplPreviewContent\').textContent=\'StackAdapt XLSX · \'+'+withTags.length+'+\' criativos\'"><div class="tpl-dsp-icon">SA</div><div><div class="tpl-dsp-name">StackAdapt</div><div class="tpl-dsp-desc">Bulk XLSX template</div></div></div><div class="tpl-dsp-card" onclick="this.parentElement.querySelectorAll(\'.tpl-dsp-card\').forEach(c=>c.classList.remove(\'selected\'));this.classList.add(\'selected\');document.getElementById(\'tplDspVal\').value=\'amazondsp\';document.getElementById(\'tplPreview\').style.display=\'block\';document.getElementById(\'tplGenBtn\').disabled=false;document.getElementById(\'tplPreviewContent\').textContent=\'Amazon DSP XLSX · \'+'+withTags.length+'+\' criativos\'"><div class="tpl-dsp-icon">AZ</div><div><div class="tpl-dsp-name">Amazon DSP</div><div class="tpl-dsp-desc">Third-Party Display XLSX</div></div></div></div><div class="tpl-preview" id="tplPreview" style="display:none"><span id="tplPreviewContent"></span></div><input type="hidden" id="tplDspVal" value=""><div class="tpl-actions"><button class="dash-btn" onclick="document.getElementById(\'tplModalOverlay\').remove()">Cancelar</button><button class="dash-btn dash-btn-primary" id="tplGenBtn" disabled onclick="generateTemplateFromDash()">Gerar e Baixar</button></div></div>';
-  };
-  render();document.body.appendChild(overlay);
+  const dsps=[
+    {id:'xandr',icon:'XN',name:'Xandr',desc:'Bulk XLSX template'},
+    {id:'dv360',icon:'DV',name:'DV360',desc:'Bulk CSV template'},
+    {id:'stackadapt',icon:'SA',name:'StackAdapt',desc:'Bulk XLSX template'},
+    {id:'amazondsp',icon:'AZ',name:'Amazon DSP',desc:'Third-Party Display XLSX'}
+  ];
+  const cards=dsps.map(d=>'<div class="tpl-dsp-card" data-tpl-dsp="'+d.id+'" onclick="selectTplDsp(this,\''+d.id+'\','+n+')"><div class="tpl-dsp-icon">'+d.icon+'</div><div><div class="tpl-dsp-name">'+d.name+'</div><div class="tpl-dsp-desc">'+d.desc+'</div></div></div>').join('');
+  overlay.innerHTML='<div class="tpl-modal"><h3>Gerar Template</h3><div class="tpl-modal-sub">'+n+' criativo'+(n>1?'s':'')+' com tags · Selecione a DSP de destino</div><div class="tpl-dsp-grid">'+cards+'</div><div class="tpl-preview" id="tplPreview" style="display:none"><span id="tplPreviewContent"></span></div><input type="hidden" id="tplDspVal" value=""><div class="tpl-actions"><button class="dash-btn" onclick="document.getElementById(\'tplModalOverlay\').remove()">Cancelar</button><button class="dash-btn dash-btn-primary" id="tplGenBtn" disabled onclick="generateTemplateFromDash()">Gerar e Baixar</button></div></div>';
+  document.body.appendChild(overlay);
+}
+function selectTplDsp(el,dsp,count){
+  el.closest('.tpl-dsp-grid').querySelectorAll('.tpl-dsp-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('tplDspVal').value=dsp;
+  document.getElementById('tplPreview').style.display='block';
+  document.getElementById('tplGenBtn').disabled=false;
+  const labels={xandr:'Xandr Bulk XLSX',dv360:'DV360 Bulk CSV',stackadapt:'StackAdapt XLSX',amazondsp:'Amazon DSP XLSX'};
+  document.getElementById('tplPreviewContent').textContent=(labels[dsp]||dsp)+' · '+count+' criativos';
 }
 
 function generateTemplateFromDash(){
@@ -3194,25 +3208,41 @@ function generateTemplateFromDash(){
   if(!dsp){toast('Selecione uma DSP','error');return}
   const keys=Array.from(dashSelectedKeys);
   const groups=dashGroups.filter(g=>keys.includes(g._gid));
-  // Collect tags from all selected groups — use first available DSP tag
+  // Build placements in the format expected by gen* functions
   const placements=[];
   for(const g of groups){
-    const dsps=Object.values(g.dsps);
-    const tag=dsps.find(d=>d.js_tag)?.js_tag||dsps.find(d=>d.vast_tag)?.vast_tag||'';
-    if(!tag)continue;
-    const isVast=!!(dsps.find(d=>d.vast_tag)?.vast_tag);
-    placements.push({placementName:g.name,dimensions:g.dimensions,tag,isVast,clickUrl:dsps[0]?.click_url||dsps[0]?.landing_page||'',type:isVast?'video':'display'});
+    const dspData=Object.values(g.dsps);
+    const jsTag=dspData.find(d=>d.js_tag)?.js_tag||'';
+    const vastTag=dspData.find(d=>d.vast_tag)?.vast_tag||'';
+    if(!jsTag&&!vastTag)continue;
+    const clickUrl=dspData[0]?.click_url||dspData[0]?.landing_page||'';
+    const isVideo=!!vastTag&&!jsTag;
+    placements.push({placementName:g.name,dimensions:g.dimensions,jsTag:jsTag||vastTag,vastTag:vastTag,clickUrl,type:isVideo?'video':'display',trackers:dspData[0]?.trackers||[]});
   }
   if(!placements.length){toast('Nenhum criativo com tag encontrado','error');return}
-  // Use existing template generators
   try{
-    if(typeof generateXandrTemplate==='function'&&dsp==='xandr'){generateXandrTemplate(placements);toast(placements.length+' criativos exportados (Xandr XLSX)','success')}
-    else if(typeof generateDV360Template==='function'&&dsp==='dv360'){generateDV360Template(placements);toast(placements.length+' criativos exportados (DV360 CSV)','success')}
-    else if(typeof generateStackAdaptTemplate==='function'&&dsp==='stackadapt'){generateStackAdaptTemplate(placements);toast(placements.length+' criativos exportados (StackAdapt XLSX)','success')}
-    else if(typeof generateAmazonDspTemplate==='function'&&dsp==='amazondsp'){generateAmazonDspTemplate(placements);toast(placements.length+' criativos exportados (Amazon DSP XLSX)','success')}
-    else{toast('Template generator não disponível para '+dsp,'error');return}
+    let file;
+    if(dsp==='dv360')file=genDV360({placements});
+    else if(dsp==='xandr')file=genXandr({placements},'',false);
+    else if(dsp==='stackadapt')file=genSA({placements},'','');
+    else if(dsp==='amazondsp')file=genAmazonDSP({placements});
+    else{toast('DSP não suportada','error');return}
+    // Download the file directly
+    if(file.type==='csv'){
+      const csv=[file.headers.join(','),...file.rows.map(r=>r.map(c=>'"'+(c||'').replace(/"/g,'""')+'"').join(','))].join('\n');
+      const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=dsp+'_template_'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href);
+    }else{
+      // XLSX via SheetJS
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.aoa_to_sheet([file.headers,...file.rows]);
+      if(file.colWidths)ws['!cols']=file.colWidths;
+      XLSX.utils.book_append_sheet(wb,ws,file.sheetName||'Sheet1');
+      XLSX.writeFile(wb,dsp+'_template_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    }
+    toast(placements.length+' criativos exportados ('+dsp.toUpperCase()+')','success');
     document.getElementById('tplModalOverlay')?.remove();
-  }catch(err){toast('Erro: '+err.message,'error')}
+  }catch(err){console.error(err);toast('Erro ao gerar: '+err.message,'error')}
 }
 
 // Selection
