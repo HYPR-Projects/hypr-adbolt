@@ -128,7 +128,18 @@ async function fetchDV360AuditBatch(token: string, ids: string[], advId: string)
           for (const c of d.creatives) {
             const rawExchanges = c.reviewStatus?.exchangeReviewStatuses || [];
             const exchangeStatuses = rawExchanges.map((er: any) => ({ exchange: normalizeExchangeName(er.exchange || ""), status: normalizeExchangeStatus(er.status || "") }));
-            m.set(c.creativeId, { status: normalizeAuditStatus("dv360", c.reviewStatus?.approvalStatus || "PENDING"), entityStatus: c.entityStatus || "", exchangeStatuses });
+
+            // Derive status: if approvalStatus says pending but some exchanges approved → partial
+            let status = normalizeAuditStatus("dv360", c.reviewStatus?.approvalStatus || "PENDING");
+            if (status === "pending" && exchangeStatuses.length > 0) {
+              const hasApproved = exchangeStatuses.some((e: any) => e.status === "approved");
+              const hasPending = exchangeStatuses.some((e: any) => e.status === "pending");
+              const hasRejected = exchangeStatuses.some((e: any) => e.status === "rejected");
+              if (hasApproved && (hasPending || hasRejected)) status = "partial";
+              else if (hasApproved && !hasPending && !hasRejected) status = "approved";
+            }
+
+            m.set(c.creativeId, { status, entityStatus: c.entityStatus || "", exchangeStatuses });
           }
         }
         pageToken = d.nextPageToken || "";
