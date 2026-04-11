@@ -53,19 +53,13 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
     const isVideo = input.type === 'video';
     const [w,h] = input.dimensions.split('x').map(Number);
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
-    // Route JS trackers to thirdPartyUrls, image pixels to trackerUrls (matches dsp-dv360 tags behavior)
-    const thirdPartyUrls: Array<{type: string; url: string}> = [];
-    const imgTrackerUrls: Array<{type: string; url: string}> = [];
+    // All trackers go to thirdPartyUrls (DV360 v4 format)
+    const allTrackerUrls: Array<{type: string; url: string}> = [];
     const seen = new Set<string>();
     for (const t of normalizedTrackers) {
       if (seen.has(t.url)) continue;
       seen.add(t.url);
-      const lower = t.url.toLowerCase();
-      if (t.format === 'url-js' || lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
-        thirdPartyUrls.push({type: 'THIRD_PARTY_URL_TYPE_IMPRESSION', url: t.url});
-      } else {
-        imgTrackerUrls.push({type: 'THIRD_PARTY_URL_TYPE_IMPRESSION', url: t.url});
-      }
+      allTrackerUrls.push({type: 'THIRD_PARTY_URL_TYPE_IMPRESSION', url: t.url});
     }
     console.log(`[dv360-asset] Uploading ${input.fileName} (${bytes.length} bytes, ${input.mimeType}), type=${input.type}`);
     if (isVideo && bytes.length < 1000) { return {name:input.name, success:false, error:`File too small (${bytes.length} bytes)`, step:'validate'}; }
@@ -102,8 +96,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:input.landingPage||'https://example.com'}]
     };
     if (!isVideo) creative.dimensions = {widthPixels:w||1, heightPixels:h||1};
-    if (thirdPartyUrls.length) creative.thirdPartyUrls = thirdPartyUrls;
-    if (imgTrackerUrls.length) creative.trackerUrls = imgTrackerUrls;
+    if (allTrackerUrls.length) creative.thirdPartyUrls = allTrackerUrls;
 
     const createBody = JSON.stringify(creative);
     const MAX_RETRIES = 3;
