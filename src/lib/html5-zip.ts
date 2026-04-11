@@ -164,5 +164,6 @@ ${scClose}`;
     html5: true,
     hasClickTag: hasClickTag || modified,
     html5Warnings: warnings,
+    html5Content: indexHtml,
   };
 }

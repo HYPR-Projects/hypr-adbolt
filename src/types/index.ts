@@ -97,6 +97,7 @@ export interface AssetEntry {
   html5?: boolean;
   hasClickTag?: boolean;
   html5Warnings?: string[];
+  html5Content?: string;
   resized?: boolean;
   _storagePath?: string;
   _uploadedFile?: File;

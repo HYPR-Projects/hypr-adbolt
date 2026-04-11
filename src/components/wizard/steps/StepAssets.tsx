@@ -201,9 +201,8 @@ export function StepAssets() {
     if (a.type === 'video') {
       return { ...base, type: 'video' as const, videoUrl: URL.createObjectURL(a.originalFile), thumbUrl: a.thumb };
     }
-    if (a.type === 'html5' && a.file) {
-      // For HTML5 ZIPs, we read the index.html from the zip
-      return { ...base, type: 'html5' as const, html5Content: '', thumbUrl: a.thumb };
+    if (a.type === 'html5' && a.html5Content) {
+      return { ...base, type: 'html5' as const, html5Content: a.html5Content, thumbUrl: a.thumb };
     }
     return { ...base, type: 'display' as const, thumbUrl: a.thumb };
   }, []);
