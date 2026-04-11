@@ -1,0 +1,126 @@
+/* ══════════════════════════════════════════════
+   AdBolt Design Tokens
+   Ported from legacy index.html lines 21-63
+   DO NOT modify values — these are the source of truth
+   ══════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  --bg-base: #1C262F;
+  --bg-surface: #22303A;
+  --bg-raised: #283845;
+  --bg-overlay: rgba(28, 38, 47, 0.88);
+  --bg-input: #1A242D;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-active: rgba(68, 150, 178, 0.5);
+  --text: #FCFEFE;
+  --text-sec: #8BA3AF;
+  --text-tri: #90A4AE;
+  --accent: #4496B2;
+  --accent-dim: rgba(68, 150, 178, 0.12);
+  --accent-glow: rgba(68, 150, 178, 0.08);
+  --accent-hover: #55A5BF;
+  --accent-ring: rgba(68, 150, 178, 0.25);
+  --accent-shadow: rgba(68, 150, 178, 0.3);
+  --success: #2CC5BD;
+  --success-dim: rgba(44, 197, 189, 0.10);
+  --error: #FF5252;
+  --error-dim: rgba(255, 82, 82, 0.10);
+  --warning: #EDD900;
+  --warning-dim: rgba(237, 217, 0, 0.10);
+  --text-on-accent: #fff;
+  --text-on-success: #1C262F;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --glass-bg: rgba(28, 38, 47, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --brand: #3397B9;
+  --brand-glow: rgba(51, 151, 185, 0.2);
+  --brand-ring: rgba(51, 151, 185, 0.4);
+  --brand-shadow: rgba(51, 151, 185, 0.5);
+  --white-a08: rgba(255, 255, 255, 0.08);
+  --white-a10: rgba(255, 255, 255, 0.1);
+  --white-a15: rgba(255, 255, 255, 0.15);
+  --white-a20: rgba(255, 255, 255, 0.2);
+  --black-a50: rgba(0, 0, 0, 0.5);
+  --grad-radial: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(68, 150, 178, 0.06), transparent 70%);
+  --grad-surface: linear-gradient(180deg, rgba(68, 150, 178, 0.03) 0%, transparent 40%);
+}
+
+[data-theme="light"] {
+  --bg-base: #F4F7F8;
+  --bg-surface: #FCFEFE;
+  --bg-raised: #FCFEFE;
+  --bg-overlay: rgba(252, 254, 254, 0.92);
+  --bg-input: #EEF2F4;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-active: rgba(36, 108, 132, 0.4);
+  --text: #1C262F;
+  --text-sec: #536872;
+  --text-tri: #536872;
+  --accent: #246C84;
+  --accent-dim: rgba(36, 108, 132, 0.08);
+  --accent-glow: rgba(36, 108, 132, 0.05);
+  --accent-hover: #2D7D98;
+  --accent-ring: rgba(36, 108, 132, 0.2);
+  --accent-shadow: rgba(36, 108, 132, 0.25);
+  --success: #018376;
+  --success-dim: rgba(1, 131, 118, 0.06);
+  --error: #B11C1F;
+  --error-dim: rgba(177, 28, 31, 0.06);
+  --warning: #8A6800;
+  --warning-dim: rgba(138, 104, 0, 0.08);
+  --text-on-accent: #fff;
+  --text-on-success: #fff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(252, 254, 254, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --brand: #2A7D9A;
+  --brand-glow: rgba(42, 125, 154, 0.15);
+  --brand-ring: rgba(42, 125, 154, 0.3);
+  --brand-shadow: rgba(42, 125, 154, 0.4);
+  --white-a08: rgba(0, 0, 0, 0.04);
+  --white-a10: rgba(0, 0, 0, 0.06);
+  --white-a15: rgba(0, 0, 0, 0.08);
+  --white-a20: rgba(0, 0, 0, 0.1);
+  --black-a50: rgba(0, 0, 0, 0.4);
+  --grad-radial: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(36, 108, 132, 0.04), transparent 70%);
+  --grad-surface: linear-gradient(180deg, rgba(36, 108, 132, 0.02) 0%, transparent 40%);
+}
+
+:root {
+  --r: 14px;
+  --r-sm: 10px;
+  --r-xs: 6px;
+  --r-pill: 100px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 48px;
+  --sp-10: 64px;
+  --input-py: 8px;
+  --input-px: 12px;
+  --font: 'Urbanist', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-f: 150ms;
+  --dur: 300ms;
+  --dur-s: 500ms;
+  --z-sticky: 10;
+  --z-dropdown: 50;
+  --z-overlay: 100;
+  --z-modal: 150;
+  --z-toast: 200;
+  --z-login: 300;
+}

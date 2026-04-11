@@ -1,0 +1,72 @@
+.toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: var(--z-toast);
+  background: var(--bg-surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 14px 44px 14px 18px;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-lg);
+  transform: translateX(calc(100% + 24px));
+  transition: transform var(--dur) var(--ease-out);
+  max-width: 380px;
+  backdrop-filter: blur(20px);
+}
+
+.show {
+  transform: translateX(0);
+}
+
+.success {
+  border-color: var(--success);
+  border-left: 3px solid var(--success);
+}
+
+.error {
+  border-color: var(--error);
+  border-left: 3px solid var(--error);
+}
+
+.dismiss {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-tri);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px;
+  transition: color var(--dur-f);
+}
+
+.dismiss:hover {
+  color: var(--text);
+}
+
+.msg {
+  display: inline;
+}
+
+.undo {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--r-xs);
+  padding: 4px 12px;
+  margin-left: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-f);
+  font-family: var(--font);
+}
+
+.undo:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
