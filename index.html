@@ -15,11 +15,13 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:15px;scroll-behavior:smooth}
+.skip-link{position:absolute;top:-40px;left:0;background:var(--accent);color:var(--text-on-accent);padding:8px 16px;z-index:var(--z-login);font-size:0.82rem;font-weight:600;border-radius:0 0 var(--r-xs) 0;transition:top var(--dur-f)}
+.skip-link:focus{top:0}
 
 [data-theme="dark"]{
   --bg-base:#1C262F;--bg-surface:#22303A;--bg-raised:#283845;--bg-overlay:rgba(28,38,47,0.88);
   --bg-input:#1A242D;--border:rgba(255,255,255,0.08);--border-subtle:rgba(255,255,255,0.05);
-  --border-active:rgba(68,150,178,0.5);--text:#FCFEFE;--text-sec:#8BA3AF;--text-tri:#78909C;
+  --border-active:rgba(68,150,178,0.5);--text:#FCFEFE;--text-sec:#8BA3AF;--text-tri:#90A4AE;
   --accent:#4496B2;--accent-dim:rgba(68,150,178,0.12);--accent-glow:rgba(68,150,178,0.08);
   --accent-hover:#55A5BF;--accent-ring:rgba(68,150,178,0.25);--accent-shadow:rgba(68,150,178,0.3);
   --success:#2CC5BD;--success-dim:rgba(44,197,189,0.10);
@@ -679,6 +681,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#flowSelector" class="skip-link">Pular para o conteúdo</a>
 <div id="login-screen" style="display:none">
   <div class="login-card">
     <div class="login-brand"><div class="login-brand-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="filter:drop-shadow(0 0 4px rgba(255,255,255,0.5))"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><h1>HYPR <span style="color:var(--brand)">Ad</span>Bolt</h1></div>    <div class="login-sub">Geração e ativação de criativos nas DSPs.<br>Acesso restrito à equipe HYPR°.</div>
@@ -695,7 +698,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
 </div>
 
 <div class="app-shell" id="appShell">
-  <header class="topbar">
+  <header class="topbar" role="banner">
     <div class="topbar-brand"><div class="topbar-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style="filter:drop-shadow(0 0 3px rgba(255,255,255,0.4))"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><span class="topbar-title">HYPR <span style="color:var(--brand)">Ad</span>Bolt</span></div>
     <div class="topbar-right">
       <button class="topbar-dash" id="topbarDashBtn" onclick="toggleDashHome()" title="Dashboard de criativos"><svg id="topbarDashIcon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span id="topbarDashLabel">Dashboard</span><span class="topbar-dash-badge" id="dashBadge"></span></button>
@@ -709,7 +712,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
     </div>
   </header>
 
-  <div class="flow-selector" id="flowSelector" role="main">
+  <main class="flow-selector" id="flowSelector" aria-label="Seletor de fluxo">
     <div class="flow-selector-header">
       <h2>O que você quer criar?</h2>
       <p>Escolha o tipo de criativo para começar. Gere templates e ative nas DSPs em um fluxo guiado.</p>
@@ -719,7 +722,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
       <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('surveys')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('surveys')}"><div class="flow-card-icon"><span>📊</span></div><div class="flow-card-title">Surveys</div><div class="flow-card-desc">Pesquisas Typeform embedded em iframes</div></div>
       <div class="flow-card" role="button" tabindex="0" onclick="enterWizard('assets')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();enterWizard('assets')}"><div class="flow-card-icon"><span>🎨</span></div><div class="flow-card-title">Standard Assets</div><div class="flow-card-desc">HTML5, image or video files</div></div>
     </div>
-  </div>
+  </main>
 
   <div class="wizard" id="wizard">
     <nav class="wizard-sidebar" aria-label="Etapas do wizard">
@@ -773,7 +776,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
             <button class="assets-filter-select-btn" id="tagsFilterSelect">Selecionar filtrados</button>
             <button class="assets-filter-clear-btn" id="tagsFilterClear" style="display:none" onclick="clearTagsFilter()">✕ Limpar</button>
           </div>
-          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="tagsSelectAll" aria-label="Selecionar todos os placements"></th><th>Placement Name</th><th>Tipo</th><th>Size</th><th>Tag</th><th>Click URL</th><th>Tracker</th><th></th></tr></thead><tbody id="placementsBody"></tbody></table></div>
+          <div class="table-wrap"><table class="assets-table" aria-label="Lista de placements"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="tagsSelectAll" aria-label="Selecionar todos os placements"></th><th>Placement Name</th><th>Tipo</th><th>Size</th><th>Tag</th><th>Click URL</th><th>Tracker</th><th></th></tr></thead><tbody id="placementsBody"></tbody></table></div>
         </div>
       </div>
 
@@ -817,7 +820,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
             <button class="assets-filter-select-btn" id="assetsFilterSelect">Selecionar filtrados</button>
             <button class="assets-filter-clear-btn" id="assetsFilterClear" style="display:none" onclick="clearAssetsFilter()">✕ Limpar</button>
           </div>
-          <div class="table-wrap"><table class="assets-table"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll" aria-label="Selecionar todos os assets"></th><th></th><th>Nome</th><th>Tipo</th><th>Formato</th><th>Size</th><th>Peso</th><th>Landing Page</th><th>Tracker</th><th></th></tr></thead><tbody id="assetsTableBody"></tbody></table></div>
+          <div class="table-wrap"><table class="assets-table" aria-label="Lista de assets"><thead><tr><th class="cb-col"><input type="checkbox" class="custom-cb" id="assetsSelectAll" aria-label="Selecionar todos os assets"></th><th></th><th>Nome</th><th>Tipo</th><th>Formato</th><th>Size</th><th>Peso</th><th>Landing Page</th><th>Tracker</th><th></th></tr></thead><tbody id="assetsTableBody"></tbody></table></div>
         </div>
       </div>
 
@@ -883,7 +886,7 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
     </div>
   </div>
 
-  <div class="dashboard" id="dashboard">
+  <section class="dashboard" id="dashboard" aria-label="Dashboard de criativos">
     <div class="dash-hero">
       <div class="dash-hero-left">
         <div><h2 class="dash-hero-title">Criativos</h2><div class="dash-hero-sub" id="dashSubtitle">Carregando...<span class="dash-sync-ts" id="dashSyncTs"></span></div></div>
@@ -918,13 +921,13 @@ tr.expanded .td-expand-chevron{transform:rotate(90deg);color:var(--accent)}
       <button class="dash-btn" style="margin-left:auto" onclick="clearDashSelection()">Cancelar</button>
     </div>
     <div class="dash-table-wrap" id="dashTableWrap">
-      <table class="dash-table" id="dashTable">
+      <table class="dash-table" id="dashTable" aria-label="Criativos ativados">
         <thead><tr><th style="width:32px"><input type="checkbox" id="dashSelectAll" onchange="toggleDashSelectAll(this.checked)" aria-label="Selecionar todos os criativos"></th><th style="width:30%">Nome</th><th>Size</th><th>Formato</th><th>Status</th><th>Criado por</th><th>Criado em</th><th>Última edição</th><th></th></tr></thead>
         <tbody id="dashBody"></tbody>
       </table>
       <div class="dash-pagination" id="dashPagination"></div>
     </div>
-  </div>
+  </section>
 
   <div class="modal-overlay" id="renameModal" role="dialog" aria-modal="true" aria-label="Renomear criativos">
     <div class="modal" style="max-width:560px">
