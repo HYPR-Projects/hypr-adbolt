@@ -216,3 +216,8 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Keyframes (local to CSS module to avoid scoping issues) */
+@keyframes fadeRow { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

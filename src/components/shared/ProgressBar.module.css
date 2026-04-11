@@ -75,3 +75,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+/* Keyframes (local to CSS module to avoid scoping issues) */
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

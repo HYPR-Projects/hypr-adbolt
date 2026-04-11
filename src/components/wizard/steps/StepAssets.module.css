@@ -55,3 +55,7 @@
 .actionBtn { background: none; border: 1px solid transparent; color: var(--text-tri); cursor: pointer; font-size: 13px; width: 28px; height: 28px; border-radius: var(--r-xs); display: inline-flex; align-items: center; justify-content: center; transition: all var(--dur-f); }
 .actionBtn:hover { border-color: var(--border); color: var(--text-sec); background: var(--accent-glow); }
 .danger:hover { border-color: var(--error); color: var(--error); background: var(--error-dim); }
+
+
+/* Keyframes (local to CSS module to avoid scoping issues) */
+@keyframes fadeRow { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
