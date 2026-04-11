@@ -3035,6 +3035,9 @@ document.getElementById('tagsFilterSelect').addEventListener('click',()=>{
 // Silent sync: atualiza status sem skeleton/overlay, só re-renderiza a tabela
 async function silentSync(){
   if(_silentSyncing||!sbClient||!currentUser||!dashIsOpen)return;
+  // Skip auto-sync if no pending creatives (manual sync always works)
+  const hasPending=dashCreatives.some(c=>c.audit_status!=='approved');
+  if(!hasPending&&dashCreatives.length>0){console.log('[sync] skipped — no pending creatives');return}
   _silentSyncing=true;
   const btn=document.getElementById('dashSyncBtn');
   if(btn){btn.textContent='Syncing...';btn.classList.add('loading')}
