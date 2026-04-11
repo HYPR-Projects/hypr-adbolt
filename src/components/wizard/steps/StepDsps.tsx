@@ -40,6 +40,7 @@ export function StepDsps() {
   const nextDisabled =
     (nextStep === 'config' && !hasDsp()) ||
     (nextStep === 'activate' && (!hasContent() || !hasDsp()));
+  const nextHint = !hasDsp() ? 'Selecione ao menos uma DSP' : undefined;
 
   return (
     <div>
@@ -56,6 +57,7 @@ export function StepDsps() {
         prevLabel={prevLabel}
         nextLabel={nextLabel}
         nextDisabled={nextDisabled}
+        nextDisabledHint={nextHint}
         onPrev={() => setStep(currentStep - 1)}
         onNext={() => setStep(currentStep + 1)}
       />

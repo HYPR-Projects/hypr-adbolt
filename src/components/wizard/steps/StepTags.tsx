@@ -29,6 +29,7 @@ export function StepTags() {
 
   // Track whether a file was uploaded (separate from manual tags)
   const [fileUploaded, setFileUploaded] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // ── Manual tag form state ──
   const [mtName, setMtName] = useState('');
@@ -129,12 +130,13 @@ export function StepTags() {
   const handleFiles = useCallback((files: File[]) => {
     const file = files[0];
     if (!file) return;
+    setUploadError(null);
 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const XLSX = window.XLSX;
-        if (!XLSX) { toast('SheetJS não carregado', 'error'); return; }
+        if (!XLSX) { setUploadError('SheetJS não carregado'); toast('SheetJS não carregado', 'error'); return; }
 
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' });
         const sheetName = wb.SheetNames.includes('Tags') ? 'Tags' : wb.SheetNames[0];
@@ -151,11 +153,14 @@ export function StepTags() {
         }
 
         if (!result) {
-          toast('Formato não reconhecido. Esperado: CM360, DV360 bulk, ou planilha com "Creative name" + "Third-party tag".', 'error');
+          const msg = 'Formato não reconhecido. Esperado: CM360, DV360 bulk, ou planilha com "Creative name" + "Third-party tag".';
+          setUploadError(msg);
+          toast(msg, 'error');
           return;
         }
 
         // Merge with existing data
+        setUploadError(null);
         if (parsedData?.placements?.length) {
           const { added, skipped } = mergeParsedData(result);
           setFileUploaded(true);
@@ -168,7 +173,6 @@ export function StepTags() {
         } else {
           setParsedData(result);
           setFileUploaded(true);
-          // Auto-fill brand from parsed data (legacy: inputBrand.value = result.brandName)
           if (result.brandName) {
             setConfig({ brand: result.brandName });
           }
@@ -176,7 +180,9 @@ export function StepTags() {
         }
       } catch (err) {
         console.error(err);
-        toast('Erro: ' + (err as Error).message, 'error');
+        const msg = 'Erro: ' + (err as Error).message;
+        setUploadError(msg);
+        toast(msg, 'error');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -205,6 +211,7 @@ export function StepTags() {
     (nextStep === 'dsps' && !hasContent()) ||
     (nextStep === 'config' && (!hasContent() || !hasDsp())) ||
     (nextStep === 'activate' && (!hasContent() || !hasDsp()));
+  const nextHint = !hasContent() ? 'Adicione placements primeiro' : !hasDsp() ? 'Selecione ao menos uma DSP' : undefined;
 
   // ── Modal state ──
   const [renameOpen, setRenameOpen] = useState(false);
@@ -241,8 +248,10 @@ export function StepTags() {
         fileSummary={fileUploaded && parsedData ? (
           <span><strong>{allPlacements.length}</strong> placements · {parsedData.campaignName || parsedData.advertiserName}</span>
         ) : undefined}
+        errorMessage={uploadError}
         onFiles={handleFiles}
-        onClear={() => { setParsedData(null); setFileUploaded(false); }}
+        onClear={() => { setParsedData(null); setFileUploaded(false); setUploadError(null); }}
+        onClearError={() => setUploadError(null)}
       />
 
       {/* Manual tag input */}
@@ -475,6 +484,7 @@ export function StepTags() {
         prevLabel={prevLabel}
         nextLabel={nextLabel}
         nextDisabled={nextDisabled}
+        nextDisabledHint={nextHint}
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
       />

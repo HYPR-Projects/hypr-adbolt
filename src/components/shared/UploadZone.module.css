@@ -87,3 +87,15 @@
   color: var(--error);
   background: var(--error-dim);
 }
+
+.error {
+  border-color: var(--error);
+  background: var(--error-dim);
+}
+
+.errorMsg {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--error);
+  font-weight: 500;
+}

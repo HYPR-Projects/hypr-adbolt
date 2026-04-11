@@ -109,6 +109,7 @@ export function StepSurveys() {
     (nextStep === 'dsps' && !hasContent()) ||
     (nextStep === 'config' && (!hasContent() || !hasDsp())) ||
     (nextStep === 'activate' && (!hasContent() || !hasDsp()));
+  const nextHint = !hasContent() ? 'Adicione URLs de survey primeiro' : !hasDsp() ? 'Selecione ao menos uma DSP' : undefined;
 
   return (
     <div>
@@ -217,6 +218,7 @@ export function StepSurveys() {
         prevLabel={prevLabel}
         nextLabel={nextLabel}
         nextDisabled={nextDisabled}
+        nextDisabledHint={nextHint}
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
       />

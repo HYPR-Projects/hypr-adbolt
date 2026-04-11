@@ -4,11 +4,12 @@ interface StepNavProps {
   prevLabel?: string | null;
   nextLabel?: string | null;
   nextDisabled?: boolean;
+  nextDisabledHint?: string;
   onPrev?: () => void;
   onNext?: () => void;
 }
 
-export function StepNav({ prevLabel, nextLabel, nextDisabled, onPrev, onNext }: StepNavProps) {
+export function StepNav({ prevLabel, nextLabel, nextDisabled, nextDisabledHint, onPrev, onNext }: StepNavProps) {
   return (
     <div className={styles.nav}>
       {prevLabel && onPrev ? (
@@ -29,6 +30,7 @@ export function StepNav({ prevLabel, nextLabel, nextDisabled, onPrev, onNext }: 
           className={`${styles.btn} ${styles.primary}`}
           onClick={onNext}
           disabled={nextDisabled}
+          title={nextDisabled ? nextDisabledHint : undefined}
         >
           {nextLabel}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="16" height="16">

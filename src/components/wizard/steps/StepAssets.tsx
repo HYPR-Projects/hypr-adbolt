@@ -250,6 +250,7 @@ export function StepAssets() {
     (nextStep === 'dsps' && !hasContent()) ||
     (nextStep === 'config' && (!hasContent() || !hasDsp())) ||
     (nextStep === 'activate' && (!hasContent() || !hasDsp()));
+  const nextHint = !hasContent() ? 'Faça upload de assets primeiro' : !hasDsp() ? 'Selecione ao menos uma DSP' : undefined;
 
   return (
     <div>
@@ -466,6 +467,7 @@ export function StepAssets() {
         prevLabel={prevLabel}
         nextLabel={nextLabel}
         nextDisabled={nextDisabled}
+        nextDisabledHint={nextHint}
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
       />

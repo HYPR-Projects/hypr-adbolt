@@ -1,11 +1,14 @@
 import { useAuthStore, getUserDisplayName, getUserAvatarUrl, getUserInitials } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { useWizardStore } from '@/stores/wizard';
 import styles from './Topbar.module.css';
 
 export function Topbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { currentView, setView, toggleTheme } = useUIStore();
+  const wizardHasData = useWizardStore((s) => s.hasContent() || s.hasDsp());
+  const resetWizard = useWizardStore((s) => s.resetWizard);
 
   const name = getUserDisplayName(user);
   const avatarUrl = getUserAvatarUrl(user);
@@ -78,7 +81,13 @@ export function Topbar() {
           </span>
         </button>
 
-        <button className={styles.btnLogout} onClick={logout}>
+        <button className={styles.btnLogout} onClick={() => {
+          if (currentView === 'wizard' && wizardHasData) {
+            if (!confirm('Você tem dados configurados no wizard. Sair vai descartar tudo. Continuar?')) return;
+            resetWizard();
+          }
+          logout();
+        }}>
           Sair
         </button>
       </div>

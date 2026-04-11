@@ -9,8 +9,10 @@ interface UploadZoneProps {
   formatHint?: string;
   hasFiles?: boolean;
   fileSummary?: React.ReactNode;
+  errorMessage?: string | null;
   onFiles: (files: File[]) => void;
   onClear?: () => void;
+  onClearError?: () => void;
 }
 
 export function UploadZone({
@@ -21,8 +23,10 @@ export function UploadZone({
   formatHint,
   hasFiles = false,
   fileSummary,
+  errorMessage,
   onFiles,
   onClear,
+  onClearError,
 }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragover, setDragover] = useState(false);
@@ -30,19 +34,22 @@ export function UploadZone({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragover(false);
+    if (onClearError) onClearError();
     if (e.dataTransfer.files.length) {
       onFiles(Array.from(e.dataTransfer.files));
     }
-  }, [onFiles]);
+  }, [onFiles, onClearError]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (onClearError) onClearError();
     if (e.target.files?.length) {
       onFiles(Array.from(e.target.files));
       e.target.value = '';
     }
-  }, [onFiles]);
+  }, [onFiles, onClearError]);
 
   const handleClick = () => {
+    if (onClearError) onClearError();
     inputRef.current?.click();
   };
 
@@ -50,6 +57,7 @@ export function UploadZone({
     styles.zone,
     dragover && styles.dragover,
     hasFiles && styles.hasFiles,
+    errorMessage && styles.error,
   ].filter(Boolean).join(' ');
 
   return (
@@ -80,6 +88,7 @@ export function UploadZone({
             {text || <>Arraste o arquivo aqui ou <strong>clique para selecionar</strong></>}
           </div>
           {formatHint && <div className={styles.format}>{formatHint}</div>}
+          {errorMessage && <div className={styles.errorMsg}>{errorMessage}</div>}
         </>
       )}
 
