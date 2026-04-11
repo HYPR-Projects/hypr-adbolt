@@ -6,19 +6,19 @@ import styles from './StepDsps.module.css';
 
 const TAG_SUBTITLES: Record<string, string> = {
   dv360: 'CSV · Third-Party Tags',
-  stackadapt: 'XLSX · New Creatives',
+  stackadapt: 'API não integrada',
   xandr: 'XLSX · Third-Party Creative',
-  amazondsp: 'XLSX · Third-Party Display',
+  amazondsp: 'API não integrada',
 };
 
 const ASSET_SUBTITLES: Record<string, string> = {
   dv360: 'API · Upload direto',
-  stackadapt: 'Em breve',
+  stackadapt: 'API não integrada',
   xandr: 'API · Upload direto',
-  amazondsp: 'Em breve',
+  amazondsp: 'API não integrada',
 };
 
-const UNAVAILABLE_IN_ASSETS = new Set(['stackadapt', 'amazondsp']);
+const UNAVAILABLE_DSPS = new Set(['stackadapt', 'amazondsp']);
 
 export function StepDsps() {
   const { mode, selectedDsps, toggleDsp, currentStep, setStep, hasContent, hasDsp } = useWizardStore();
@@ -29,9 +29,9 @@ export function StepDsps() {
 
   const cards = [
     { dsp: 'dv360' as DspType, icon: 'DV', subtitle: subtitles.dv360 },
-    { dsp: 'stackadapt' as DspType, icon: 'SA', subtitle: subtitles.stackadapt, unavailable: isAssets && UNAVAILABLE_IN_ASSETS.has('stackadapt') },
+    { dsp: 'stackadapt' as DspType, icon: 'SA', subtitle: subtitles.stackadapt, unavailable: UNAVAILABLE_DSPS.has('stackadapt') },
     { dsp: 'xandr' as DspType, icon: 'XN', subtitle: subtitles.xandr },
-    { dsp: 'amazondsp' as DspType, icon: 'AZ', subtitle: subtitles.amazondsp, unavailable: isAssets && UNAVAILABLE_IN_ASSETS.has('amazondsp') },
+    { dsp: 'amazondsp' as DspType, icon: 'AZ', subtitle: subtitles.amazondsp, unavailable: UNAVAILABLE_DSPS.has('amazondsp') },
   ];
 
   const prevLabel = config.labels[currentStep - 1];
