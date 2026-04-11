@@ -1,0 +1,218 @@
+.header {
+  margin-bottom: var(--sp-8);
+}
+
+.header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 6px;
+}
+
+.header p {
+  font-size: 0.88rem;
+  color: var(--text-sec);
+  line-height: 1.6;
+}
+
+/* Extracted info */
+.extractedInfo {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 24px;
+  margin-top: 20px;
+  animation: slideUp 0.5s var(--ease-out);
+}
+
+.extractedTitle {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.extractedTitle::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230a0a0f' stroke-width='3' stroke-linecap='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.infoItem {
+  background: var(--bg-base);
+  border-radius: var(--r-xs);
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+}
+
+.infoLabel {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tri);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.infoValue {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
+/* Table */
+.tableSection {
+  margin-top: 20px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.table th {
+  text-align: left;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tri);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table td {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-sec);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr {
+  transition: background var(--dur-f);
+  opacity: 0;
+  animation: fadeRow 0.3s var(--ease-out) forwards;
+}
+
+.table tbody tr:hover {
+  background: var(--accent-glow);
+}
+
+.cbCol {
+  width: 40px;
+  text-align: center;
+}
+
+.cellInput {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  font-family: var(--font);
+  transition: border-color var(--dur-f);
+}
+
+.cellInput:hover {
+  border-color: var(--border);
+}
+
+.cellInput:focus {
+  outline: none;
+  border-color: var(--accent-ring);
+  background: var(--bg-input);
+}
+
+.typeBadge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+}
+
+.display {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.video {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+
+.tagCell {
+  max-width: 200px;
+}
+
+.tagPreview {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-tri);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.removeBtn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-tri);
+  cursor: pointer;
+  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-f);
+}
+
+.removeBtn:hover {
+  border-color: var(--error);
+  color: var(--error);
+  background: var(--error-dim);
+}
+
+@media (max-width: 768px) {
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+}

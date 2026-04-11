@@ -1,0 +1,40 @@
+.wizard {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: calc(100vh - 56px);
+  animation: fadeIn 0.3s var(--ease-out);
+}
+
+.content {
+  overflow-y: auto;
+  position: relative;
+  background: var(--bg-base);
+}
+
+.contentBg {
+  position: absolute;
+  inset: 0;
+  background: var(--grad-radial);
+  pointer-events: none;
+}
+
+.stepView {
+  padding: var(--sp-8) var(--sp-9);
+  padding-bottom: var(--sp-5);
+  max-width: 1100px;
+  margin: 0 auto;
+  position: relative;
+  min-height: calc(100vh - 56px - 56px);
+  animation: slideInRight var(--dur) var(--ease-out);
+}
+
+@media (max-width: 768px) {
+  .wizard {
+    grid-template-columns: 1fr;
+  }
+
+  .stepView {
+    padding: var(--sp-6) var(--sp-4);
+    padding-bottom: var(--sp-5);
+  }
+}

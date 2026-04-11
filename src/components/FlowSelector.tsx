@@ -1,4 +1,5 @@
 import { useUIStore } from '@/stores/ui';
+import { useWizardStore } from '@/stores/wizard';
 import type { WizardMode } from '@/types';
 import styles from './FlowSelector.module.css';
 
@@ -16,12 +17,12 @@ const CARDS: FlowCardConfig[] = [
 ];
 
 export function FlowSelector() {
-  // Wizard entry will be handled in a later phase
-  // For now, just render the cards with a placeholder action
-  const toast = useUIStore((s) => s.toast);
+  const setView = useUIStore((s) => s.setView);
+  const enterWizard = useWizardStore((s) => s.enterWizard);
 
   const handleSelect = (mode: WizardMode) => {
-    toast(`Wizard "${mode}" será implementado na Fase 3`, '');
+    enterWizard(mode);
+    setView('wizard');
   };
 
   return (

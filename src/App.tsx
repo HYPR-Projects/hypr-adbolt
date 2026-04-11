@@ -5,6 +5,7 @@ import { LoginScreen } from '@/components/LoginScreen';
 import { Topbar } from '@/components/layout/Topbar';
 import { Toast } from '@/components/layout/Toast';
 import { FlowSelector } from '@/components/FlowSelector';
+import { WizardShell } from '@/components/wizard/WizardShell';
 
 export function App() {
   const { user, isLoading, initialize } = useAuthStore();
@@ -43,7 +44,7 @@ export function App() {
 
       <div id="main-content">
         {currentView === 'home' && <FlowSelector />}
-        {currentView === 'wizard' && <WizardPlaceholder />}
+        {currentView === 'wizard' && <WizardShell />}
         {currentView === 'dashboard' && <DashboardPlaceholder />}
       </div>
 
@@ -52,16 +53,7 @@ export function App() {
   );
 }
 
-// ── Temporary placeholders for Phases 3-6 ──
-
-function WizardPlaceholder() {
-  return (
-    <div style={{ padding: '80px 48px', textAlign: 'center' }}>
-      <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: 8 }}>Wizard</h2>
-      <p style={{ color: 'var(--text-sec)', fontSize: '0.88rem' }}>Será implementado na Fase 3</p>
-    </div>
-  );
-}
+// ── Temporary placeholder for Phase 6 ──
 
 function DashboardPlaceholder() {
   return (
