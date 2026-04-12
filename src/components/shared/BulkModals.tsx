@@ -263,8 +263,8 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
     if (!raw.trim()) return;
     const analyzed = analyzeTracker(raw);
     const url = normalizeUrl(analyzed.url);
-    const xandrInScope = scope === 'all' || (Array.isArray(scope) && scope.includes('xandr'));
-    onApply(url, analyzed.format, scope, hasVideo && xandrInScope ? eventType : undefined);
+    const videoEventsInScope = scope === 'all' || (Array.isArray(scope) && (scope.includes('xandr') || scope.includes('dv360')));
+    onApply(url, analyzed.format, scope, hasVideo && videoEventsInScope ? eventType : undefined);
     onClose();
   };
 
@@ -337,10 +337,10 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
         </div>
       </div>
 
-      {hasVideo && (scope === 'all' || (Array.isArray(scope) && scope.includes('xandr'))) && (
+      {hasVideo && (scope === 'all' || (Array.isArray(scope) && (scope.includes('xandr') || scope.includes('dv360')))) && (
         <div className={styles.field}>
           <label className={styles.label}>
-            Tipo de evento<span className={styles.hint}>(contabilização para vídeo na Xandr)</span>
+            Tipo de evento<span className={styles.hint}>(contabilização para vídeo)</span>
           </label>
           <div className={styles.eventGrid}>
             {VAST_EVENT_OPTIONS.map((opt) => (
