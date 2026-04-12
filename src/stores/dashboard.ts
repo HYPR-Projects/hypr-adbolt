@@ -68,9 +68,11 @@ function buildGroups(creatives: Creative[]): CreativeGroup[] {
   for (const c of sorted) {
     const key = c.name + '||' + c.dimensions;
     const existing = groupsByKey.get(key) || [];
+    const cTime = new Date(c.created_at).getTime();
+    const MAX_GAP_MS = 2 * 60 * 1000; // 2 minutes — same activation session
 
-    // Find a group that doesn't already have this DSP
-    let g = existing.find((g) => !g.dsps[c.dsp]);
+    // Find a group that doesn't already have this DSP AND was created within the time window
+    let g = existing.find((g) => !g.dsps[c.dsp] && Math.abs(cTime - new Date(g.created_at).getTime()) < MAX_GAP_MS);
 
     if (!g) {
       // No group available (either none exist, or all already have this DSP) → create new
