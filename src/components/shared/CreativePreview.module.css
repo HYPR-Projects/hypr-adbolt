@@ -31,6 +31,8 @@
   border-radius: var(--surface-radius);
   overflow: hidden;
   box-shadow: var(--shadow-lg), 0 0 0 1px var(--border);
+  display: inline-block;
+  line-height: 0;
 }
 
 .previewFrame img,
