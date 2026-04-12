@@ -205,7 +205,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  margin: 24px 0 20px;
+  margin: 32px 0 24px;
   color: var(--text-tri);
   font-size: var(--fs-sm);
 }
@@ -222,7 +222,7 @@
   background: var(--bg-surface);
   border: var(--surface-border) solid var(--border);
   border-radius: var(--surface-radius);
-  padding: 20px;
+  padding: 24px;
   transition: border-color var(--dur-f);
 }
 

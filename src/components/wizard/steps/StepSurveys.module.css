@@ -33,7 +33,7 @@
 
 /* Custom type input */
 .customWrap {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .customInput {
@@ -64,7 +64,7 @@
   background: var(--bg-raised);
   border: var(--surface-border) solid var(--border);
   border-radius: var(--surface-radius-sm);
-  padding: 20px;
+  padding: 24px;
   animation: slideUp 0.3s var(--ease-out);
 }
 
@@ -144,7 +144,7 @@
 .urlVariantBtn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   padding: 2px 8px;
   border-radius: var(--surface-radius-xs);
   font-size: var(--fs-min);
@@ -271,7 +271,7 @@
 }
 
 .sizePill {
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: var(--r-pill);
   border: var(--surface-border) solid var(--border);
   background: transparent;
@@ -307,7 +307,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 32px 0 20px;
+  margin: 32px 0 24px;
   color: var(--text-tri);
   font-size: var(--fs-sm);
 }

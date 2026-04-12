@@ -9,12 +9,12 @@
   background: var(--bg-surface);
   border: var(--surface-border) solid var(--border);
   border-radius: var(--surface-radius);
-  padding: 22px;
+  padding: 24px;
   cursor: pointer;
   transition: all var(--dur) var(--ease);
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   user-select: none;
 }
 

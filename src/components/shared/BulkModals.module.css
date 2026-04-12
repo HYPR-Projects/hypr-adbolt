@@ -96,7 +96,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 3px 0;
+  padding: 4px 0;
   font-size: var(--fs-sm);
   line-height: 1.4;
 }
@@ -237,7 +237,7 @@
 .eventGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  gap: 4px;
   margin-top: var(--sp-2);
 }
 
@@ -246,7 +246,7 @@
   border: var(--surface-border) solid var(--border);
   color: var(--text-sec);
   border-radius: var(--surface-radius-xs);
-  padding: 7px 6px;
+  padding: 8px 8px;
   font-size: var(--fs-xs);
   font-weight: 500;
   cursor: pointer;

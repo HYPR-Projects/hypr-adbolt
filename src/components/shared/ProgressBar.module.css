@@ -3,14 +3,14 @@
   border: var(--surface-border) solid var(--border);
   border-radius: var(--surface-radius);
   padding: 24px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   animation: slideUp 0.3s var(--ease-out);
 }
 
 .title {
   font-size: var(--fs-base);
   font-weight: 600;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .dsp {
@@ -69,7 +69,7 @@
   font-family: var(--mono);
   font-size: var(--fs-xs);
   color: var(--text-tri);
-  margin-top: 5px;
+  margin-top: 4px;
   min-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
