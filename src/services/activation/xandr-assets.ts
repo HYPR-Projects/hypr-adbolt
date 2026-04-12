@@ -40,15 +40,14 @@ export async function activateXandrAssets(
           Object.assign(prepared, buildCreativePayload(a, 'xandr'));
         }
 
-        // Upload thumbnail to public bucket
-        let thumbnailUrl = '';
-        if (a.thumb) {
+        // Use pre-uploaded URLs from Phase 1, fallback to upload here
+        let thumbnailUrl = (a as any)._thumbnailUrl || '';
+        if (!thumbnailUrl && a.thumb) {
           thumbnailUrl = await uploadThumbnail(a.thumb, token);
         }
 
-        // Upload HTML5 preview content for dashboard rendering
-        let html5PreviewUrl = '';
-        if (a.type === 'html5' && a.html5Content) {
+        let html5PreviewUrl = (a as any)._html5PreviewUrl || '';
+        if (!html5PreviewUrl && a.type === 'html5' && a.html5Content) {
           html5PreviewUrl = await uploadHtml5Preview(a.html5Content, token);
         }
 
