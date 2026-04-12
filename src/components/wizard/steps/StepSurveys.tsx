@@ -4,6 +4,7 @@ import { useUIStore } from '@/stores/ui';
 import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { ContentCard } from '@/components/shared/ContentCard';
+import { CreativePreviewModal } from '@/components/shared/CreativePreview';
 import { SurveyPicker } from './SurveyPicker';
 import { extractFormId, fetchTypeformTitle, detectVariant } from '@/services/typeform';
 import { SURVEY_SIZES } from '@/types';
@@ -21,6 +22,7 @@ export function StepSurveys() {
   const toast = useUIStore((s) => s.toast);
 
   const [openVariantDD, setOpenVariantDD] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{ name: string; dimensions: string; tagContent: string } | null>(null);
 
   useEffect(() => {
     const close = () => setOpenVariantDD(null);
@@ -211,6 +213,18 @@ export function StepSurveys() {
                     )}
                   </div>
                   <button
+                    className={styles.urlPreview}
+                    onClick={() => setPreviewData({
+                      name: u.title || u.formId,
+                      dimensions: entry.size,
+                      tagContent: `<iframe src="https://form.typeform.com/to/${u.formId}" width="${entry.size.split('x')[0]}" height="${entry.size.split('x')[1]}" frameborder="0" style="border:0;" allowfullscreen></iframe>`,
+                    })}
+                    aria-label="Preview"
+                    title="Preview"
+                  >
+                    <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 4C5 4 1.7 8.3 1 10c.7 1.7 4 6 9 6s8.3-4.3 9-6c-.7-1.7-4-6-9-6z" /><circle cx="10" cy="10" r="3" /></svg>
+                  </button>
+                  <button
                     className={styles.urlRemove}
                     onClick={() => removeSurveyUrl(entry.id, i)}
                     aria-label="Remover URL"
@@ -301,6 +315,18 @@ export function StepSurveys() {
         onPrev={currentStep > 0 ? () => setStep(currentStep - 1) : undefined}
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
       />
+
+      {previewData && (
+        <CreativePreviewModal
+          data={{
+            name: previewData.name,
+            dimensions: previewData.dimensions,
+            type: '3p-tag',
+            tagContent: previewData.tagContent,
+          }}
+          onClose={() => setPreviewData(null)}
+        />
+      )}
     </div>
   );
 }

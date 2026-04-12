@@ -203,6 +203,22 @@
   color: var(--warning);
 }
 
+.urlPreview {
+  background: none;
+  border: none;
+  color: var(--text-tri);
+  cursor: pointer;
+  padding: 4px;
+  transition: color var(--dur-f);
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.urlPreview:hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
 .urlRemove {
   background: none;
   border: none;
