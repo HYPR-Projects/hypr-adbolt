@@ -552,7 +552,7 @@ export function StepTags() {
         data={previewTag ? {
           name: previewTag.placementName,
           dimensions: previewTag.dimensions,
-          type: previewTag.type === 'video' ? '3p-tag' as const : '3p-tag' as const,
+          type: '3p-tag' as const,
           tagContent: previewTag.type === 'video'
             ? `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-family:system-ui,sans-serif;color:#888;gap:8px;padding:20px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><div style="font-size:13px;font-weight:600">VAST Tag</div><div style="font-size:11px;opacity:0.6;word-break:break-all;max-width:90%">${(previewTag.vastTag || previewTag.jsTag || '').substring(0, 120)}...</div></div>`
             : previewTag.jsTag || undefined,
