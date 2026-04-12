@@ -1,5 +1,6 @@
 import { useWizardStore } from '@/stores/wizard';
 import { DspGrid } from '@/components/shared/DspGrid';
+import { DspLogo } from '@/components/shared/DspLogo';
 import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { ContentCard } from '@/components/shared/ContentCard';
@@ -29,10 +30,10 @@ export function StepDsps() {
   const subtitles = isAssets ? ASSET_SUBTITLES : TAG_SUBTITLES;
 
   const cards = [
-    { dsp: 'dv360' as DspType, icon: 'DV', subtitle: subtitles.dv360 },
-    { dsp: 'stackadapt' as DspType, icon: 'SA', subtitle: subtitles.stackadapt, unavailable: UNAVAILABLE_DSPS.has('stackadapt') },
-    { dsp: 'xandr' as DspType, icon: 'XN', subtitle: subtitles.xandr },
-    { dsp: 'amazondsp' as DspType, icon: 'AZ', subtitle: subtitles.amazondsp, unavailable: UNAVAILABLE_DSPS.has('amazondsp') },
+    { dsp: 'dv360' as DspType, icon: <DspLogo dsp="dv360" />, subtitle: subtitles.dv360 },
+    { dsp: 'stackadapt' as DspType, icon: <DspLogo dsp="stackadapt" />, subtitle: subtitles.stackadapt, unavailable: UNAVAILABLE_DSPS.has('stackadapt') },
+    { dsp: 'xandr' as DspType, icon: <DspLogo dsp="xandr" />, subtitle: subtitles.xandr },
+    { dsp: 'amazondsp' as DspType, icon: <DspLogo dsp="amazondsp" />, subtitle: subtitles.amazondsp, unavailable: UNAVAILABLE_DSPS.has('amazondsp') },
   ];
 
   const prevLabel = config.labels[currentStep - 1];
