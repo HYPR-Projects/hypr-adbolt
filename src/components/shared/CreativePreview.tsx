@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import styles from './CreativePreview.module.css';
 
 // ── Types ──
@@ -21,11 +21,170 @@ interface PreviewData {
   mimeType?: string;
   /** Thumbnail data URL (fallback for dashboard) */
   thumbUrl?: string;
+  /** For VAST tags: the complete VAST tag URL for IMA SDK playback */
+  vastTagUrl?: string;
 }
 
 interface CreativePreviewModalProps {
   data: PreviewData | null;
   onClose: () => void;
+}
+
+
+// ── VAST Player Component (IMA SDK) ──
+
+const IMA_SDK_URL = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js';
+let imaSdkLoaded = false;
+let imaSdkLoading: Promise<void> | null = null;
+
+function loadImaSdk(): Promise<void> {
+  if (imaSdkLoaded) return Promise.resolve();
+  if (imaSdkLoading) return imaSdkLoading;
+  imaSdkLoading = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = IMA_SDK_URL;
+    script.onload = () => { imaSdkLoaded = true; resolve(); };
+    script.onerror = () => reject(new Error('Failed to load IMA SDK'));
+    document.head.appendChild(script);
+  });
+  return imaSdkLoading;
+}
+
+function VastPlayer({ tagUrl, width, height }: { tagUrl: string; width: number; height: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [status, setStatus] = useState<'loading' | 'playing' | 'error'>('loading');
+  const [errorMsg, setErrorMsg] = useState('');
+  const adsManagerRef = useRef<any>(null);
+
+  useEffect(() => {
+    let destroyed = false;
+    let adsManager: any = null;
+    let adsLoader: any = null;
+
+    async function init() {
+      try {
+        await loadImaSdk();
+        if (destroyed) return;
+
+        const google = (window as any).google;
+        if (!google?.ima) {
+          setStatus('error');
+          setErrorMsg('IMA SDK não disponível');
+          return;
+        }
+
+        const adContainer = containerRef.current;
+        const videoElement = videoRef.current;
+        if (!adContainer || !videoElement) return;
+
+        const adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
+        adDisplayContainer.initialize();
+
+        adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+
+        adsLoader.addEventListener(
+          google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+          (event: any) => {
+            if (destroyed) return;
+            adsManager = event.getAdsManager(videoElement);
+            adsManagerRef.current = adsManager;
+
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => {
+              if (!destroyed) setStatus('playing');
+            });
+            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => {
+              if (!destroyed) setStatus('playing');
+            });
+            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (e: any) => {
+              if (!destroyed) {
+                setStatus('error');
+                setErrorMsg(e.getError?.()?.getMessage?.() || 'Erro no ad');
+              }
+            });
+
+            try {
+              adsManager.init(width, height, google.ima.ViewMode.NORMAL);
+              adsManager.start();
+            } catch (e) {
+              if (!destroyed) {
+                setStatus('error');
+                setErrorMsg('Erro ao iniciar player');
+              }
+            }
+          },
+        );
+
+        adsLoader.addEventListener(
+          google.ima.AdErrorEvent.Type.AD_ERROR,
+          (e: any) => {
+            if (!destroyed) {
+              setStatus('error');
+              setErrorMsg(e.getError?.()?.getMessage?.() || 'Erro ao carregar VAST');
+            }
+          },
+        );
+
+        const adsRequest = new google.ima.AdsRequest();
+        adsRequest.adTagUrl = tagUrl;
+        adsRequest.linearAdSlotWidth = width;
+        adsRequest.linearAdSlotHeight = height;
+        adsLoader.requestAds(adsRequest);
+      } catch (e) {
+        if (!destroyed) {
+          setStatus('error');
+          setErrorMsg((e as Error).message);
+        }
+      }
+    }
+
+    init();
+
+    return () => {
+      destroyed = true;
+      try { adsManagerRef.current?.destroy(); } catch {}
+    };
+  }, [tagUrl, width, height]);
+
+  return (
+    <div style={{ position: 'relative', width, height, background: '#000', borderRadius: 'var(--r-xs)', overflow: 'hidden' }}>
+      <video
+        ref={videoRef}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        playsInline
+        muted
+      />
+      <div
+        ref={containerRef}
+        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+      />
+      {status === 'loading' && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 2,
+          background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.82rem',
+        }}>
+          <div className={styles.loadingDot} />
+          <span>Carregando VAST...</span>
+        </div>
+      )}
+      {status === 'error' && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 8, zIndex: 2,
+          background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '0.78rem',
+          padding: 20, textAlign: 'center',
+        }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF5252" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+          </svg>
+          <span style={{ fontWeight: 500 }}>Preview indisponível</span>
+          <span style={{ opacity: 0.6, maxWidth: 280, wordBreak: 'break-word' }}>{errorMsg || 'VAST tag não pôde ser renderizada'}</span>
+          <span style={{ opacity: 0.4, fontSize: '0.68rem', marginTop: 4 }}>Verifique a tag diretamente no ad server</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Thumbnail Component ──
@@ -146,6 +305,19 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             autoPlay
             muted
             style={{ width: renderW, height: renderH }}
+          />
+        </div>
+      );
+    }
+
+    // VAST Tag — render via IMA SDK
+    if (data.vastTagUrl) {
+      return (
+        <div className={styles.previewFrame}>
+          <VastPlayer
+            tagUrl={data.vastTagUrl}
+            width={renderW}
+            height={renderH}
           />
         </div>
       );
