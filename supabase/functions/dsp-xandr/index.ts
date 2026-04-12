@@ -108,49 +108,26 @@ interface CreativeResult {
 async function createXandrVastCreative(token: string, advertiserId: number, input: CreativeInput, globalPixel?: string): Promise<CreativeResult> {
   const vastUrl = input.vastTag || input.jsTag;
   const trackers = buildVastTrackers(input.trackers || [], globalPixel);
-  const linearElement: Record<string, unknown> = { vast_element_type_id: 1, name: "linear" };
-  if (trackers.length > 0) linearElement.trackers = trackers;
-  const creativeVast: Record<string, unknown> = {
+  const le: Record<string,unknown> = { vast_element_type_id: 1, name: "linear" }; if (trackers.length > 0) le.trackers = trackers;
+  const auditUrl = input.brandUrl || "";
+  // Use /creative endpoint (not /creative-vast) — /creative accepts landing_page_url + brand_url
+  const creative: Record<string,unknown> = {
     name: input.name, advertiser_id: advertiserId, width: input.width || 1, height: input.height || 1,
-    template: { id: 6439 }, click_url: input.brandUrl || "", brand_url: input.brandUrl || "", landing_page_url: input.brandUrl || "",
-    audit_status: "pending",
-    allow_audit: true, allow_ssl_audit: true, is_self_audited: false, sla: input.sla || 0,
+    template: { id: 6439 },
+    click_url: auditUrl, landing_page_url: auditUrl, brand_url: auditUrl,
+    mobile: auditUrl ? { alternative_landing_page_url: auditUrl } : undefined,
+    audit_status: "pending", allow_audit: true, allow_ssl_audit: true, is_self_audited: false, sla: input.sla || 0,
     video_attribute: { is_skippable: false, duration_ms: 30000,
-      wrapper: { url: vastUrl, secure_url: vastUrl.replace(/^http:/, 'https:'), elements: [linearElement] } },
+      wrapper: { url: vastUrl, secure_url: vastUrl.replace(/^http:/, 'https:'), elements: [le] } },
   };
-  if (input.languageId) creativeVast.language = { id: input.languageId };
-  if (input.brandId) creativeVast.brand_id = input.brandId;
-  if (input.isPolitical) creativeVast.political = { is_political: true };
+  if (input.languageId) creative.language = { id: input.languageId };
+  if (input.brandId) creative.brand_id = input.brandId;
+  if (input.isPolitical) creative.political = { is_political: true };
   try {
-    const res = await fetch(`${XANDR_API}/creative-vast?member_id=${MEMBER_ID}&advertiser_id=${advertiserId}`,
-      { method: "POST", headers: { "Content-Type": "application/json", Authorization: token }, body: JSON.stringify({ "creative-vast": creativeVast }) });
+    const res = await fetch(`${XANDR_API}/creative?member_id=${MEMBER_ID}&advertiser_id=${advertiserId}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: token }, body: JSON.stringify({ creative }) });
     const data = await res.json();
-    if (data.response?.status === "OK" && data.response?.["creative-vast"]) {
-      const vastId = data.response["creative-vast"].id;
-      // Set landing_page_url via /creative-vast PUT (POST ignores it, PUT accepts it)
-      if (input.brandUrl) {
-        try {
-          const putRes = await fetch(`${XANDR_API}/creative-vast?id=${vastId}&member_id=${MEMBER_ID}&advertiser_id=${advId}`, {
-            method: "PUT", headers: { "Content-Type": "application/json", Authorization: token },
-            body: JSON.stringify({ "creative-vast": { landing_page_url: input.brandUrl, brand_url: input.brandUrl } }),
-          });
-          const putData = await putRes.json();
-          const putOk = putData.response?.status === "OK";
-          const actualLp = putData.response?.["creative-vast"]?.landing_page_url || "(not in response)";
-          console.log(`[xandr] VAST PUT landing_page_url: ok=${putOk} sent=${input.brandUrl} actual=${actualLp} id=${vastId}`);
-          if (!putOk) {
-            console.log(`[xandr] VAST PUT error: ${putData.response?.error_message || JSON.stringify(putData).substring(0, 300)}`);
-            // Fallback: try /creative endpoint
-            const put2 = await fetch(`${XANDR_API}/creative?id=${vastId}&member_id=${MEMBER_ID}&advertiser_id=${advId}`, {
-              method: "PUT", headers: { "Content-Type": "application/json", Authorization: token },
-              body: JSON.stringify({ creative: { landing_page_url: input.brandUrl, brand_url: input.brandUrl } }),
-            });
-            const put2Data = await put2.json();
-            console.log(`[xandr] /creative fallback PUT: ok=${put2Data.response?.status === "OK"} lp=${put2Data.response?.creative?.landing_page_url || "(none)"}`);
-          }
-        } catch (e) { console.log(`[xandr] landing_page_url PUT exception for VAST ${vastId}:`, e); }
-      }
-      return { name: input.name, success: true, creativeId: vastId, auditStatus: data.response["creative-vast"].audit_status, creativeType: 'video', _input: input };
+    if (data.response?.status === "OK" && data.response?.creative) {
+      return { name: input.name, success: true, creativeId: data.response.creative.id, auditStatus: data.response.creative.audit_status, creativeType: 'video', _input: input };
     }
     return { name: input.name, success: false, creativeType: 'video', error: data.response?.error_message || data.response?.error || JSON.stringify(data.response || data).substring(0, 500) };
   } catch (err) { return { name: input.name, success: false, creativeType: 'video', error: err instanceof Error ? err.message : String(err) }; }
