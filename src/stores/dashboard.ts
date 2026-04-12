@@ -203,7 +203,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   setFilterDsp: (dsp) => set({ filterDsp: dsp, page: 0, expandedKey: null }),
   setFilterAudit: (audit) => set({ filterAudit: audit, page: 0, expandedKey: null }),
-  setFilterSearch: (search) => set({ filterSearch: search.toLowerCase().trim(), page: 0, expandedKey: null }),
+  setFilterSearch: (search) => set({ filterSearch: search.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(), page: 0, expandedKey: null }),
 
   toggleFilterMulti: (filterId, value) => {
     const map = { size: 'filterSize', format: 'filterFormat', creator: 'filterCreator' } as const;
@@ -262,7 +262,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       list = list.filter((g) => s.filterCreator.has(g.created_by_name));
     }
     if (s.filterSearch) {
-      list = list.filter((g) => g.name.toLowerCase().includes(s.filterSearch));
+      list = list.filter((g) => g.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(s.filterSearch));
     }
 
     return list;
