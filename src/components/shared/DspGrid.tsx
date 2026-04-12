@@ -4,7 +4,7 @@ import styles from './DspGrid.module.css';
 
 interface DspCardConfig {
   dsp: DspType;
-  icon: string;
+  icon: React.ReactNode;
   subtitle: string;
   unavailable?: boolean;
 }
