@@ -7,7 +7,8 @@ const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"
 let cachedToken: string|null = null, tokenExp = 0;
 
 async function importKey(pem: string): Promise<CryptoKey> {
-  const b = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/\\n/g,'').replace(/\n/g,'').replace(/\s/g,'');
+  const b = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/\n/g,'').replace(/
+/g,'').replace(/\s/g,'');
   return crypto.subtle.importKey('pkcs8',Uint8Array.from(atob(b),c=>c.charCodeAt(0)),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
 }
 
@@ -67,7 +68,8 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
     if (isVideo && bytes.length < 1000) { return {name:input.name, success:false, error:`File too small (${bytes.length} bytes)`, step:'validate'}; }
 
     const boundary = '----DV360' + Date.now() + Math.random().toString(36).substr(2,8);
-    const CRLF = '\r\n';
+    const CRLF = '
+';
     const enc = new TextEncoder();
     const metaJson = JSON.stringify({filename: input.fileName});
     const metaPart = enc.encode(`--${boundary}${CRLF}Content-Disposition: form-data; name="data"${CRLF}Content-Type: application/json; charset=UTF-8${CRLF}${CRLF}${metaJson}${CRLF}`);
@@ -98,16 +100,23 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:lp||'https://example.com'}]
     };
     if (!isVideo) creative.dimensions = {widthPixels:w||1, heightPixels:h||1};
-    // Hosted creatives use appendedTag for tracking (maps to "Append HTML tracking tag" in DV360 UI)
+    // Hosted creatives: display uses appendedTag, video uses thirdPartyUrls
     if (allTrackerUrls.length) {
-      const tagParts = allTrackerUrls.map(t => {
-        const lower = t.url.toLowerCase();
-        if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
-          return `<scr` + `ipt src="${t.url}"></scr` + `ipt>`;
-        }
-        return `<img src="${t.url}" width="1" height="1" style="display:none" />`;
-      });
-      creative.appendedTag = tagParts.join('\n');
+      if (isVideo) {
+        // Video creatives use thirdPartyUrls array
+        creative.thirdPartyUrls = allTrackerUrls.map(t => ({ type: t.type, url: t.url }));
+      } else {
+        // Display/HTML5 use appendedTag (maps to "Append HTML tracking tag" in DV360 UI)
+        const tagParts = allTrackerUrls.map(t => {
+          const lower = t.url.toLowerCase();
+          if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
+            return `<scr` + `ipt src="${t.url}"></scr` + `ipt>`;
+          }
+          return `<img src="${t.url}" width="1" height="1" style="display:none" />`;
+        });
+        creative.appendedTag = tagParts.join('
+');
+      }
     }
 
     const createBody = JSON.stringify(creative);
