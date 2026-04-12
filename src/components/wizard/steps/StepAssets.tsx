@@ -481,8 +481,8 @@ export function StepAssets() {
                               <span className={styles.trackerScope}>
                                 {t.dsps === 'all' ? 'ALL' : (Array.isArray(t.dsps) ? t.dsps.map(d => DSP_SHORT_LABELS[d] || d).join(' ') : 'ALL')}
                               </span>
-                              {t.eventType && t.eventType !== 'impression' && (
-                                <span className={styles.trackerEvent}>{t.eventType}</span>
+                              {t.eventType && t.eventType !== 'impression' && a.type === 'video' && (
+                                <span className={styles.trackerEvent}>{t.eventType.toUpperCase()}</span>
                               )}
                               <span className={styles.trackerUrl} title={t.url}>{t.url}</span>
                               <button
@@ -576,9 +576,13 @@ export function StepAssets() {
         count={selectedAssetIds.size}
         availableDsps={['xandr', 'dv360', 'stackadapt', 'amazondsp']}
         hasVideo={[...selectedAssetIds].some((id) => assetEntries.find((a) => a.id === id)?.type === 'video')}
+        hasDisplay={[...selectedAssetIds].some((id) => { const a = assetEntries.find((e) => e.id === id); return a && a.type !== 'video'; })}
         onApply={(url, format, scope, eventType) => {
           selectedAssetIds.forEach((id) => {
-            addAssetTracker(id, { url, format, dsps: scope, eventType });
+            const asset = assetEntries.find((a) => a.id === id);
+            // Only apply VAST eventType to video assets; display/html5 always get impression
+            const resolvedEvent = asset?.type === 'video' ? eventType : undefined;
+            addAssetTracker(id, { url, format, dsps: scope, eventType: resolvedEvent });
           });
           toast(`Tracker aplicado em ${selectedAssetIds.size} asset(s)`, 'success');
         }}
