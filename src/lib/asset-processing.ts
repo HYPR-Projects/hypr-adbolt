@@ -50,25 +50,15 @@ export function generateThumb(file: File, type: 'display' | 'video' | 'html5'): 
       return;
     }
     if (type === 'display') {
-      // For GIFs, use original file as data URL to preserve animation
-      if (file.type === 'image/gif') {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(file);
-        return;
-      }
       const img = new Image();
       img.onload = () => {
         const c = document.createElement('canvas');
         const ctx = c.getContext('2d')!;
-        // Generate high-res preview (up to 480px wide, 360px tall)
-        // Dashboard table uses CSS object-fit to shrink, modal uses full size
-        const s = Math.min(480 / img.naturalWidth, 360 / img.naturalHeight, 1);
+        const s = Math.min(96 / img.naturalWidth, 72 / img.naturalHeight, 1);
         c.width = img.naturalWidth * s;
         c.height = img.naturalHeight * s;
         ctx.drawImage(img, 0, 0, c.width, c.height);
-        resolve(c.toDataURL('image/jpeg', 0.85));
+        resolve(c.toDataURL('image/jpeg', 0.7));
         URL.revokeObjectURL(img.src);
       };
       img.onerror = () => resolve('');
@@ -81,11 +71,11 @@ export function generateThumb(file: File, type: 'display' | 'video' | 'html5'): 
       vid.onseeked = () => {
         const c = document.createElement('canvas');
         const ctx = c.getContext('2d')!;
-        const s = Math.min(480 / vid.videoWidth, 360 / vid.videoHeight, 1);
+        const s = Math.min(96 / vid.videoWidth, 72 / vid.videoHeight, 1);
         c.width = vid.videoWidth * s;
         c.height = vid.videoHeight * s;
         ctx.drawImage(vid, 0, 0, c.width, c.height);
-        resolve(c.toDataURL('image/jpeg', 0.85));
+        resolve(c.toDataURL('image/jpeg', 0.7));
         URL.revokeObjectURL(vid.src);
       };
       vid.onerror = () => resolve('');
