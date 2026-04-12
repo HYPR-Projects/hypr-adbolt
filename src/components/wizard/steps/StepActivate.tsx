@@ -123,11 +123,12 @@ export function StepActivate() {
     }
 
     // Validate Xandr brandUrl
+    let normalizedBrandUrl = '';
     if (store.selectedDsps.has('xandr')) {
       const brandUrl = store.xandrBrandUrl.trim();
       if (!brandUrl) { toast('Preencha a Brand URL na seção Auditoria Xandr', 'error'); return; }
-      const normalized = normalizeUrl(brandUrl);
-      if (normalized !== brandUrl) store.setConfig({ xandrBrandUrl: normalized });
+      normalizedBrandUrl = normalizeUrl(brandUrl);
+      if (normalizedBrandUrl !== brandUrl) store.setConfig({ xandrBrandUrl: normalizedBrandUrl });
     }
 
     const dsps = [...store.selectedDsps];
@@ -202,7 +203,7 @@ export function StepActivate() {
       const updatedAssets = useWizardStore.getState().assetEntries;
       if (store.selectedDsps.has('xandr')) {
         const r = await activateXandrAssets(token, updatedAssets, {
-          brandUrl: store.xandrBrandUrl, languageId: store.xandrLangId,
+          brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
           brandId: store.xandrBrandId, sla: store.xandrSla,
         }, (cur, total, msg) =>
           setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? { ...p, current: cur, total, message: msg } : p))
@@ -232,7 +233,7 @@ export function StepActivate() {
       if (store.selectedDsps.has('xandr')) {
         const r = await activateXandrTags(token, allPlacements, {
           isPolitical: store.isPolitical, languageId: store.xandrLangId,
-          brandId: store.xandrBrandId, brandUrl: store.xandrBrandUrl,
+          brandId: store.xandrBrandId, brandUrl: normalizedBrandUrl,
           sla: store.xandrSla,
           campaignName: store.parsedData?.campaignName || 'Survey',
           advertiserName: store.parsedData?.advertiserName || '',

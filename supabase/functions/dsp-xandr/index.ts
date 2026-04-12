@@ -168,12 +168,15 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { advertiserId = 7392214, campaignName = "", advertiserName = "", brandName = "", sourceFilename = "", sourceType = "tags",
-      creatives = [], trackingPixel = "", isPolitical = false, languageId = 8, brandId = null, brandUrl = null, sla = 0,
+      creatives = [], trackingPixel = "", isPolitical = false, languageId = 8, brandId = null, brandUrl: rawBrandUrl = null, sla = 0,
     } = body as { advertiserId?: number; campaignName?: string; advertiserName?: string; brandName?: string; sourceFilename?: string; sourceType?: string;
       creatives: Array<{ name: string; dimensions: string; jsTag: string; clickUrl?: string; type?: string; vastTag?: string; trackers?: unknown[] }>;
       trackingPixel?: string; isPolitical?: boolean; languageId?: number; brandId?: number | null; brandUrl?: string | null; sla?: number; };
 
     if (!creatives.length) return new Response(JSON.stringify({ error: "No creatives provided" }), { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+
+    // Normalize brandUrl — ensure https:// prefix
+    const brandUrl = rawBrandUrl && !/^https?:\/\//i.test(rawBrandUrl.trim()) ? 'https://' + rawBrandUrl.trim() : rawBrandUrl;
 
     const { data: batchData, error: batchError } = await supabase.from("creative_batches").insert({
       user_email: user.email, user_name: user.user_metadata?.full_name || user.email,
