@@ -7,7 +7,8 @@ const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"
 let cachedToken: string|null = null, tokenExp = 0;
 
 async function importKey(pem: string): Promise<CryptoKey> {
-  const b = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/\n/g,'').replace(/
+  const b = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/
+/g,'').replace(/
 /g,'').replace(/\s/g,'');
   return crypto.subtle.importKey('pkcs8',Uint8Array.from(atob(b),c=>c.charCodeAt(0)),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
 }
@@ -29,10 +30,10 @@ async function getToken(): Promise<string> {
   return cachedToken!;
 }
 
-function normalizeTrackerInput(t: unknown): {url: string; format: string} {
+function normalizeTrackerInput(t: unknown): {url: string; format: string; eventType?: string} {
   if (typeof t === 'string') return {url: t, format: 'url-image'};
-  const obj = t as {url?: string; format?: string};
-  return {url: obj.url || '', format: obj.format || 'url-image'};
+  const obj = t as {url?: string; format?: string; eventType?: string};
+  return {url: obj.url || '', format: obj.format || 'url-image', eventType: obj.eventType};
 }
 
 interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers?:unknown[]; duration?:number; thumbnailUrl?:string; html5PreviewUrl?:string; }
@@ -56,15 +57,30 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
     // Normalize landingPage URL
     const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
-    // Collect tracker URLs for appendedTag
+    // DV360 thirdPartyUrls type mapping for video events
+    const DV360_EVENT_MAP: Record<string, string> = {
+      impression: 'THIRD_PARTY_URL_TYPE_IMPRESSION',
+      start: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_START',
+      first_quartile: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_FIRST_QUARTILE',
+      midpoint: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_MIDPOINT',
+      third_quartile: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_THIRD_QUARTILE',
+      completion: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_COMPLETE',
+      click: 'THIRD_PARTY_URL_TYPE_CLICK_TRACKING',
+      skip: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_SKIP',
+      error: 'THIRD_PARTY_URL_TYPE_IMPRESSION', // no error type in DV360, fallback to impression
+    };
     const allTrackerUrls: Array<{type: string; url: string}> = [];
     const seen = new Set<string>();
     for (const t of normalizedTrackers) {
-      if (seen.has(t.url)) continue;
-      seen.add(t.url);
-      allTrackerUrls.push({type: 'THIRD_PARTY_URL_TYPE_IMPRESSION', url: t.url});
+      const key = t.url + '|' + (t.eventType || 'impression');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const dv360Type = isVideo
+        ? (DV360_EVENT_MAP[t.eventType || 'impression'] || 'THIRD_PARTY_URL_TYPE_IMPRESSION')
+        : 'THIRD_PARTY_URL_TYPE_IMPRESSION';
+      allTrackerUrls.push({type: dv360Type, url: t.url});
     }
-    console.log(`[dv360-asset] Uploading ${input.fileName} (${bytes.length} bytes, ${input.mimeType}), type=${input.type}`);
+    console.log(`[dv360-asset] Uploading ${input.fileName} (${bytes.length} bytes, ${input.mimeType}), type=${input.type}, trackers=${allTrackerUrls.length}, events=${allTrackerUrls.map(t=>t.type).join(',')}`);
     if (isVideo && bytes.length < 1000) { return {name:input.name, success:false, error:`File too small (${bytes.length} bytes)`, step:'validate'}; }
 
     const boundary = '----DV360' + Date.now() + Math.random().toString(36).substr(2,8);
