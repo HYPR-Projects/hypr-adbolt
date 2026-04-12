@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { LoginScreen } from '@/components/LoginScreen';
 import { Topbar } from '@/components/layout/Topbar';
 import { Toast } from '@/components/layout/Toast';
@@ -44,9 +45,11 @@ export function App() {
       <Topbar />
 
       <div id="main-content">
-        {currentView === 'home' && <FlowSelector />}
-        {currentView === 'wizard' && <WizardShell />}
-        {currentView === 'dashboard' && <Dashboard />}
+        <ErrorBoundary>
+          {currentView === 'home' && <FlowSelector />}
+          {currentView === 'wizard' && <WizardShell />}
+          {currentView === 'dashboard' && <Dashboard />}
+        </ErrorBoundary>
       </div>
 
       <Toast />
