@@ -62,10 +62,20 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       const boundary = '----XH5'+Date.now();
       const enc = new TextEncoder();
       const parts: Uint8Array[] = [];
-      parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\nhtml\r\n`));
-      parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${input.fileName}"\r\nContent-Type: application/zip\r\n\r\n`));
+      parts.push(enc.encode(`--${boundary}
+Content-Disposition: form-data; name="type"
+
+html
+`));
+      parts.push(enc.encode(`--${boundary}
+Content-Disposition: form-data; name="file"; filename="${input.fileName}"
+Content-Type: application/zip
+
+`));
       parts.push(bytes);
-      parts.push(enc.encode(`\r\n--${boundary}--\r\n`));
+      parts.push(enc.encode(`
+--${boundary}--
+`));
       const len=parts.reduce((s,p)=>s+p.length,0); const body=new Uint8Array(len); let o=0; for(const p of parts){body.set(p,o);o+=p.length}
       const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token,'Content-Type':`multipart/form-data; boundary=${boundary}`},body});
       const ud = await ur.json();
@@ -92,10 +102,20 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       const boundary = '----XV'+Date.now();
       const enc = new TextEncoder();
       const parts: Uint8Array[] = [];
-      parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\nvideo\r\n`));
-      parts.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${input.fileName}"\r\nContent-Type: ${input.mimeType}\r\n\r\n`));
+      parts.push(enc.encode(`--${boundary}
+Content-Disposition: form-data; name="type"
+
+video
+`));
+      parts.push(enc.encode(`--${boundary}
+Content-Disposition: form-data; name="file"; filename="${input.fileName}"
+Content-Type: ${input.mimeType}
+
+`));
       parts.push(bytes);
-      parts.push(enc.encode(`\r\n--${boundary}--\r\n`));
+      parts.push(enc.encode(`
+--${boundary}--
+`));
       const len=parts.reduce((s,p)=>s+p.length,0); const body=new Uint8Array(len); let o=0; for(const p of parts){body.set(p,o);o+=p.length}
       const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token,'Content-Type':`multipart/form-data; boundary=${boundary}`},body});
       const uploadText = await ur.text();
@@ -130,7 +150,8 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       };
       if(langId) vastCreative.language = {id: langId};
       if(brandId) vastCreative.brand_id = brandId;
-      if(normalizedTrackers.length) { vastCreative.pixels = normalizedTrackers.slice(0,5).map(t => ({ url: t.url, secure_url: t.url.replace(/^http:/, 'https:'), format: t.format })); }
+      // Note: video trackers go via inline.linear.trackers (VAST events), NOT via pixels
+      // Adding to pixels would duplicate them as generic impression pixels
       const vastBody = JSON.stringify({'creative-vast': vastCreative});
       console.log(`[xandr-asset] POST creative-vast: ${vastBody.substring(0,1000)}`);
       const res = await fetch(`${XANDR_API}/creative-vast?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{ method:'POST', headers:{'Content-Type':'application/json',Authorization:token}, body:vastBody });
