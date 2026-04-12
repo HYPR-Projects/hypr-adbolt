@@ -1,5 +1,6 @@
 import { useWizardStore } from '@/stores/wizard';
 import { useUIStore } from '@/stores/ui';
+import { MODE_LABELS } from '@/types';
 import styles from './WizardSidebar.module.css';
 
 interface WizardSidebarProps {
@@ -14,12 +15,6 @@ export function WizardSidebar({ onExit }: WizardSidebarProps) {
   const surveyEntries = useWizardStore((s) => s.surveyEntries);
   const selectedDsps = useWizardStore((s) => s.selectedDsps);
   const toast = useUIStore((s) => s.toast);
-
-  const MODE_LABELS: Record<string, string> = {
-    tags: 'Embeds & Tags',
-    surveys: 'Surveys',
-    assets: 'Standard Assets',
-  };
 
   const isStepCompleted = (stepKey: string, idx: number): boolean => {
     if (idx >= currentStep) return false;
