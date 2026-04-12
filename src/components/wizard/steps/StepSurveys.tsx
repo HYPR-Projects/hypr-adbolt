@@ -4,6 +4,7 @@ import { useUIStore } from '@/stores/ui';
 import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { ContentCard } from '@/components/shared/ContentCard';
+import { CreativePreviewModal } from '@/components/shared/CreativePreview';
 import { SurveyPicker } from './SurveyPicker';
 import { extractFormId, fetchTypeformTitle, detectVariant } from '@/services/typeform';
 import { SURVEY_SIZES } from '@/types';
@@ -21,6 +22,7 @@ export function StepSurveys() {
   const toast = useUIStore((s) => s.toast);
 
   const [openVariantDD, setOpenVariantDD] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<{ name: string; dimensions: string; tagContent: string } | null>(null);
 
   useEffect(() => {
     const close = () => setOpenVariantDD(null);
@@ -212,14 +214,13 @@ export function StepSurveys() {
                   </div>
                   <button
                     className={styles.urlPreview}
-                    onClick={() => {
-                      const [pw, ph] = entry.size.split('x');
-                      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${u.title || u.formId}</title><style>*{margin:0;padding:0}body{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f0f0f0}</style></head><body><iframe src="https://form.typeform.com/to/${u.formId}" width="${pw}" height="${ph}" frameborder="0" style="border:0;box-shadow:0 4px 24px rgba(0,0,0,.12);border-radius:8px" allowfullscreen></iframe></body></html>`;
-                      const blob = new Blob([html], { type: 'text/html' });
-                      window.open(URL.createObjectURL(blob), '_blank');
-                    }}
+                    onClick={() => setPreviewData({
+                      name: u.title || u.formId,
+                      dimensions: entry.size,
+                      tagContent: `<iframe src="https://form.typeform.com/to/${u.formId}" width="${entry.size.split('x')[0]}" height="${entry.size.split('x')[1]}" frameborder="0" style="border:0;" allowfullscreen></iframe>`,
+                    })}
                     aria-label="Preview"
-                    title="Preview em nova aba"
+                    title="Preview"
                   >
                     <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 4C5 4 1.7 8.3 1 10c.7 1.7 4 6 9 6s8.3-4.3 9-6c-.7-1.7-4-6-9-6z" /><circle cx="10" cy="10" r="3" /></svg>
                   </button>
@@ -315,6 +316,17 @@ export function StepSurveys() {
         onNext={currentStep < config.steps.length - 1 ? () => setStep(currentStep + 1) : undefined}
       />
 
+      {previewData && (
+        <CreativePreviewModal
+          data={{
+            name: previewData.name,
+            dimensions: previewData.dimensions,
+            type: 'survey',
+            tagContent: previewData.tagContent,
+          }}
+          onClose={() => setPreviewData(null)}
+        />
+      )}
     </div>
   );
 }
