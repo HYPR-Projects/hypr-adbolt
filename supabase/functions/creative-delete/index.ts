@@ -73,11 +73,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
   try {
-    const ah = req.headers.get('authorization');
-    if (!ah?.startsWith('Bearer ')) return new Response(JSON.stringify({ error: 'Auth token missing' }), { status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const { data: { user }, error: ae } = await sb.auth.getUser(ah.replace('Bearer ', ''));
-    if (ae || !user) return new Response(JSON.stringify({ error: 'User not authenticated' }), { status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     const body = await req.json();
     const { creativeIds } = body as { creativeIds: string[] };
     if (!creativeIds?.length) return new Response(JSON.stringify({ error: 'creativeIds required' }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
