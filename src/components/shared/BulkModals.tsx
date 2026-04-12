@@ -267,6 +267,18 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
     onClose();
   };
 
+  // Warn if URL doesn't look like a tracking pixel
+  const trackerWarning = (() => {
+    const v = raw.trim();
+    if (!v || v.startsWith('<')) return null; // HTML tags are fine, validated elsewhere
+    const clean = v.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    // Generic domain with no path (e.g. "jenifer.com", "amora.com")
+    if (/^[^/]+\.[a-z]{2,}$/i.test(clean)) {
+      return 'Essa URL parece um domínio genérico, não um pixel de tracking. Pixels normalmente têm um path (ex: dominio.com/track/pixel.gif)';
+    }
+    return null;
+  })();
+
   const isActive = (dsp: DspType | 'all'): boolean => {
     if (dsp === 'all') return scope === 'all';
     if (scope === 'all') return false;
@@ -296,6 +308,11 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
           placeholder="Cole a URL ou tag do pixel..."
           onKeyDown={(e) => { if (e.key === 'Enter') handleApply(); }}
         />
+        {trackerWarning && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--warning)', marginTop: 6, lineHeight: 1.5 }}>
+            ⚠ {trackerWarning}
+          </div>
+        )}
       </div>
 
       <div className={styles.field}>
