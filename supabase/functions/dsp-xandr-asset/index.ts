@@ -49,7 +49,14 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
     const normalizedTrackers = rawTrackers.map(t => normalizeTrackerInput(t)).filter(n => n.url);
     let assetType = input.type;
     if (input.mimeType?.startsWith('video/') && assetType !== 'video') assetType = 'video';
-    console.log(`[xandr] Processing: ${input.name}, type=${assetType}, size=${bytes.length}, brandUrl=${brandUrl}, landingPage=${lp}`);
+
+    // Derive click destination and audit URL consistently:
+    // - clickDest: where the user goes when clicking the ad (asset landing page, fallback to brandUrl)
+    // - auditUrl: brand URL for Xandr audit review (brandUrl, fallback to landing page)
+    const clickDest = lp || brandUrl || '';
+    const auditUrl = brandUrl || lp || '';
+
+    console.log(`[xandr-asset] Processing: ${input.name}, type=${assetType}, size=${bytes.length}, clickDest=${clickDest}, auditUrl(brandUrl)=${auditUrl}, trackers=${normalizedTrackers.length}`);
 
     if (assetType === 'html5') {
       const boundary = '----XH5'+Date.now();
@@ -64,7 +71,15 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       const ud = await ur.json();
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload: ${JSON.stringify(ud.response||ud).substring(0,500)}`,step:'upload'};
-      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:8606},media_assets:[{media_asset_id:ma.id}],click_url:lp||'',landing_page_url:brandUrl||lp||'',brand_url:brandUrl||lp||'',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
+      const cr:Record<string,unknown> = {
+        name:input.name, advertiser_id:advId, width:w, height:h,
+        template:{id:8606}, media_assets:[{media_asset_id:ma.id}],
+        click_url: clickDest,
+        landing_page_url: auditUrl,
+        brand_url: auditUrl,
+        mobile: auditUrl ? { alternative_landing_page_url: auditUrl } : undefined,
+        allow_audit:true, allow_ssl_audit:true, is_self_audited:false, sla:sla||0
+      };
       if(langId)cr.language={id:langId}; if(brandId)cr.brand_id=brandId;
       if(normalizedTrackers.length)cr.pixels=normalizedTrackers.slice(0,5).map(t=>({url:t.url,secure_url:t.url.replace(/^http:/,'https:'),format:t.format}));
       const res = await fetch(`${XANDR_API}/creative-html?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:token},body:JSON.stringify({'creative-html':cr})});
@@ -73,7 +88,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       return {name:input.name,success:false,error:rd.response?.error_message||JSON.stringify(rd.response||rd).substring(0,500),step:'create'};
 
     } else if (assetType === 'video') {
-      console.log(`[xandr] VIDEO upload for ${input.name}`);
+      console.log(`[xandr-asset] VIDEO upload for ${input.name}`);
       const boundary = '----XV'+Date.now();
       const enc = new TextEncoder();
       const parts: Uint8Array[] = [];
@@ -104,12 +119,11 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
           })),
         };
       }
-      const assetLp = lp || brandUrl || '';
-      const auditUrl = brandUrl || lp || '';
       const vastCreative: Record<string,unknown> = {
         name: input.name, advertiser_id: advId, template: {id: 6439},
         media_assets: [{media_asset_id: ma.id}],
-        click_url: assetLp, click_target: assetLp, landing_page_url: auditUrl,
+        click_url: clickDest, click_target: clickDest,
+        landing_page_url: auditUrl,
         mobile: auditUrl ? { alternative_landing_page_url: auditUrl } : undefined,
         video_attribute: { duration_ms: durationMs, is_skippable: false, inline: inlineObj },
         allow_audit: true, allow_ssl_audit: true, is_self_audited: false, sla: sla || 0
@@ -118,18 +132,27 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       if(brandId) vastCreative.brand_id = brandId;
       if(normalizedTrackers.length) { vastCreative.pixels = normalizedTrackers.slice(0,5).map(t => ({ url: t.url, secure_url: t.url.replace(/^http:/, 'https:'), format: t.format })); }
       const vastBody = JSON.stringify({'creative-vast': vastCreative});
-      console.log(`[xandr] POST creative-vast: ${vastBody.substring(0,1000)}`);
+      console.log(`[xandr-asset] POST creative-vast: ${vastBody.substring(0,1000)}`);
       const res = await fetch(`${XANDR_API}/creative-vast?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{ method:'POST', headers:{'Content-Type':'application/json',Authorization:token}, body:vastBody });
       const resText = await res.text();
-      console.log(`[xandr] Response: ${resText.substring(0,500)}`);
+      console.log(`[xandr-asset] Response: ${resText.substring(0,500)}`);
       let rd; try{rd=JSON.parse(resText)}catch{return{name:input.name,success:false,error:`VAST parse: ${resText.substring(0,300)}`,step:'create'}}
       const vc = rd.response?.['creative-vast'];
       if(vc?.id) return {name:input.name,success:true,creativeId:vc.id,_input:input};
       return {name:input.name,success:false,error:`creative-vast: ${rd.response?.error_message||JSON.stringify(rd.response||rd).substring(0,500)}`,step:'create'};
 
     } else {
+      // Display image (template 4)
       const b64 = base64Encode(bytes);
-      const cr:Record<string,unknown> = {name:input.name,advertiser_id:advId,width:w,height:h,template:{id:4},format:'image',content:b64,file_name:input.fileName,click_url:lp||'',landing_page_url:brandUrl||lp||'',brand_url:brandUrl||lp||'',mobile:brandUrl?{alternative_landing_page_url:brandUrl}:undefined,audit_status:'pending',allow_audit:true,allow_ssl_audit:true,is_self_audited:false,sla:sla||0};
+      const cr:Record<string,unknown> = {
+        name:input.name, advertiser_id:advId, width:w, height:h,
+        template:{id:4}, format:'image', content:b64, file_name:input.fileName,
+        click_url: clickDest,
+        landing_page_url: auditUrl,
+        brand_url: auditUrl,
+        mobile: auditUrl ? { alternative_landing_page_url: auditUrl } : undefined,
+        audit_status:'pending', allow_audit:true, allow_ssl_audit:true, is_self_audited:false, sla:sla||0
+      };
       if(langId)cr.language={id:langId}; if(brandId)cr.brand_id=brandId;
       if(normalizedTrackers.length)cr.pixels=normalizedTrackers.slice(0,5).map(t=>({url:t.url,secure_url:t.url.replace(/^http:/,'https:'),format:t.format}));
       const res = await fetch(`${XANDR_API}/creative?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:token},body:JSON.stringify({creative:cr})});
