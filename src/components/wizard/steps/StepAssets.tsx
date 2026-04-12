@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { useWizardStore } from '@/stores/wizard';
 import { useUIStore } from '@/stores/ui';
 import { UploadZone } from '@/components/shared/UploadZone';
@@ -187,8 +187,24 @@ export function StepAssets() {
   const [trackerOpen, setTrackerOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<AssetEntry | null>(null);
 
+  // Track object URLs for proper cleanup (prevent memory leaks)
+  const previewUrlRef = useRef<string | null>(null);
+
+  // Cleanup object URL when preview closes
+  useEffect(() => {
+    if (!previewAsset && previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  }, [previewAsset]);
+
   // ── Preview handler ──
   const openPreview = useCallback((asset: AssetEntry) => {
+    // Revoke previous URL before creating new one
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     setPreviewAsset(asset);
   }, []);
 
@@ -196,10 +212,17 @@ export function StepAssets() {
     if (!a) return null;
     const base = { name: a.name, dimensions: a.dimensions };
     if (a.type === 'display') {
-      return { ...base, type: 'display' as const, imageUrl: URL.createObjectURL(a.originalFile), mimeType: a.originalFile.type, thumbUrl: a.thumb };
+      // Revoke old URL before creating new
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(a.originalFile);
+      previewUrlRef.current = url;
+      return { ...base, type: 'display' as const, imageUrl: url, mimeType: a.originalFile.type, thumbUrl: a.thumb };
     }
     if (a.type === 'video') {
-      return { ...base, type: 'video' as const, videoUrl: URL.createObjectURL(a.originalFile), thumbUrl: a.thumb };
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      const url = URL.createObjectURL(a.originalFile);
+      previewUrlRef.current = url;
+      return { ...base, type: 'video' as const, videoUrl: url, thumbUrl: a.thumb };
     }
     if (a.type === 'html5' && a.html5Content) {
       return { ...base, type: 'html5' as const, html5Content: a.html5Content, thumbUrl: a.thumb };
