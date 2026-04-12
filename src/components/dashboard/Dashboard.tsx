@@ -124,9 +124,22 @@ export function Dashboard() {
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState('');
+  const [deleteDspFilter, setDeleteDspFilter] = useState<Set<string>>(new Set());
+
+  // Compute DSP breakdown for selected groups
+  const deleteBreakdown = (() => {
+    if (!deleteConfirmVisible) return { dsps: {} as Record<string, number>, total: 0 };
+    const keys = [...store.selectedKeys];
+    const groups = keys.map((k) => store.groups.find((g) => g._gid === k)).filter(Boolean) as CreativeGroup[];
+    const dsps: Record<string, number> = {};
+    groups.forEach((g) => Object.keys(g.dsps).forEach((dsp) => { dsps[dsp] = (dsps[dsp] || 0) + 1; }));
+    const total = Object.entries(dsps).reduce((sum, [dsp, count]) => sum + (deleteDspFilter.size === 0 || deleteDspFilter.has(dsp) ? count : 0), 0);
+    return { dsps, total };
+  })();
 
   const handleBulkDelete = useCallback(() => {
     if (!selectedCount) return;
+    setDeleteDspFilter(new Set());
     setDeleteConfirmVisible(true);
   }, [selectedCount]);
 
@@ -138,7 +151,20 @@ export function Dashboard() {
     const keys = [...store.selectedKeys];
     const groups = keys.map((k) => store.groups.find((g) => g._gid === k)).filter(Boolean) as CreativeGroup[];
     const allIds: string[] = [];
-    groups.forEach((g) => Object.values(g.dsps).forEach((d) => allIds.push(d.id)));
+    groups.forEach((g) => {
+      Object.entries(g.dsps).forEach(([dsp, d]) => {
+        // If no DSP filter set, delete all; otherwise only selected DSPs
+        if (deleteDspFilter.size === 0 || deleteDspFilter.has(dsp)) {
+          allIds.push(d.id);
+        }
+      });
+    });
+
+    if (!allIds.length) {
+      toast('Nenhum criativo selecionado para deletar', 'error');
+      setIsDeleting(false);
+      return;
+    }
 
     try {
       const CHUNK = 20;
@@ -162,7 +188,7 @@ export function Dashboard() {
       await store.loadCreatives();
     } catch (err) { toast('Erro: ' + (err as Error).message, 'error'); }
     finally { setIsDeleting(false); setDeleteProgress(''); }
-  }, [session?.access_token, store.selectedKeys, store.groups, toast]);
+  }, [session?.access_token, store.selectedKeys, store.groups, toast, deleteDspFilter]);
 
   const bulkActions = [
     { label: 'Editar', onClick: () => openBulkEdit() },
@@ -866,11 +892,63 @@ export function Dashboard() {
       />
 
       {/* Delete confirmation modal */}
-      <Modal visible={deleteConfirmVisible} onClose={() => setDeleteConfirmVisible(false)} title="Confirmar exclusão" maxWidth="420px">
+      <Modal visible={deleteConfirmVisible} onClose={() => setDeleteConfirmVisible(false)} title="Confirmar exclusão" maxWidth="460px">
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-sec)', lineHeight: 1.6 }}>
-          <p style={{ margin: '0 0 12px' }}><strong>{selectedCount}</strong> criativo(s) serão removidos:</p>
-          <p style={{ margin: '0 0 4px', fontSize: 'var(--fs-xs)', color: 'var(--text-tri)' }}>Xandr — deletados permanentemente</p>
-          <p style={{ margin: '0 0 16px', fontSize: 'var(--fs-xs)', color: 'var(--text-tri)' }}>DV360 — arquivados</p>
+          <p style={{ margin: '0 0 16px' }}><strong>{selectedCount}</strong> grupo(s) selecionado(s). Escolha de quais DSPs deseja remover:</p>
+
+          {/* DSP selector */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              className={styles.btn}
+              style={{
+                flex: 1, padding: '10px 12px', textAlign: 'center',
+                background: deleteDspFilter.size === 0 ? 'var(--accent-dim)' : 'var(--bg-surface)',
+                borderColor: deleteDspFilter.size === 0 ? 'var(--accent)' : 'var(--border)',
+                fontWeight: deleteDspFilter.size === 0 ? 600 : 400,
+              }}
+              onClick={() => setDeleteDspFilter(new Set())}
+            >
+              Todas DSPs
+            </button>
+            {Object.entries(deleteBreakdown.dsps).map(([dsp, count]) => {
+              const active = deleteDspFilter.has(dsp);
+              return (
+                <button
+                  key={dsp}
+                  className={styles.btn}
+                  style={{
+                    flex: 1, padding: '10px 12px', textAlign: 'center',
+                    background: active ? 'var(--accent-dim)' : 'var(--bg-surface)',
+                    borderColor: active ? 'var(--accent)' : 'var(--border)',
+                    fontWeight: active ? 600 : 400,
+                  }}
+                  onClick={() => {
+                    const next = new Set(deleteDspFilter);
+                    if (active) { next.delete(dsp); } else { next.add(dsp); }
+                    setDeleteDspFilter(next);
+                  }}
+                >
+                  <div>{DSP_LABELS[dsp as DspType] || dsp}</div>
+                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)', fontWeight: 400 }}>{count} registro(s)</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Summary */}
+          <div style={{ padding: '10px 14px', borderRadius: 'var(--r-xs)', background: 'var(--bg-base)', marginBottom: 12 }}>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)' }}>
+              {deleteBreakdown.total} registro(s) serão removidos
+              {deleteDspFilter.size > 0 && ` (apenas ${[...deleteDspFilter].map(d => DSP_LABELS[d as DspType] || d).join(' e ')})`}
+            </div>
+            {(deleteDspFilter.size === 0 || deleteDspFilter.has('xandr')) && deleteBreakdown.dsps['xandr'] && (
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)', marginTop: 4 }}>Xandr — deletados permanentemente</div>
+            )}
+            {(deleteDspFilter.size === 0 || deleteDspFilter.has('dv360')) && deleteBreakdown.dsps['dv360'] && (
+              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)', marginTop: 2 }}>DV360 — arquivados</div>
+            )}
+          </div>
+
           <p style={{ margin: 0, fontSize: 'var(--fs-xs)', color: 'var(--error)' }}>Essa ação não pode ser desfeita.</p>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
@@ -879,8 +957,9 @@ export function Dashboard() {
             className={styles.btn}
             style={{ background: 'var(--error)', color: '#fff', borderColor: 'var(--error)' }}
             onClick={executeDelete}
+            disabled={deleteBreakdown.total === 0}
           >
-            Deletar
+            Deletar {deleteBreakdown.total > 0 ? `(${deleteBreakdown.total})` : ''}
           </button>
         </div>
       </Modal>
