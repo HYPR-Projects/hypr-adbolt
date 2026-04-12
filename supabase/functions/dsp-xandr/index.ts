@@ -112,7 +112,7 @@ async function createXandrVastCreative(token: string, advertiserId: number, inpu
   if (trackers.length > 0) linearElement.trackers = trackers;
   const creativeVast: Record<string, unknown> = {
     name: input.name, advertiser_id: advertiserId, width: input.width || 1, height: input.height || 1,
-    template: { id: 6439 }, click_url: input.brandUrl || "",
+    template: { id: 6439 }, click_url: input.brandUrl || "", brand_url: input.brandUrl || "", landing_page_url: input.brandUrl || "",
     audit_status: "pending",
     allow_audit: true, allow_ssl_audit: true, is_self_audited: false, sla: input.sla || 0,
     video_attribute: { is_skippable: false, duration_ms: 30000,
@@ -132,7 +132,7 @@ async function createXandrVastCreative(token: string, advertiserId: number, inpu
         try {
           const putRes = await fetch(`${XANDR_API}/creative-vast?id=${vastId}&member_id=${MEMBER_ID}&advertiser_id=${advId}`, {
             method: "PUT", headers: { "Content-Type": "application/json", Authorization: token },
-            body: JSON.stringify({ "creative-vast": { landing_page_url: input.brandUrl } }),
+            body: JSON.stringify({ "creative-vast": { landing_page_url: input.brandUrl, brand_url: input.brandUrl } }),
           });
           const putData = await putRes.json();
           const putOk = putData.response?.status === "OK";
@@ -143,7 +143,7 @@ async function createXandrVastCreative(token: string, advertiserId: number, inpu
             // Fallback: try /creative endpoint
             const put2 = await fetch(`${XANDR_API}/creative?id=${vastId}&member_id=${MEMBER_ID}&advertiser_id=${advId}`, {
               method: "PUT", headers: { "Content-Type": "application/json", Authorization: token },
-              body: JSON.stringify({ creative: { landing_page_url: input.brandUrl } }),
+              body: JSON.stringify({ creative: { landing_page_url: input.brandUrl, brand_url: input.brandUrl } }),
             });
             const put2Data = await put2.json();
             console.log(`[xandr] /creative fallback PUT: ok=${put2Data.response?.status === "OK"} lp=${put2Data.response?.creative?.landing_page_url || "(none)"}`);
@@ -162,7 +162,7 @@ async function createXandrDisplayCreative(token: string, advertiserId: number, i
   const creative: Record<string, unknown> = {
     name: input.name, advertiser_id: advertiserId, width: input.width, height: input.height,
     template: { id: 6 }, content, content_secure: content, original_content: originalContent, original_content_secure: originalContent,
-    click_url: "", landing_page_url: input.brandUrl || "",
+    click_url: "", landing_page_url: input.brandUrl || "", brand_url: input.brandUrl || "",
     mobile: input.brandUrl ? { alternative_landing_page_url: input.brandUrl } : undefined,
     audit_status: "pending", allow_audit: true, allow_ssl_audit: true, is_self_audited: false, sla: input.sla || 0,
   };
