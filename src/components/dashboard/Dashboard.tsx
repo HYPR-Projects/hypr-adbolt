@@ -172,60 +172,94 @@ export function Dashboard() {
   ];
 
   // ── Preview state ──
-  const [previewGroup, setPreviewGroup] = useState<CreativeGroup | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    name: string; dimensions: string;
+    type: 'display' | 'video' | 'html5' | '3p-tag';
+    imageUrl?: string; videoUrl?: string; tagContent?: string;
+    html5Content?: string; html5Url?: string; mimeType?: string; thumbUrl?: string;
+  } | null>(null);
 
-  const getPreviewDataFromGroup = useCallback((g: CreativeGroup) => {
+  const openPreview = useCallback(async (g: CreativeGroup) => {
     const isHtml5 = g.asset_filename?.toLowerCase().endsWith('.zip') || g.asset_mime_type?.includes('zip');
     const isVideo = g.creative_type === 'video';
+    const isAsset = !!g.asset_filename && !isHtml5;
     const base = { name: g.name, dimensions: g.dimensions };
 
-    // HTML5 with preview URL stored in js_tag (uploaded during activation)
+    // HTML5 with preview URL stored in js_tag
     if (isHtml5) {
-      // Check group-level js_tag first
-      if (g.js_tag && g.js_tag.startsWith('http')) {
-        return { ...base, type: 'html5' as const, html5Url: g.js_tag, thumbUrl: g.thumbnail_url || undefined };
+      const previewUrl = g.js_tag?.startsWith('http') ? g.js_tag
+        : Object.values(g.dsps).find(d => d.js_tag?.startsWith('http'))?.js_tag;
+      if (previewUrl) {
+        setPreviewData({ ...base, type: 'html5', html5Url: previewUrl, thumbUrl: g.thumbnail_url || undefined });
+        return;
       }
-      // Check DSP details for HTML5 preview URL
-      const dspWithPreview = Object.values(g.dsps).find(d => d.js_tag && d.js_tag.startsWith('http'));
-      if (dspWithPreview?.js_tag) {
-        return { ...base, type: 'html5' as const, html5Url: dspWithPreview.js_tag, thumbUrl: g.thumbnail_url || undefined };
-      }
-      // HTML5 with only thumbnail (preview upload may have failed)
       if (g.thumbnail_url) {
-        return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, thumbUrl: g.thumbnail_url };
+        setPreviewData({ ...base, type: 'display', imageUrl: g.thumbnail_url, thumbUrl: g.thumbnail_url });
+        return;
       }
-      // HTML5 with no preview at all
-      return { ...base, type: 'html5' as const, thumbUrl: undefined };
+      setPreviewData({ ...base, type: 'html5' });
+      return;
     }
 
-    // VAST tag — show informational placeholder
+    // VAST tag placeholder
     const dspWithVast = Object.values(g.dsps).find(d => d.vast_tag);
     if (isVideo && dspWithVast?.vast_tag) {
-      const vastSnippet = (dspWithVast.vast_tag || '').substring(0, 120);
-      return {
-        ...base,
-        type: '3p-tag' as const,
-        tagContent: `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-family:system-ui,sans-serif;color:#888;gap:8px;padding:20px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><div style="font-size:13px;font-weight:600">VAST Tag</div><div style="font-size:11px;opacity:0.6;word-break:break-all;max-width:90%">${vastSnippet}...</div></div>`,
-      };
+      const snippet = (dspWithVast.vast_tag || '').substring(0, 120);
+      setPreviewData({
+        ...base, type: '3p-tag',
+        tagContent: `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-family:system-ui,sans-serif;color:#888;gap:8px;padding:20px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><div style="font-size:13px;font-weight:600">VAST Tag</div><div style="font-size:11px;opacity:0.6;word-break:break-all;max-width:90%">${snippet}...</div></div>`,
+      });
+      return;
     }
 
-    // Has thumbnail → show as image (images, videos, GIFs)
+    // Asset (image/GIF/video) — try signed URL from storage_path in dsp_config
+    if (isAsset) {
+      const storagePath = (() => {
+        for (const d of Object.values(g.dsps)) {
+          const cfg = (typeof d.dsp_config === 'string' ? JSON.parse(d.dsp_config || '{}') : d.dsp_config) || {};
+          if (cfg.storage_path) return cfg.storage_path as string;
+        }
+        return null;
+      })();
+
+      if (storagePath) {
+        // Show thumb immediately while signed URL loads
+        if (g.thumbnail_url) {
+          setPreviewData({ ...base, type: isVideo ? 'video' : 'display', imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined });
+        }
+        try {
+          const { supabase } = await import('@/services/supabase');
+          const { data } = await supabase.storage.from('asset-uploads').createSignedUrl(storagePath, 3600);
+          if (data?.signedUrl) {
+            const isGif = g.asset_mime_type?.includes('gif');
+            if (isVideo) {
+              setPreviewData({ ...base, type: 'video', videoUrl: data.signedUrl, thumbUrl: g.thumbnail_url || undefined });
+            } else {
+              setPreviewData({ ...base, type: 'display', imageUrl: data.signedUrl, mimeType: g.asset_mime_type || undefined });
+            }
+            return;
+          }
+        } catch (err) {
+          console.warn('Signed URL failed:', err);
+        }
+      }
+    }
+
+    // Has thumbnail → fallback
     if (g.thumbnail_url) {
-      return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined };
+      setPreviewData({ ...base, type: 'display', imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined });
+      return;
     }
 
-    // 3P tag with js_tag content → render in sandboxed iframe
-    if (g.js_tag && !g.js_tag.startsWith('http')) {
-      return { ...base, type: '3p-tag' as const, tagContent: g.js_tag };
+    // 3P tag with js_tag content
+    const tagContent = (g.js_tag && !g.js_tag.startsWith('http')) ? g.js_tag
+      : Object.values(g.dsps).find(d => d.js_tag && !d.js_tag.startsWith('http'))?.js_tag;
+    if (tagContent) {
+      setPreviewData({ ...base, type: '3p-tag', tagContent });
+      return;
     }
 
-    // Check DSP details for js_tag
-    const dspWithTag = Object.values(g.dsps).find(d => d.js_tag && !d.js_tag.startsWith('http'));
-    if (dspWithTag?.js_tag) {
-      return { ...base, type: '3p-tag' as const, tagContent: dspWithTag.js_tag };
-    }
-
-    return { ...base, type: 'display' as const, thumbUrl: undefined };
+    setPreviewData({ ...base, type: 'display' });
   }, []);
 
   // ── Edit modal state ──
@@ -594,7 +628,7 @@ export function Dashboard() {
                   onToggleExpand={() => store.toggleExpand(g._gid)}
                   onToggleSelect={() => store.toggleSelect(g._gid)}
                   onEdit={() => openSingleEdit(g)}
-                  onPreview={() => setPreviewGroup(g)}
+                  onPreview={() => openPreview(g)}
                   delay={gi * 25}
                 />
               );
@@ -816,8 +850,8 @@ export function Dashboard() {
       </Modal>
 
       <CreativePreviewModal
-        data={previewGroup ? getPreviewDataFromGroup(previewGroup) : null}
-        onClose={() => setPreviewGroup(null)}
+        data={previewData}
+        onClose={() => setPreviewData(null)}
       />
 
       {/* Delete confirmation modal */}
