@@ -1,10 +1,7 @@
 /// <reference types="vite/client" />
 
 /* CDN globals loaded via <script> tags */
-interface Window {
-  XLSX: typeof import('xlsx');
-  JSZip: typeof import('jszip');
+declare interface Window {
+  XLSX: any;
+  JSZip: any;
 }
-
-declare const XLSX: typeof import('xlsx');
-declare const JSZip: typeof import('jszip');
