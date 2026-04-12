@@ -92,11 +92,12 @@
   color: var(--text-sec);
   flex-shrink: 0;
   transition: all var(--dur);
+  overflow: hidden;
 }
 
 .selected .icon {
-  background: var(--accent);
-  color: var(--text-on-accent);
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
 .info {
