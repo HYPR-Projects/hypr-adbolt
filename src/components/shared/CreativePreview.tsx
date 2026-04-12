@@ -162,11 +162,21 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
       const top = Math.round((window.screen.height - popH) / 2);
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${data.name}</title><style>*{margin:0;padding:0}body{display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;background:#f4f4f4}</style></head><body>${data.tagContent}</body></html>`;
       const blob = new Blob([html], { type: 'text/html' });
-      window.open(
-        URL.createObjectURL(blob),
+      const blobUrl = URL.createObjectURL(blob);
+      const popup = window.open(
+        blobUrl,
         'survey_preview',
         `width=${popW},height=${popH},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no`,
       );
+      // Revoke blob URL after popup loads to free memory
+      if (popup) {
+        popup.addEventListener('load', () => URL.revokeObjectURL(blobUrl));
+      } else {
+        // Popup blocked — revoke immediately and notify user
+        URL.revokeObjectURL(blobUrl);
+        alert('O popup de preview foi bloqueado pelo navegador. Permita popups para adbolt.hypr.mobi.');
+        return null;
+      }
       // Auto-close the modal since content is in the popup
       onClose();
       return null;
