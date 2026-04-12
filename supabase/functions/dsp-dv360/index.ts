@@ -19,12 +19,46 @@ function parseDimensions(dim: string): { w: number; h: number } {
 }
 
 
-// Extract ClickThrough URL from VAST XML tag URL (fetches and parses the VAST)
-function extractClickThroughFromTag(tagContent: string): string | null {
-  // Try to extract from inline VAST XML
-  const ctMatch = tagContent.match(/<ClickThrough[^>]*>\s*<!\[CDATA\[([^\]]+)\]\]>/i)
-    || tagContent.match(/<ClickThrough[^>]*>([^<]+)</i);
-  if (ctMatch) return ctMatch[1].trim();
+// Extract ClickThrough URL from VAST — supports both inline XML and pre-fetch URLs
+async function extractClickThroughFromVast(vastInput: string): Promise<string | null> {
+  let xml = vastInput;
+
+  // If it's a URL (not inline XML), fetch the VAST XML
+  if (vastInput.startsWith("http")) {
+    try {
+      // Resolve common macros so the ad server returns valid XML
+      let url = vastInput
+        .replace(/\[timestamp\]/gi, String(Date.now()))
+        .replace(/\[cachebuster\]/gi, String(Math.floor(Math.random() * 1e9)))
+        .replace(/\$\{GDPR\}/g, "0")
+        .replace(/\$\{GDPR_CONSENT_\d+\}/g, "")
+        .replace(/\$\(GDPR\)/g, "0")
+        .replace(/\$\(GDPR_CONSENT_\d+\)/g, "")
+        .replace(/ord=[^;]*/g, "ord=" + Date.now());
+      
+      const res = await fetch(url, {
+        headers: { "Accept": "application/xml, text/xml, */*" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) {
+        console.log(`[dv360] VAST fetch failed: ${res.status} for ${url.substring(0, 100)}`);
+        return null;
+      }
+      xml = await res.text();
+    } catch (e) {
+      console.log(`[dv360] VAST fetch error: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  }
+
+  // Parse ClickThrough from XML (handles CDATA and plain text)
+  const ctMatch = xml.match(/<ClickThrough[^>]*>\s*<!\[CDATA\[([^\]]+)\]\]>/i)
+    || xml.match(/<ClickThrough[^>]*>([^<]+)</i);
+  if (ctMatch) {
+    const url = ctMatch[1].trim();
+    // Validate it looks like a real URL
+    if (url.startsWith("http")) return url;
+  }
   return null;
 }
 
@@ -69,7 +103,7 @@ async function createCreative(
       {
         name: "Landing Page",
         type: "EXIT_EVENT_TYPE_DEFAULT",
-        url: creative.clickUrl || (creative.type === "video" && creative.vastTag ? (extractClickThroughFromTag(creative.vastTag) || "https://www.example.com") : "https://www.example.com"),
+        url: creative.clickUrl || (creative.type === "video" && creative.vastTag ? (await extractClickThroughFromVast(creative.vastTag) || "https://www.example.com") : "https://www.example.com"),
       },
     ],
   };
