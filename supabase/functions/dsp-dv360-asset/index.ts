@@ -1,34 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encode as base64url } from "https://deno.land/std@0.208.0/encoding/base64url.ts";
+import { getDV360Token, DV360_API } from "../_shared/dv360-auth.ts";
 
-const DV360_API = "https://displayvideo.googleapis.com/v4";
 const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type, x-client-info, apikey","Access-Control-Allow-Methods":"POST, OPTIONS"};
-
-let cachedToken: string|null = null, tokenExp = 0;
-
-async function importKey(pem: string): Promise<CryptoKey> {
-  const b = pem.replace(/-----BEGIN PRIVATE KEY-----/,'').replace(/-----END PRIVATE KEY-----/,'').replace(/
-/g,'').replace(/
-/g,'').replace(/\s/g,'');
-  return crypto.subtle.importKey('pkcs8',Uint8Array.from(atob(b),c=>c.charCodeAt(0)),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
-}
-
-async function getToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExp) return cachedToken;
-  const raw = Deno.env.get('DV360_SERVICE_ACCOUNT_KEY');
-  if (!raw) throw new Error('DV360_SERVICE_ACCOUNT_KEY not set');
-  const sa = JSON.parse(raw), now = Math.floor(Date.now()/1000), enc = new TextEncoder();
-  const h = base64url(enc.encode(JSON.stringify({alg:'RS256',typ:'JWT'})));
-  const p = base64url(enc.encode(JSON.stringify({iss:sa.client_email,scope:'https://www.googleapis.com/auth/display-video',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600})));
-  const si = `${h}.${p}`, key = await importKey(sa.private_key);
-  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,enc.encode(si));
-  const jwt = `${si}.${base64url(new Uint8Array(sig))}`;
-  const r = await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`});
-  const d = await r.json();
-  if (!d.access_token) throw new Error('Google OAuth failed');
-  cachedToken = d.access_token; tokenExp = Date.now()+(d.expires_in-60)*1000;
-  return cachedToken!;
-}
 
 function normalizeTrackerInput(t: unknown): {url: string; format: string; eventType?: string} {
   if (typeof t === 'string') return {url: t, format: 'url-image'};
@@ -171,7 +144,7 @@ Deno.serve(async(req)=>{
     const {data:bd} = await sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,brand_name:brandName||null,total_creatives:0,dsps_activated:['dv360']}).select('id').single();
     const batchId = bd?.id||null;
     const t0 = Date.now();
-    const token = await getToken();
+    const token = await getDV360Token();
     const results: Result[] = [];
     const videoCreatives = creatives.filter((c:any) => c.type === 'video');
     const otherCreatives = creatives.filter((c:any) => c.type !== 'video');
