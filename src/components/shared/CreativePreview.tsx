@@ -171,7 +171,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           <iframe
             key={`tag-${previewKey}`}
             srcDoc={srcdoc}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             scrolling="no"
             width={tagW}
             height={tagH}
