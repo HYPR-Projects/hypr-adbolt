@@ -179,21 +179,41 @@ export function Dashboard() {
     const isVideo = g.creative_type === 'video';
     const base = { name: g.name, dimensions: g.dimensions };
 
-    // HTML5 with preview URL stored in js_tag → render in iframe
-    if (isHtml5 && g.js_tag && g.js_tag.startsWith('http')) {
-      return { ...base, type: 'html5' as const, html5Url: g.js_tag };
-    }
-
-    // Check DSP details for HTML5 preview URL
+    // HTML5 with preview URL stored in js_tag (uploaded during activation)
     if (isHtml5) {
+      // Check group-level js_tag first
+      if (g.js_tag && g.js_tag.startsWith('http')) {
+        return { ...base, type: 'html5' as const, html5Url: g.js_tag, thumbUrl: g.thumbnail_url || undefined };
+      }
+      // Check DSP details for HTML5 preview URL
       const dspWithPreview = Object.values(g.dsps).find(d => d.js_tag && d.js_tag.startsWith('http'));
       if (dspWithPreview?.js_tag) {
-        return { ...base, type: 'html5' as const, html5Url: dspWithPreview.js_tag };
+        return { ...base, type: 'html5' as const, html5Url: dspWithPreview.js_tag, thumbUrl: g.thumbnail_url || undefined };
       }
+      // HTML5 with only thumbnail (preview upload may have failed)
+      if (g.thumbnail_url) {
+        return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, thumbUrl: g.thumbnail_url };
+      }
+      // HTML5 with no preview at all
+      return { ...base, type: 'html5' as const, thumbUrl: undefined };
     }
 
-    // Has thumbnail → show as image (images, videos, GIFs, or HTML5 synthetic thumb)
+    // VAST tag — show informational placeholder
+    const dspWithVast = Object.values(g.dsps).find(d => d.vast_tag);
+    if (isVideo && dspWithVast?.vast_tag) {
+      const vastSnippet = (dspWithVast.vast_tag || '').substring(0, 120);
+      return {
+        ...base,
+        type: '3p-tag' as const,
+        tagContent: `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-family:system-ui,sans-serif;color:#888;gap:8px;padding:20px;text-align:center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg><div style="font-size:13px;font-weight:600">VAST Tag</div><div style="font-size:11px;opacity:0.6;word-break:break-all;max-width:90%">${vastSnippet}...</div></div>`,
+      };
+    }
+
+    // Has thumbnail → show as image (images, videos, GIFs)
     if (g.thumbnail_url) {
+      if (isVideo) {
+        return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined };
+      }
       return { ...base, type: 'display' as const, imageUrl: g.thumbnail_url, mimeType: g.asset_mime_type || undefined };
     }
 
@@ -206,12 +226,6 @@ export function Dashboard() {
     const dspWithTag = Object.values(g.dsps).find(d => d.js_tag && !d.js_tag.startsWith('http'));
     if (dspWithTag?.js_tag) {
       return { ...base, type: '3p-tag' as const, tagContent: dspWithTag.js_tag };
-    }
-
-    // VAST tag
-    const dspWithVast = Object.values(g.dsps).find(d => d.vast_tag);
-    if (dspWithVast?.vast_tag) {
-      return { ...base, type: '3p-tag' as const, tagContent: `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#666;font-size:14px">VAST Tag — visual preview não disponível</div>` };
     }
 
     return { ...base, type: 'display' as const, thumbUrl: undefined };
