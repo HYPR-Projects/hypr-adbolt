@@ -18,11 +18,21 @@ function parseDimensions(dim: string): { w: number; h: number } {
   return { w: parseInt(m[1]), h: parseInt(m[2]) };
 }
 
+
+// Extract ClickThrough URL from VAST XML tag URL (fetches and parses the VAST)
+function extractClickThroughFromTag(tagContent: string): string | null {
+  // Try to extract from inline VAST XML
+  const ctMatch = tagContent.match(/<ClickThrough[^>]*>\s*<!\[CDATA\[([^\]]+)\]\]>/i)
+    || tagContent.match(/<ClickThrough[^>]*>([^<]+)</i);
+  if (ctMatch) return ctMatch[1].trim();
+  return null;
+}
+
 // ── Create a single third-party display creative ──
 async function createCreative(
   token: string,
   advertiserId: string,
-  creative: { name: string; dimensions: string; jsTag: string; clickUrl: string; trackers?: Array<{ url: string; format: string }> },
+  creative: { name: string; dimensions: string; jsTag: string; clickUrl: string; type?: string; vastTag?: string; trackers?: Array<{ url: string; format: string }> },
   trackingPixel?: string
 ): Promise<{ success: boolean; name: string; creativeId?: string; error?: string }> {
   const { w, h } = parseDimensions(creative.dimensions);
@@ -59,7 +69,7 @@ async function createCreative(
       {
         name: "Landing Page",
         type: "EXIT_EVENT_TYPE_DEFAULT",
-        url: creative.clickUrl || "https://www.example.com",
+        url: creative.clickUrl || (creative.type === "video" && creative.vastTag ? (extractClickThroughFromTag(creative.vastTag) || "https://www.example.com") : "https://www.example.com"),
       },
     ],
   };
