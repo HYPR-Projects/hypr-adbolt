@@ -168,7 +168,7 @@ export function StepActivate() {
             // Upload thumbnail (non-blocking — store URL on asset for edge functions)
             if (a.thumb && !a._thumbnailUrl) {
               const thumbUrl = await uploadThumbnail(a.thumb, token);
-              if (thumbUrl) (a as any)._thumbnailUrl = thumbUrl;
+              if (thumbUrl) a._thumbnailUrl = thumbUrl;
             }
             // Upload HTML5 preview content (with retry built into uploadHtml5Preview)
             if (a.type === 'html5' && a.html5Content && !a._html5PreviewUrl) {
@@ -176,7 +176,7 @@ export function StepActivate() {
                 ...p, message: `Preview HTML5 ${i + 1}/${assets.length}: ${a.name}`,
               } : p));
               const previewUrl = await uploadHtml5Preview(a.html5Content, token);
-              if (previewUrl) (a as any)._html5PreviewUrl = previewUrl;
+              if (previewUrl) a._html5PreviewUrl = previewUrl;
             }
           } catch (e) { console.error('Upload failed:', a.name, e); }
         }
