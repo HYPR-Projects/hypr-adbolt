@@ -33,7 +33,6 @@ export function Dashboard() {
   // Debounced search to avoid filtering on every keystroke
   const [searchInput, setSearchInput] = useState(store.filterSearch);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- store.setFilterSearch is stable (Zustand)
   const handleSearchChange = useCallback((value: string) => {
     setSearchInput(value);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -41,7 +40,6 @@ export function Dashboard() {
   }, []);
 
   // Load on mount — runs once + reload when tab becomes visible
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- store methods are stable (Zustand)
   useEffect(() => {
     store.loadCreatives();
     // Auto-sync every 5 min
@@ -61,7 +59,6 @@ export function Dashboard() {
     };
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- store methods are stable (Zustand)
   // Keyboard pagination (←/→ when no input is focused)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -218,7 +215,6 @@ export function Dashboard() {
     html5Content?: string; html5Url?: string; mimeType?: string; thumbUrl?: string;
   } | null>(null);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- pure function, no external deps
   const openPreview = useCallback(async (g: CreativeGroup) => {
     const isHtml5 = g.asset_filename?.toLowerCase().endsWith('.zip') || g.asset_mime_type?.includes('zip');
     const isVideo = g.creative_type === 'video';
