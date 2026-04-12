@@ -18,6 +18,8 @@ interface DashboardState {
   filterSize: Set<string>;
   filterFormat: Set<string>;
   filterCreator: Set<string>;
+  filterDateFrom: string; // ISO date string or ''
+  filterDateTo: string; // ISO date string or ''
 
   // ── Pagination ──
   page: number;
@@ -36,6 +38,7 @@ interface DashboardState {
   setFilterDsp: (dsp: string) => void;
   setFilterAudit: (audit: string) => void;
   setFilterSearch: (search: string) => void;
+  setFilterDate: (from: string, to: string) => void;
   toggleFilterMulti: (filterId: 'size' | 'format' | 'creator', value: string) => void;
   clearFilterMulti: (filterId: 'size' | 'format' | 'creator') => void;
   setPage: (page: number) => void;
@@ -174,6 +177,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   filterSize: new Set(),
   filterFormat: new Set(),
   filterCreator: new Set(),
+  filterDateFrom: '',
+  filterDateTo: '',
   page: 0,
   pageSize: 50,
   selectedKeys: new Set(),
@@ -207,6 +212,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setFilterDsp: (dsp) => set({ filterDsp: dsp, page: 0, expandedKey: null }),
   setFilterAudit: (audit) => set({ filterAudit: audit, page: 0, expandedKey: null }),
   setFilterSearch: (search) => set({ filterSearch: search.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(), page: 0, expandedKey: null }),
+  setFilterDate: (from, to) => set({ filterDateFrom: from, filterDateTo: to, page: 0, expandedKey: null }),
 
   toggleFilterMulti: (filterId, value) => {
     const map = { size: 'filterSize', format: 'filterFormat', creator: 'filterCreator' } as const;
@@ -266,6 +272,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     }
     if (s.filterSearch) {
       list = list.filter((g) => g.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(s.filterSearch));
+    }
+    if (s.filterDateFrom) {
+      const from = new Date(s.filterDateFrom).getTime();
+      list = list.filter((g) => new Date(g.created_at).getTime() >= from);
+    }
+    if (s.filterDateTo) {
+      const to = new Date(s.filterDateTo).getTime() + 86400000; // include full day
+      list = list.filter((g) => new Date(g.created_at).getTime() < to);
     }
 
     return list;
