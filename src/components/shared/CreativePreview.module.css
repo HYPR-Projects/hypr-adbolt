@@ -208,6 +208,28 @@
   display: none;
 }
 
+/* No preview available placeholder */
+.noPreview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-tri);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  background: var(--bg-base);
+}
+.noPreview svg {
+  opacity: 0.3;
+}
+.noPreviewSub {
+  font-size: var(--fs-min);
+  font-family: var(--mono);
+  color: var(--text-tri);
+  opacity: 0.6;
+}
+
 /* Loading state inside preview */
 .loading {
   display: flex;
