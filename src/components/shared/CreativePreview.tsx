@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import styles from './CreativePreview.module.css';
 
 // ── Types ──
@@ -78,6 +78,10 @@ export function PreviewThumb({ thumb, type, name, isVideo, onClick }: PreviewThu
 
 export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProps) {
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  // Track which preview we're showing to force iframe re-mount
+  const [previewKey, setPreviewKey] = useState(0);
+  // Track object URLs for cleanup
+  const objectUrlRef = useRef<string | null>(null);
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
@@ -87,10 +91,17 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
     if (data) {
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
+      // Reset iframe state and bump key for fresh mount
       setIframeLoaded(false);
+      setPreviewKey((k) => k + 1);
       return () => {
         document.removeEventListener('keydown', handleEscape);
         document.body.style.overflow = '';
+        // Revoke any object URL from this preview session
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+          objectUrlRef.current = null;
+        }
       };
     }
   }, [data, handleEscape]);
@@ -147,6 +158,7 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             </div>
           )}
           <iframe
+            key={`tag-${previewKey}`}
             srcDoc={srcdoc}
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             scrolling="no"
@@ -172,11 +184,12 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             </div>
           )}
           <iframe
+            key={`h5url-${previewKey}`}
             src={data.html5Url}
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             width={renderW}
             height={renderH}
-            style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
+            style={{ display: 'block', border: 'none', opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
@@ -196,11 +209,12 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
             </div>
           )}
           <iframe
+            key={`h5doc-${previewKey}`}
             srcDoc={data.html5Content}
             sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             width={renderW}
             height={renderH}
-            style={{ opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
+            style={{ display: 'block', border: 'none', opacity: iframeLoaded ? 1 : 0, transition: 'opacity 0.3s' }}
             onLoad={() => setIframeLoaded(true)}
             title={`Preview: ${data.name}`}
           />
@@ -217,10 +231,17 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
       );
     }
 
+    // No preview available — styled placeholder
     return (
       <div className={styles.previewFrame}>
-        <div className={styles.loading} style={{ width: 300, height: 200 }}>
-          Preview não disponível
+        <div className={styles.noPreview} style={{ width: Math.max(renderW, 280), height: Math.max(renderH, 160) }}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+          <span>Preview não disponível</span>
+          <span className={styles.noPreviewSub}>{data.dimensions} · {data.type === '3p-tag' ? '3P Tag' : data.type}</span>
         </div>
       </div>
     );
