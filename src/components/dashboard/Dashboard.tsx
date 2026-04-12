@@ -311,7 +311,7 @@ export function Dashboard() {
   // ── Preview state ──
   const [previewData, setPreviewData] = useState<{
     name: string; dimensions: string;
-    type: 'display' | 'video' | 'html5' | '3p-tag';
+    type: 'display' | 'video' | 'html5' | '3p-tag' | 'survey';
     imageUrl?: string; videoUrl?: string; tagContent?: string;
     html5Content?: string; html5Url?: string; mimeType?: string; thumbUrl?: string;
   } | null>(null);
@@ -391,7 +391,8 @@ export function Dashboard() {
     const tagContent = (g.js_tag && !g.js_tag.startsWith('http')) ? g.js_tag
       : Object.values(g.dsps).find(d => d.js_tag && !d.js_tag.startsWith('http'))?.js_tag;
     if (tagContent) {
-      setPreviewData({ ...base, type: '3p-tag', tagContent });
+      const isSurvey = tagContent.includes('form.typeform.com');
+      setPreviewData({ ...base, type: isSurvey ? 'survey' : '3p-tag', tagContent });
       return;
     }
 
