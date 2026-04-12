@@ -60,7 +60,7 @@ function buildGroups(creatives: Creative[]): CreativeGroup[] {
   const groups: CreativeGroup[] = [];
 
   for (const c of sorted) {
-    const key = c.name + '||' + c.dimensions;
+    const key = (c.batch_id || 'none') + '||' + c.name + '||' + c.dimensions;
     let g = groupMap.get(key);
 
     if (!g) {
