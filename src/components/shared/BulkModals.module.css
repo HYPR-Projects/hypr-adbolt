@@ -212,18 +212,35 @@
   cursor: not-allowed;
 }
 
-/* ── Find & Replace layout ── */
-.frRow {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: var(--sp-2);
-  align-items: end;
+/* ── Find & Replace ── */
+.matchCount {
+  font-size: var(--fs-xs);
+  color: var(--text-tri);
+  margin-right: auto;
+  white-space: nowrap;
 }
 
-.frArrow {
+.previewHighlight {
+  background: var(--error-dim);
+  color: var(--error);
+  padding: 0 1px;
+  border-radius: 2px;
+  text-decoration: line-through;
+  text-decoration-color: var(--error);
+}
+
+/* ── URL auto-prefix hint ── */
+.urlHint {
+  font-size: var(--fs-xs);
   color: var(--text-tri);
-  font-size: 1rem;
-  padding-bottom: 8px;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.urlHint strong {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-weight: 500;
 }
 
 /* ── Separator ── */

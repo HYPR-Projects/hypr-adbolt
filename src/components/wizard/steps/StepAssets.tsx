@@ -7,7 +7,7 @@ import { FilterBar } from '@/components/shared/FilterBar';
 import { BulkBar } from '@/components/shared/BulkBar';
 import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
-import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/shared/BulkModals';
+import { RenameModal, FindReplaceModal, BulkTrackerModal, BulkLandingModal } from '@/components/shared/BulkModals';
 import { PreviewThumb, CreativePreviewModal } from '@/components/shared/CreativePreview';
 import {
   getAssetType, readFileDimensions, generateThumb,
@@ -208,6 +208,7 @@ export function StepAssets() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [frOpen, setFrOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
+  const [landingOpen, setLandingOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<AssetEntry | null>(null);
 
   // Track object URLs for proper cleanup (prevent memory leaks)
@@ -298,15 +299,7 @@ export function StepAssets() {
   // ── Bulk actions ──
   const selectedCount = selectedAssetIds.size;
   const bulkActions = [
-    {
-      label: 'Landing Page', onClick: () => {
-        const val = prompt(`Landing Page pra ${selectedCount} asset(s):`);
-        if (val === null) return;
-        const normalized = normalizeUrl(val);
-        bulkUpdateAssets(selectedAssetIds, { landingPage: normalized });
-        toast(`Landing page aplicada em ${selectedCount} asset(s)`, 'success');
-      },
-    },
+    { label: 'Landing Page', onClick: () => setLandingOpen(true) },
     { label: '+ Tracker', onClick: () => setTrackerOpen(true) },
     { label: 'Renomear', onClick: () => setRenameOpen(true) },
     { label: 'Find & Replace', onClick: () => setFrOpen(true) },
@@ -576,7 +569,10 @@ export function StepAssets() {
       <FindReplaceModal
         visible={frOpen}
         onClose={() => setFrOpen(false)}
-        count={selectedAssetIds.size}
+        items={[...selectedAssetIds].map((id) => {
+          const a = assetMap.get(id);
+          return a ? { id, name: a.name } : null;
+        }).filter(Boolean) as Array<{ id: number | string; name: string }>}
         onApply={(find, replace) => {
           let count = 0;
           selectedAssetIds.forEach((id) => {
@@ -605,6 +601,16 @@ export function StepAssets() {
             addAssetTracker(id, { url, format, dsps: scope, eventType: resolvedEvent });
           });
           toast(`Tracker aplicado em ${selectedAssetIds.size} asset(s)`, 'success');
+        }}
+      />
+
+      <BulkLandingModal
+        visible={landingOpen}
+        onClose={() => setLandingOpen(false)}
+        count={selectedCount}
+        onApply={(url) => {
+          bulkUpdateAssets(selectedAssetIds, { landingPage: url });
+          toast(`Landing page aplicada em ${selectedCount} asset(s)`, 'success');
         }}
       />
 

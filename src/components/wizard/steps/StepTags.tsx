@@ -550,7 +550,10 @@ export function StepTags() {
       <FindReplaceModal
         visible={frOpen}
         onClose={() => setFrOpen(false)}
-        count={selectedTagIds.size}
+        items={[...selectedTagIds].map((idx) => {
+          const p = parsedData?.placements[idx];
+          return p ? { id: idx, name: p.placementName } : null;
+        }).filter(Boolean) as Array<{ id: number | string; name: string }>}
         onApply={(find, replace) => {
           let count = 0;
           selectedTagIds.forEach((idx) => {
