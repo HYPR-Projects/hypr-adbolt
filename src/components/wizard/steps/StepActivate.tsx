@@ -109,10 +109,15 @@ export function StepActivate() {
         toast(`${missingLp.length} asset(s) sem landing page. Preencha antes de ativar.`, 'error');
         return;
       }
-      // Smart re-upload: only reset assets whose file changed since last upload
-      // (keeps _storagePath for assets that haven't changed, avoiding redundant uploads)
+      // Smart re-upload: clear _storagePath for assets whose file changed since last upload
       if (store.activationDone) {
-        // Second activation in same session — keep existing uploads
+        const entries = useWizardStore.getState().assetEntries;
+        for (const a of entries) {
+          const currentFile = a.compressedFile || a.file || a.originalFile;
+          if (a._storagePath && a._uploadedFile && a._uploadedFile !== currentFile) {
+            store.updateAsset(a.id, { _storagePath: undefined, _uploadedFile: undefined });
+          }
+        }
       } else {
         store.resetAssetUploadState();
       }
