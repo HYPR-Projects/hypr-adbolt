@@ -71,27 +71,35 @@ async function createCreative(
 
   const url = `${DV360_API}/advertisers/${advertiserId}/creatives`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  // Retry on CONCURRENCY errors (mirrors dsp-dv360-asset pattern)
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = attempt * 5000;
+      console.log(`[dv360] Retry ${attempt}/${MAX_RETRIES} for ${creative.name} after ${delay}ms`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
 
-  const data = await res.json();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
+    const data = await res.json();
+
+    if (res.ok && data.creativeId) {
+      return { success: true, name: creative.name, creativeId: data.creativeId };
+    }
+
     const errMsg = data?.error?.message || JSON.stringify(data);
+    if (errMsg.includes("CONCURRENCY") && attempt < MAX_RETRIES) continue;
     return { success: false, name: creative.name, error: `${res.status}: ${errMsg}` };
   }
-
-  return {
-    success: true,
-    name: creative.name,
-    creativeId: data.creativeId,
-  };
+  return { success: false, name: creative.name, error: "Max retries exceeded" };
 }
 
 // ── Main handler ──
@@ -163,9 +171,9 @@ serve(async (req: Request) => {
     const t0 = Date.now();
     const token = await getDV360Token();
 
-    // Process in parallel batches of 5 (DV360 allows ~10 req/s per advertiser)
-    const BATCH_SIZE = 5;
-    const BATCH_DELAY = 250;
+    // Process in parallel batches of 3 (DV360 concurrency is strict — batches of 5 trigger CONCURRENCY errors)
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY = 500;
     const results: any[] = [];
     let successCount = 0;
 
