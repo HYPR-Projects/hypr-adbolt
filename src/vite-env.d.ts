@@ -34,7 +34,12 @@ interface JSZipInstance {
   files: Record<string, JSZipEntry>;
   file(path: string): JSZipEntry | null;
   file(path: string, data: string | Blob | ArrayBuffer): JSZipInstance;
-  generateAsync(opts: { type: string; mimeType?: string }): Promise<Blob>;
+  generateAsync(opts: {
+    type: string;
+    mimeType?: string;
+    compression?: 'STORE' | 'DEFLATE';
+    compressionOptions?: { level?: number } | null;
+  }): Promise<Blob>;
 }
 
 interface JSZipEntry {
