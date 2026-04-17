@@ -25,9 +25,9 @@ const AMAZON_HEADERS = [
 
 /**
  * Build the per-placement rows for the Amazon DSP THIRD-PARTY DISPLAY
- * sheet. `fillAmazonDSPTemplate` (below) is what turns these rows into
- * a downloadable XLSX; this function only produces the data so unit
- * tests can assert row shape without loading any XLSX blob.
+ * sheet. `fillAmazonDSPTemplate` turns these rows into a downloadable
+ * XLSX by injecting them into the official blank template. Tests cover
+ * this function directly (row shape, marketplace/language, video filter).
  */
 export function genAmazonDSP(
   placements: Placement[],
@@ -69,44 +69,33 @@ function xmlEscape(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/**
- * Build a single <row> XML for Amazon's THIRD-PARTY DISPLAY sheet using
- * inline strings (`t="inlineStr"`). Inline strings keep this function
- * independent of the shared strings pool (sharedStrings.xml) inside the
- * blank — we don't have to append entries there and hope indices align.
- * Every Excel-compatible parser (including Amazon's) accepts inline
- * strings interchangeably with shared strings.
- */
-function buildRowXml(rowNum: number, cells: string[]): string {
-  const parts: string[] = [`<row r="${rowNum}">`];
-  cells.forEach((val, idx) => {
-    if (!val) return; // skip empty cells entirely — valid OOXML
-    const ref = `${COLS[idx]}${rowNum}`;
-    parts.push(
-      `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(val)}</t></is></c>`,
-    );
-  });
-  parts.push('</row>');
-  return parts.join('');
+function buildCellXml(col: string, rowNum: number, val: string): string {
+  if (!val) return '';
+  return `<c r="${col}${rowNum}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(val)}</t></is></c>`;
 }
 
 /**
  * Fill Amazon DSP's official blank XLSX template with placement data and
  * return it as a downloadable Blob.
  *
- * CRITICAL: this function operates on the XLSX as a ZIP, via JSZip, and
- * edits only `xl/worksheets/sheet4.xml` (the THIRD-PARTY DISPLAY sheet)
- * as a string replacement. Every other file inside the blank — the
- * pivot tables, drawings, external links, printer settings, shared
- * strings, calcChain, tables, comments, images, all 15 other sheets —
- * is written back byte-for-byte. This is the only way to preserve the
- * template structure Amazon's bulk upload parser validates against.
+ * Preserves the blank template's structure EXACTLY: the only change to the
+ * output is that rows 4..4+N-1 of the THIRD-PARTY DISPLAY sheet get their
+ * cells replaced with the user's placement data. Everything else — row 1-3
+ * scaffolding, empty placeholder rows 4+N..94, closing row 95, dimension
+ * A1:M95, mergeCells, dataValidations (INDIRECT dropdowns), all 15 other
+ * sheets including hidden Template Info (V2), validation lists,
+ * sharedStrings, calcChain, drawings, pivot tables, external links — is
+ * byte-for-byte from the official blank.
  *
- * A prior implementation used SheetJS's `read() + write()` round-trip
- * and silently produced a corrupted XLSX (Excel offered to "repair"
- * the file and Amazon rejected it), because SheetJS community drops
- * support for many of the template's internal parts when re-emitting.
- * Do not reintroduce SheetJS here.
+ * Amazon's bulk upload parser validates the template's hidden
+ * Template Info metadata and cross-sheet validations. Any previous
+ * approach that regenerated the XLSX (SheetJS) or destructively edited
+ * the sheet (overwriting <sheetData>, shrinking <dimension>) failed
+ * precisely because those guarantees were violated. This function only
+ * swaps the INNER content of existing <row> tags while preserving the
+ * opening tag's attributes (spans, x14ac:dyDescent).
+ *
+ * Do not reintroduce SheetJS in the write path here.
  */
 export async function fillAmazonDSPTemplate(
   placements: Placement[],
@@ -122,6 +111,11 @@ export async function fillAmazonDSPTemplate(
   if (!rows.length) {
     throw new Error('Nenhum placement display para exportar — Amazon DSP não aceita vídeo neste fluxo.');
   }
+  if (rows.length > 91) {
+    // Amazon's blank provides 91 placeholder rows (4..94). If the campaign
+    // has more, we'd need to grow the sheet — not implemented yet.
+    throw new Error(`Amazon DSP suporta no máximo 91 placements por template (recebi ${rows.length}).`);
+  }
 
   const resp = await fetch('/templates/amazondsp-blank.xlsx', { cache: 'force-cache' });
   if (!resp.ok) {
@@ -135,34 +129,19 @@ export async function fillAmazonDSPTemplate(
   }
   let sheet4 = await sheet4File.async('string');
 
-  // Build all new rows at once
-  const newRowsXml = rows.map((cells, i) => buildRowXml(4 + i, cells)).join('');
-  const lastRow = 3 + rows.length;
-
-  // Surgically replace <sheetData>...</sheetData> — preserve rows 1-3
-  // (scaffolding: Required markers / headers / tooltips) exactly as-is
-  // from the blank, then append the new data rows starting at row 4.
-  const sheetDataRe = /<sheetData>([\s\S]*?)<\/sheetData>/;
-  const match = sheetDataRe.exec(sheet4);
-  if (!match) {
-    throw new Error('Template blank sem <sheetData> na sheet THIRD-PARTY DISPLAY.');
-  }
-  const existingRows = match[1];
-  const preservedRows: string[] = [];
-  const rowRe = /<row[^>]*r="(\d+)"[^>]*>[\s\S]*?<\/row>/g;
-  for (let m = rowRe.exec(existingRows); m !== null; m = rowRe.exec(existingRows)) {
-    if (parseInt(m[1], 10) <= 3) preservedRows.push(m[0]);
-  }
-  sheet4 = sheet4.replace(
-    sheetDataRe,
-    `<sheetData>${preservedRows.join('')}${newRowsXml}</sheetData>`,
-  );
-
-  // Keep <dimension> in sync so Excel/parsers know the used range.
-  sheet4 = sheet4.replace(
-    /<dimension ref="[^"]*"\/>/,
-    `<dimension ref="A1:M${lastRow}"/>`,
-  );
+  // Surgical per-row replacement: keep the <row ...> opening tag intact
+  // (preserves spans/dyDescent/style metadata Amazon expects), replace
+  // only the row's INNER cell content.
+  rows.forEach((cells, i) => {
+    const rowNum = 4 + i;
+    const cellsXml = cells
+      .map((val, colIdx) => buildCellXml(COLS[colIdx], rowNum, val))
+      .join('');
+    const rowRe = new RegExp(`(<row r="${rowNum}"[^>]*>)[^]*?</row>`);
+    sheet4 = sheet4.replace(rowRe, (_match, openTag: string) =>
+      `${openTag}${cellsXml}</row>`,
+    );
+  });
 
   zip.file('xl/worksheets/sheet4.xml', sheet4);
 
