@@ -80,11 +80,11 @@ function buildCellXml(col: string, rowNum: number, val: string): string {
  *
  * Preserves the blank template's structure EXACTLY: the only change to the
  * output is that rows 4..4+N-1 of the THIRD-PARTY DISPLAY sheet get their
- * cells replaced with the user's placement data. Everything else — row 1-3
+ * cells replaced with the user's placement data. Everything else â row 1-3
  * scaffolding, empty placeholder rows 4+N..94, closing row 95, dimension
  * A1:M95, mergeCells, dataValidations (INDIRECT dropdowns), all 15 other
  * sheets including hidden Template Info (V2), validation lists,
- * sharedStrings, calcChain, drawings, pivot tables, external links — is
+ * sharedStrings, calcChain, drawings, pivot tables, external links â is
  * byte-for-byte from the official blank.
  *
  * Amazon's bulk upload parser validates the template's hidden
@@ -104,17 +104,17 @@ export async function fillAmazonDSPTemplate(
 ): Promise<Blob> {
   const JSZip = window.JSZip;
   if (!JSZip) {
-    throw new Error('JSZip não carregou do CDN. Recarregue a página e tente novamente.');
+    throw new Error('JSZip nÃ£o carregou do CDN. Recarregue a pÃ¡gina e tente novamente.');
   }
 
   const { rows } = genAmazonDSP(placements, advertiserId, marketplace);
   if (!rows.length) {
-    throw new Error('Nenhum placement display para exportar — Amazon DSP não aceita vídeo neste fluxo.');
+    throw new Error('Nenhum placement display para exportar â Amazon DSP nÃ£o aceita vÃ­deo neste fluxo.');
   }
   if (rows.length > 91) {
     // Amazon's blank provides 91 placeholder rows (4..94). If the campaign
-    // has more, we'd need to grow the sheet — not implemented yet.
-    throw new Error(`Amazon DSP suporta no máximo 91 placements por template (recebi ${rows.length}).`);
+    // has more, we'd need to grow the sheet â not implemented yet.
+    throw new Error(`Amazon DSP suporta no mÃ¡ximo 91 placements por template (recebi ${rows.length}).`);
   }
 
   const resp = await fetch('/templates/amazondsp-blank.xlsx', { cache: 'force-cache' });
@@ -148,5 +148,7 @@ export async function fillAmazonDSPTemplate(
   return zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 },
   });
 }
