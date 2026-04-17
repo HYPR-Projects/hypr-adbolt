@@ -231,6 +231,7 @@ export function Dashboard() {
     type: 'display' | 'video' | 'html5' | '3p-tag' | 'survey';
     imageUrl?: string; videoUrl?: string; tagContent?: string;
     html5Content?: string; html5Url?: string; mimeType?: string; thumbUrl?: string; vastTagUrl?: string;
+    dv360CreativeId?: string; dv360AdvertiserId?: string;
   } | null>(null);
 
   const openPreview = useCallback(async (g: CreativeGroup) => {
@@ -308,7 +309,21 @@ export function Dashboard() {
       : Object.values(g.dsps).find(d => d.js_tag && !d.js_tag.startsWith('http'))?.js_tag;
     if (tagContent) {
       const isSurvey = tagContent.includes('form.typeform.com');
-      setPreviewData({ ...base, type: isSurvey ? 'survey' : '3p-tag', tagContent });
+      // Pull DV360 creative + advertiser ids so the preview can offer a
+      // "Ver no DV360" escape hatch — DCM tags only render on whitelisted
+      // domains (displayvideo.google.com), so a direct DSP link is the only
+      // reliable way to visually verify the creative.
+      const dv360Dsp = g.dsps.dv360;
+      const dv360Cfg = (typeof dv360Dsp?.dsp_config === 'string'
+        ? JSON.parse(dv360Dsp.dsp_config || '{}')
+        : dv360Dsp?.dsp_config) || {};
+      setPreviewData({
+        ...base,
+        type: isSurvey ? 'survey' : '3p-tag',
+        tagContent,
+        dv360CreativeId: dv360Dsp?.dsp_creative_id || undefined,
+        dv360AdvertiserId: (dv360Cfg as { advertiser_id?: string }).advertiser_id,
+      });
       return;
     }
 

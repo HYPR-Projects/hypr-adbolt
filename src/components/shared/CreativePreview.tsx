@@ -23,6 +23,9 @@ interface PreviewData {
   thumbUrl?: string;
   /** For VAST tags: the complete VAST tag URL for IMA SDK playback */
   vastTagUrl?: string;
+  /** For 3P tags ativadas no DV360 — opens the creative in DV360 UI */
+  dv360CreativeId?: string;
+  dv360AdvertiserId?: string;
 }
 
 interface CreativePreviewModalProps {
@@ -524,17 +527,29 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
           <span className={styles.infoDims}>{data.dimensions}</span>
           <span className={styles.infoDot} />
           <span className={styles.infoType}>{typeLabel}</span>
-          {data.type === '3p-tag' && data.tagContent && (
+          {data.type === '3p-tag' && (
             <>
               <span className={styles.infoDot} />
-              <button
-                type="button"
-                className={styles.infoAction}
-                onClick={() => openTagInPopup(data.tagContent!, data.name, w || 300, h || 250)}
-                title="Abre a tag numa janela sem sandbox (necessário para tags DCM/DoubleClick)"
-              >
-                Abrir em nova janela ↗
-              </button>
+              {data.dv360CreativeId && data.dv360AdvertiserId ? (
+                <a
+                  className={styles.infoAction}
+                  href={`https://displayvideo.google.com/ng_nav/#/advertiser/${data.dv360AdvertiserId}/creative/${data.dv360CreativeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abre o criativo no DV360 — o preview oficial do ad server renderiza a tag"
+                >
+                  Ver no DV360 ↗
+                </a>
+              ) : data.tagContent ? (
+                <button
+                  type="button"
+                  className={styles.infoAction}
+                  onClick={() => openTagInPopup(data.tagContent!, data.name, w || 300, h || 250)}
+                  title="Abre a tag numa janela sem sandbox"
+                >
+                  Abrir em nova janela ↗
+                </button>
+              ) : null}
             </>
           )}
         </div>
