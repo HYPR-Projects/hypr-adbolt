@@ -187,4 +187,49 @@ describe('genAmazonDSP', () => {
     const result = genAmazonDSP(p, '', 'BR');
     expect(result.rows[0][9]).toBe('Links to an Amazon website');
   });
+
+  it('detects Amazon destination via naming convention markers', () => {
+    // DCM/CM360 tags resolve landing URLs at render time, so neither
+    // the tag nor click_url carry the real destination. HYPR naming
+    // conventions (ODSP, AMZ, AMAZON, AMZN, ADSP) are often the only
+    // signal available — this matches the real Colgate example:
+    // M6621748_ODSP_COLT_Whitening_...
+    const dcmTag = "<ins class='dcmads' data-dcm-placement='N1433191.4242296HYPRN/B35590397.444842262'></ins>";
+    const dcmRedirect = 'https://ad.doubleclick.net/ddm/jump/N1433191.4242296HYPRN/B35590397.444842262';
+    const names = [
+      'M6621748_ODSP_COLT_Whitening_P_D_STD_CPM_300x250',
+      'AMZ_Banner_300x250_Prime_Day',
+      'Campaign_AMAZON_300x250',
+      'ADSP_Campaign_Q4_300x250',
+      'AMZN_RetailBrand_728x90',
+    ];
+    for (const name of names) {
+      const p: Placement[] = [{
+        placementId: '1', placementName: name, dimensions: '300x250',
+        jsTag: dcmTag, clickUrl: dcmRedirect,
+        type: 'display', vastTag: '', trackers: [],
+      }];
+      const result = genAmazonDSP(p, '', 'BR');
+      expect(result.rows[0][9]).toBe('Links to an Amazon website');
+    }
+  });
+
+  it('does not falsely match name markers embedded in longer words', () => {
+    // ODSP inside "ODSPRING" or AMZ inside "LAMAZING" should NOT match
+    // because the marker isn't bounded by separators on both sides.
+    const names = [
+      'ODSPRING_Campaign_300x250',
+      'LAMAZING_Banner_728x90',
+      'CarAmzone_300x250',
+      'StudyAdspring_300x250',
+    ];
+    for (const name of names) {
+      const p: Placement[] = [{
+        placementId: '1', placementName: name, dimensions: '300x250',
+        jsTag: '', clickUrl: 'https://brand.com', type: 'display', vastTag: '', trackers: [],
+      }];
+      const result = genAmazonDSP(p, '', 'BR');
+      expect(result.rows[0][9]).toBe('Links to another website');
+    }
+  });
 });

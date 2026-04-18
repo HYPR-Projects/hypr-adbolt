@@ -76,10 +76,27 @@ function extractClickFromTag(tag: string): string {
   return '';
 }
 
+// DCM/CM360 tags are black boxes: the click URL is resolved by the
+// DCM SDK at render time and is NOT present in the tag HTML or in
+// `click_url` (which points to the DCM redirect ad.doubleclick.net/ddm/jump/...).
+// When the tag and URLs carry no Amazon signal, the creative/campaign
+// naming convention is often the only clue available. Markers commonly
+// used across HYPR workflows: AMZ, AMAZON, AMZN (explicit), ODSP
+// (Amazon Onsite Display), ADSP (Amazon DSP). Match requires separator
+// boundaries so "LAMAZING" / "ODSPR" do not trigger false positives.
+const AMAZON_NAME_MARKER_RE =
+  /(?:^|[_\-.\s])(amazon|amzn|amz|odsp|adsp)(?:[_\-.\s]|$)/i;
+
+function hasAmazonNameMarker(name: string): boolean {
+  if (!name) return false;
+  return AMAZON_NAME_MARKER_RE.test(name);
+}
+
 function detectClickDestination(p: Placement): string {
   if (isAmazonUrl(p.clickUrl)) return DEST_AMAZON_WEBSITE;
   const fromTag = extractClickFromTag(p.jsTag);
   if (isAmazonUrl(fromTag)) return DEST_AMAZON_WEBSITE;
+  if (hasAmazonNameMarker(p.placementName)) return DEST_AMAZON_WEBSITE;
   return DEST_ANOTHER_WEBSITE;
 }
 
