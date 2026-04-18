@@ -101,34 +101,33 @@ describe('genStackAdapt', () => {
 
 describe('genAmazonDSP', () => {
   it('excludes video placements', () => {
-    const result = genAmazonDSP(MIXED, 'ADV123', 'BR');
-    expect(result.rows).toHaveLength(2); // Only display
+    const rows = genAmazonDSP(MIXED, 'ADV123', 'BR');
+    expect(rows).toHaveLength(2); // Only display
   });
 
   it('sets correct marketplace and language', () => {
-    const result = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
-    expect(result.rows[0][3]).toBe('BR');
-    expect(result.rows[0][4]).toBe('Portuguese');
+    const rows = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
+    expect(rows[0][3]).toBe('BR');
+    expect(rows[0][4]).toBe('Portuguese');
   });
 
-  it('uses correct sheet name', () => {
-    const result = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'US');
-    expect(result.sheetName).toBe('THIRD-PARTY DISPLAY');
-    expect(result.rows[0][4]).toBe('English');
+  it('derives language from marketplace (US -> English)', () => {
+    const rows = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'US');
+    expect(rows[0][4]).toBe('English');
   });
 
   it('uses the exact Creative Template dropdown value', () => {
     // Amazon DSP bulk upload rejects any value that does not match the
     // dropdown exactly. "Third party" without "-Display" silently drops
     // the creative during import.
-    const result = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
-    expect(result.rows[0][1]).toBe('Third-party Display');
-    expect(result.rows[1][1]).toBe('Third-party Display');
+    const rows = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
+    expect(rows[0][1]).toBe('Third-party Display');
+    expect(rows[1][1]).toBe('Third-party Display');
   });
 
   it('defaults click destination to "Links to another website"', () => {
-    const result = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
-    expect(result.rows[0][9]).toBe('Links to another website');
+    const rows = genAmazonDSP(DISPLAY_PLACEMENTS, 'ADV123', 'BR');
+    expect(rows[0][9]).toBe('Links to another website');
   });
 
   it('detects Amazon destination via clickUrl (amazon.com.br)', () => {
@@ -138,8 +137,8 @@ describe('genAmazonDSP', () => {
       clickUrl: 'https://www.amazon.com.br/colgate-total',
       type: 'display', vastTag: '', trackers: [],
     }];
-    const result = genAmazonDSP(p, 'ADV123', 'BR');
-    expect(result.rows[0][9]).toBe('Links to an Amazon website');
+    const rows = genAmazonDSP(p, 'ADV123', 'BR');
+    expect(rows[0][9]).toBe('Links to an Amazon website');
   });
 
   it('detects Amazon destination across ccTLDs and subdomains', () => {
@@ -156,8 +155,8 @@ describe('genAmazonDSP', () => {
         placementId: '1', placementName: 'p', dimensions: '300x250',
         jsTag: '', clickUrl: url, type: 'display', vastTag: '', trackers: [],
       }];
-      const result = genAmazonDSP(p, '', 'BR');
-      expect(result.rows[0][9]).toBe('Links to an Amazon website');
+      const rows = genAmazonDSP(p, '', 'BR');
+      expect(rows[0][9]).toBe('Links to an Amazon website');
     }
   });
 
@@ -173,8 +172,8 @@ describe('genAmazonDSP', () => {
         placementId: '1', placementName: 'p', dimensions: '300x250',
         jsTag: '', clickUrl: url, type: 'display', vastTag: '', trackers: [],
       }];
-      const result = genAmazonDSP(p, '', 'BR');
-      expect(result.rows[0][9]).toBe('Links to another website');
+      const rows = genAmazonDSP(p, '', 'BR');
+      expect(rows[0][9]).toBe('Links to another website');
     }
   });
 
@@ -184,8 +183,8 @@ describe('genAmazonDSP', () => {
       jsTag: '<a data-cta-url="https://www.amazon.com.br/colgate" href="#"><img src="x"/></a>',
       clickUrl: '', type: 'display', vastTag: '', trackers: [],
     }];
-    const result = genAmazonDSP(p, '', 'BR');
-    expect(result.rows[0][9]).toBe('Links to an Amazon website');
+    const rows = genAmazonDSP(p, '', 'BR');
+    expect(rows[0][9]).toBe('Links to an Amazon website');
   });
 
   // DCM tags wrap the real landing in an opaque ad.doubleclick.net redirect,
@@ -210,8 +209,8 @@ describe('genAmazonDSP', () => {
         jsTag: dcmTag, clickUrl: dcmRedirect,
         type: 'display', vastTag: '', trackers: [],
       }];
-      const result = genAmazonDSP(p, '', 'BR');
-      expect(result.rows[0][9]).toBe('Links to an Amazon website');
+      const rows = genAmazonDSP(p, '', 'BR');
+      expect(rows[0][9]).toBe('Links to an Amazon website');
     }
   });
 
@@ -229,8 +228,8 @@ describe('genAmazonDSP', () => {
         placementId: '1', placementName: name, dimensions: '300x250',
         jsTag: '', clickUrl: 'https://brand.com', type: 'display', vastTag: '', trackers: [],
       }];
-      const result = genAmazonDSP(p, '', 'BR');
-      expect(result.rows[0][9]).toBe('Links to another website');
+      const rows = genAmazonDSP(p, '', 'BR');
+      expect(rows[0][9]).toBe('Links to another website');
     }
   });
 });

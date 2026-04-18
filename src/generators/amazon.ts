@@ -1,14 +1,12 @@
 import type { Placement } from '@/types';
 import { mergeTrackerUrls } from '@/parsers/tracker';
+import { SUPABASE_FUNCTIONS_URL } from '@/services/supabase';
 
-export interface AmazonDSPGeneratedFile {
-  headers: string[];
-  rows: string[][];
-  type: 'xlsx';
-  sheetName: string;
-  colWidths: Array<{ wch: number }>;
-}
-
+// ── Marketplace → Language ──────────────────────────────────────────
+// Amazon DSP's bulk upload binds the Language dropdown to the selected
+// Marketplace via an INDIRECT() formula on column E, so only a subset
+// of languages is valid per marketplace. The defaults below match what
+// the HYPR team ships for each region.
 const MARKETPLACE_LANG: Record<string, string> = {
   BR: 'Portuguese', US: 'English', MX: 'Spanish', UK: 'English',
   DE: 'German', FR: 'French', ES: 'Spanish', IT: 'Italian',
@@ -16,20 +14,15 @@ const MARKETPLACE_LANG: Record<string, string> = {
   NL: 'Dutch', SA: 'Arabic', SE: 'Swedish', TR: 'Turkish', AE: 'English',
 };
 
-const AMAZON_HEADERS = [
-  'Advertiser ID*', 'Creative Template*', 'Name*', 'Marketplace*',
-  'Language*', 'Creative ID', 'External ID', 'Size*', 'Tag Source*',
-  'Click-through destination*', 'Third party-impression URL',
-  'AdChoices location', 'Additional html',
-];
-
-// Amazon DSP dropdown values for the Creative Template and
-// Click-through destination columns. The bulk upload UI rejects any
-// cell value that doesn't match the dropdown exactly, so these strings
-// must never drift from what the official blank template allows.
+// Dropdown values that Amazon DSP's bulk upload UI expects verbatim.
+// These strings must match the blank template's <si> entries in
+// xl/sharedStrings.xml so that adbolt-amazon-xlsx can reference them
+// by index (<c t="s">). Any drift silently drops the row on import.
 const CREATIVE_TEMPLATE_3P_DISPLAY = 'Third-party Display';
 const DEST_ANOTHER_WEBSITE = 'Links to another website';
 const DEST_AMAZON_WEBSITE = 'Links to an Amazon website';
+
+// ── Amazon destination detection ────────────────────────────────────
 
 // Hostname whitelist for "Amazon website" detection. Covers all amazon
 // ccTLDs, Prime Video, Audible, and the Amazon short link a.co.
@@ -80,20 +73,10 @@ function extractClickFromTag(tag: string): string {
 // DCM SDK at render time and is NOT present in the tag HTML or in
 // `click_url` (which points to an ad.doubleclick.net/ddm/jump/ redirect).
 // When the tag and URLs carry no Amazon signal, the creative naming
-// convention is often the only clue available. Markers commonly used
-// across HYPR workflows: AMZ, AMAZON, AMZN (explicit), ODSP (Amazon
-// Onsite Display), ADSP (Amazon DSP). Match requires separator
-// boundaries so "LAMAZING" / "ODSPR" do not trigger false positives.
-//
-// Historical note — why this used to be reverted and is now back:
-// A brief April 18 2026 revert removed this heuristic after a Colgate
-// batch of DCM tags uploaded as "Links to an Amazon website" silently
-// dropped in Amazon DSP. The real cause was unrelated: cells were
-// being written as <c t="inlineStr"> instead of sharedString refs,
-// which Amazon's bulk import rejects regardless of the value. Once
-// adbolt-amazon-xlsx v3 switched to sharedString refs, both dropdown
-// values became equally acceptable, so classifying by name is again
-// the semantically correct choice for DCM-wrapped Amazon creatives.
+// convention is often the only clue. Markers commonly used across HYPR
+// workflows: AMZ, AMAZON, AMZN (explicit), ODSP (Amazon Onsite Display),
+// ADSP (Amazon DSP). Match requires separator boundaries so "LAMAZING"
+// or "ODSPR" do not trigger false positives.
 const AMAZON_NAME_MARKER_RE =
   /(?:^|[_\-.\s])(amazon|amzn|amz|odsp|adsp)(?:[_\-.\s]|$)/i;
 
@@ -110,73 +93,74 @@ function detectClickDestination(p: Placement): string {
   return DEST_ANOTHER_WEBSITE;
 }
 
+// ── Row builder ─────────────────────────────────────────────────────
+
 /**
  * Build the per-placement rows for the Amazon DSP THIRD-PARTY DISPLAY
- * sheet. Kept here so tests can exercise the row shape directly.
+ * sheet (rows 4..N of sheet4.xml). Exported so the adbolt-amazon-xlsx
+ * edge function and tests share the same row shape.
+ *
+ * Column order (A..M) matches the blank template's row 3 headers:
+ *   A  Advertiser ID           H  Size
+ *   B  Creative Template       I  Tag Source
+ *   C  Name                    J  Click-through destination
+ *   D  Marketplace             K  Third party-impression URL
+ *   E  Language                L  AdChoices location
+ *   F  Creative ID             M  Additional html
+ *   G  External ID
+ *
+ * Video placements are excluded — this sheet only accepts third-party
+ * display tags. Video creatives belong in a separate sheet (not supported
+ * by AdBolt yet).
  */
 export function genAmazonDSP(
   placements: Placement[],
   advertiserId: string,
   marketplace: string,
-): AmazonDSPGeneratedFile {
+): string[][] {
   const lang = MARKETPLACE_LANG[marketplace] || 'Portuguese';
 
-  return {
-    headers: AMAZON_HEADERS,
-    rows: placements
-      .filter((p) => p.type !== 'video')
-      .map((p) => {
-        const pxUrls = mergeTrackerUrls(p.trackers || [], 'amazondsp');
-        const destination = detectClickDestination(p);
-        return [
-          advertiserId, CREATIVE_TEMPLATE_3P_DISPLAY, p.placementName, marketplace, lang,
-          '', '', p.dimensions, p.jsTag, destination,
-          pxUrls.join('\n'), '', '',
-        ];
-      }),
-    type: 'xlsx',
-    sheetName: 'THIRD-PARTY DISPLAY',
-    colWidths: [
-      { wch: 16 }, { wch: 18 }, { wch: 45 }, { wch: 15 }, { wch: 14 },
-      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 60 }, { wch: 28 },
-      { wch: 40 }, { wch: 16 }, { wch: 30 },
-    ],
-  };
+  return placements
+    .filter((p) => p.type !== 'video')
+    .map((p) => {
+      const pxUrls = mergeTrackerUrls(p.trackers || [], 'amazondsp');
+      const destination = detectClickDestination(p);
+      return [
+        advertiserId, CREATIVE_TEMPLATE_3P_DISPLAY, p.placementName, marketplace, lang,
+        '', '', p.dimensions, p.jsTag, destination,
+        pxUrls.join('\n'), '', '',
+      ];
+    });
 }
 
-const AMAZON_XLSX_ENDPOINT = 'https://adfnabuwzmojxbhcpdpe.supabase.co/functions/v1/adbolt-amazon-xlsx';
+// ── Server-side XLSX generation ─────────────────────────────────────
+
+const AMAZON_XLSX_ENDPOINT = `${SUPABASE_FUNCTIONS_URL}/adbolt-amazon-xlsx`;
 
 /**
- * Generate the final Amazon DSP XLSX server-side and return the downloadable blob.
+ * Generate the Amazon DSP XLSX server-side and return the blob for download.
  *
  * Why server-side:
- * The exact same JSZip 3.10.1 fill-and-repack logic, when run in the
- * browser, produced files that Excel flagged on open ("We found a problem
- * with some content") and that Amazon DSP rejected with "Bulk upload has
- * failed". The same code running in a Deno edge function produced files
- * that pass both checks â confirmed with three server-generated variants
- * the user successfully uploaded to Amazon. Rather than keep hunting the
- * browser-side gremlin (cache, CDN ordering, SheetJS/JSZip interaction,
- * Blob writer quirks, etc.), generation is delegated to Supabase edge
- * runtime where we know it works.
- *
- * The frontend posts only the per-row array. The edge function fetches
- * the latest official blank from /templates/amazondsp-blank.xlsx, runs the
- * surgical sheet4.xml row replacement, repacks with compression:DEFLATE
- * level 9, and streams the XLSX back. No JSZip call happens in the
- * browser anymore for this flow.
+ * Amazon DSP's bulk import validates that cells reference sharedStrings
+ * (<c t="s"><v>INDEX</v></c>) rather than inline strings. Every browser-
+ * side XLSX library we tried (SheetJS, ExcelJS with full re-serialize,
+ * JSZip surgical edits emitting inlineStr) produced files that Amazon
+ * silently rejected with "0 creatives saved". The adbolt-amazon-xlsx
+ * edge function preserves the official blank bytes and rewrites specific
+ * rows in sheet4.xml plus the sharedStrings pool — this shape passes
+ * every validation. See the edge function source for the technical note.
  */
 export async function fillAmazonDSPTemplate(
   placements: Placement[],
   advertiserId: string,
   marketplace: string,
 ): Promise<Blob> {
-  const { rows } = genAmazonDSP(placements, advertiserId, marketplace);
+  const rows = genAmazonDSP(placements, advertiserId, marketplace);
   if (!rows.length) {
-    throw new Error('Nenhum placement display para exportar â Amazon DSP nÃ£o aceita vÃ­deo neste fluxo.');
+    throw new Error('Nenhum placement display para exportar — Amazon DSP não aceita vídeo neste fluxo.');
   }
   if (rows.length > 91) {
-    throw new Error(`Amazon DSP suporta no mÃ¡ximo 91 placements por template (recebi ${rows.length}).`);
+    throw new Error(`Amazon DSP suporta no máximo 91 placements por template (recebi ${rows.length}).`);
   }
 
   const resp = await fetch(AMAZON_XLSX_ENDPOINT, {
