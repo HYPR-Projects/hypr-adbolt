@@ -188,15 +188,13 @@ describe('genAmazonDSP', () => {
     expect(result.rows[0][9]).toBe('Links to an Amazon website');
   });
 
-  // DCM tags wrap the real landing URL in an opaque ad.doubleclick.net
-  // redirect that Amazon DSP does not follow at upload time. Even when
-  // the creative name signals Amazon (ODSP, AMZ, etc.), declaring
-  // "Links to an Amazon website" causes Amazon DSP to silently drop
-  // the creative during bulk import. The safe, import-compatible
-  // value in every DCM case is "Links to another website" —
-  // Amazon DSP validates the actual click destination in runtime via
-  // the redirect, independent of this column.
-  it('keeps "another website" for DCM-wrapped tags even with Amazon name markers', () => {
+  // DCM tags wrap the real landing in an opaque ad.doubleclick.net redirect,
+  // so the tag source carries no Amazon signal. Amazon DSP itself accepts
+  // any dropdown value once cells are written as sharedString refs (fixed
+  // in adbolt-amazon-xlsx v3), so the only remaining concern is semantic:
+  // classify these creatives as Amazon-destined when the naming
+  // convention says so, via AMZ/AMAZON/AMZN/ODSP/ADSP markers.
+  it('detects Amazon destination via naming convention markers', () => {
     const dcmTag = "<ins class='dcmads' data-dcm-placement='N1433191.4242296HYPRN/B35590397.444842262'></ins>";
     const dcmRedirect = 'https://ad.doubleclick.net/ddm/jump/N1433191.4242296HYPRN/B35590397.444842262';
     const names = [
@@ -211,6 +209,25 @@ describe('genAmazonDSP', () => {
         placementId: '1', placementName: name, dimensions: '300x250',
         jsTag: dcmTag, clickUrl: dcmRedirect,
         type: 'display', vastTag: '', trackers: [],
+      }];
+      const result = genAmazonDSP(p, '', 'BR');
+      expect(result.rows[0][9]).toBe('Links to an Amazon website');
+    }
+  });
+
+  it('does not falsely match name markers embedded in longer words', () => {
+    // ODSP inside "ODSPRING" or AMZ inside "LAMAZING" should NOT match
+    // because the marker isn't bounded by separators on both sides.
+    const names = [
+      'ODSPRING_Campaign_300x250',
+      'LAMAZING_Banner_728x90',
+      'CarAmzone_300x250',
+      'StudyAdspring_300x250',
+    ];
+    for (const name of names) {
+      const p: Placement[] = [{
+        placementId: '1', placementName: name, dimensions: '300x250',
+        jsTag: '', clickUrl: 'https://brand.com', type: 'display', vastTag: '', trackers: [],
       }];
       const result = genAmazonDSP(p, '', 'BR');
       expect(result.rows[0][9]).toBe('Links to another website');

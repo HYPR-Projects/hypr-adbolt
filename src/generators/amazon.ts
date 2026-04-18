@@ -76,33 +76,37 @@ function extractClickFromTag(tag: string): string {
   return '';
 }
 
-// Decide the "Click-through destination*" column value.
+// DCM/CM360 tags are black boxes: the click URL is resolved by the
+// DCM SDK at render time and is NOT present in the tag HTML or in
+// `click_url` (which points to an ad.doubleclick.net/ddm/jump/ redirect).
+// When the tag and URLs carry no Amazon signal, the creative naming
+// convention is often the only clue available. Markers commonly used
+// across HYPR workflows: AMZ, AMAZON, AMZN (explicit), ODSP (Amazon
+// Onsite Display), ADSP (Amazon DSP). Match requires separator
+// boundaries so "LAMAZING" / "ODSPR" do not trigger false positives.
 //
-// IMPORTANT — why the default is DEST_ANOTHER_WEBSITE and why we do NOT
-// infer DEST_AMAZON_WEBSITE from naming conventions like ODSP/AMZ/AMAZON:
-//
-// Amazon DSP validates that the declared destination is consistent with
-// the literal content of the 3P tag source at upload time. It does NOT
-// follow redirects. For tags that wrap the real landing in a DCM jump
-// URL (<ins class='dcmads' data-dcm-placement='...'>) or any other
-// opaque redirect, Amazon DSP sees no amazon.* hostname in the source
-// and, if we declared "Links to an Amazon website", silently drops the
-// creative during bulk import ("0 creatives saved", no error shown).
-//
-// Confirmed empirically on April 18 2026 with a Colgate batch of DCM
-// tags whose real landing was amazon.com.br: declaring "Amazon website"
-// based on the ODSP_ marker in the creative name produced zero saved
-// creatives; declaring "another website" uploaded all of them. See
-// also: https://advertising.amazon.com/resources/ad-policy/approved-3p-ad-servers
-//
-// So the rule is: only declare DEST_AMAZON_WEBSITE when an amazon.*
-// hostname is *literally* present in the tag source or click URL —
-// cases where Amazon DSP can see and validate it. Everything else,
-// including DCM-wrapped Amazon campaigns, goes to DEST_ANOTHER_WEBSITE.
+// Historical note — why this used to be reverted and is now back:
+// A brief April 18 2026 revert removed this heuristic after a Colgate
+// batch of DCM tags uploaded as "Links to an Amazon website" silently
+// dropped in Amazon DSP. The real cause was unrelated: cells were
+// being written as <c t="inlineStr"> instead of sharedString refs,
+// which Amazon's bulk import rejects regardless of the value. Once
+// adbolt-amazon-xlsx v3 switched to sharedString refs, both dropdown
+// values became equally acceptable, so classifying by name is again
+// the semantically correct choice for DCM-wrapped Amazon creatives.
+const AMAZON_NAME_MARKER_RE =
+  /(?:^|[_\-.\s])(amazon|amzn|amz|odsp|adsp)(?:[_\-.\s]|$)/i;
+
+function hasAmazonNameMarker(name: string): boolean {
+  if (!name) return false;
+  return AMAZON_NAME_MARKER_RE.test(name);
+}
+
 function detectClickDestination(p: Placement): string {
   if (isAmazonUrl(p.clickUrl)) return DEST_AMAZON_WEBSITE;
   const fromTag = extractClickFromTag(p.jsTag);
   if (isAmazonUrl(fromTag)) return DEST_AMAZON_WEBSITE;
+  if (hasAmazonNameMarker(p.placementName)) return DEST_AMAZON_WEBSITE;
   return DEST_ANOTHER_WEBSITE;
 }
 
