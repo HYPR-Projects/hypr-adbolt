@@ -305,52 +305,105 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
-  // Single iframe, same-origin, pointed straight at /api/ad-proxy. The proxy
-  // edge function talks to ad.doubleclick.net server-side, extracts just the
-  // creative image + click-through URL, and returns a trivial <img><a> HTML
-  // document. No dcmads, no Active View, no DoubleVerify, no nested iframes.
+  // NO IFRAME. Fetch the ad server via our proxy, get back JSON with the
+  // creative image URL and click URL, render <img>/<a> directly in the React
+  // DOM. This entirely removes iframe-related state partitioning / dedupe /
+  // cross-origin from the picture.
   //
-  // For non-CM360 tags we fall back to srcdoc with the raw tag — those
-  // already worked before and are kept for backward compatibility.
-  //
-  // Because the parent CreativePreviewModal keys this component off openCount,
-  // every open of the modal mounts a fresh instance with a fresh random `ord`,
-  // regardless of whether the tag is the same as last time. The iframe src is
-  // stable across re-renders of this instance (useState lazy init), so parent
-  // churn does not cause reloads.
-  const [src] = useState(() => {
-    const m = tagContent.match(/data-dcm-placement=['"]([^'"]+)['"]/);
-    const mode = tagContent.match(/data-dcm-rendering-mode=['"]([^'"]+)['"]/);
-    const isCm360Iframe = m && mode && mode[1] === 'iframe';
+  // For CM360 iframe-mode tags we can extract a clean image; for anything
+  // else we fall back to a single srcdoc iframe (which worked before for
+  // non-CM360 tags, so we keep it as a safety net).
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [clickUrl, setClickUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const placementMatch = tagContent.match(/data-dcm-placement=['"]([^'"]+)['"]/);
+  const renderingMode = tagContent.match(/data-dcm-rendering-mode=['"]([^'"]+)['"]/);
+  const isCm360Iframe = !!(placementMatch && renderingMode && renderingMode[1] === 'iframe');
+
+  useEffect(() => {
+    if (!isCm360Iframe || !placementMatch) return;
     const ord = Math.floor(Math.random() * 1e13).toString();
-    if (isCm360Iframe) {
-      return `/api/ad-proxy?placement=${encodeURIComponent(m[1])}&sz=${tagW}x${tagH}&ord=${ord}`;
-    }
-    // Fallback: wrap the raw tag in a minimal document via srcdoc.
-    return null;
-  });
+    const proxyUrl = `/api/ad-proxy?placement=${encodeURIComponent(placementMatch[1])}&sz=${tagW}x${tagH}&ord=${ord}`;
+    let cancelled = false;
+    fetch(proxyUrl)
+      .then((r) => r.json())
+      .then((body: { image?: string; click?: string; error?: string }) => {
+        if (cancelled) return;
+        if (body.error) {
+          setLoadError(body.error);
+          return;
+        }
+        if (body.image) {
+          setImageUrl(body.image);
+          setClickUrl(body.click || null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError(String(e));
+      });
+    return () => { cancelled = true; };
+  }, [isCm360Iframe, placementMatch?.[1], tagW, tagH]);
 
-  // For the fallback case only — static srcdoc content, never changes after
-  // mount because this instance is keyed off openCount at the parent level.
-  const [fallbackDoc] = useState(() => {
-    if (src) return null;
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}</style></head><body>${tagContent}</body></html>`;
-  });
+  const wrapperStyle: React.CSSProperties = scale < 1
+    ? { transformOrigin: '0 0', transform: `scale(${scale})`, width: tagW, height: tagH, display: 'block', position: 'relative' }
+    : { width: tagW, height: tagH, display: 'block', position: 'relative' };
 
-  const iframeStyle = scale < 1
-    ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
-    : { border: 'none', display: 'block' };
+  // Non-CM360 fallback: single srcdoc iframe
+  if (!isCm360Iframe) {
+    const fallbackDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}</style></head><body>${tagContent}</body></html>`;
+    return (
+      <iframe
+        title={`Preview: ${name}`}
+        srcDoc={fallbackDoc}
+        width={tagW}
+        height={tagH}
+        style={scale < 1
+          ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
+          : { border: 'none', display: 'block' }}
+      />
+    );
+  }
 
-  return (
-    <iframe
-      title={`Preview: ${name}`}
-      {...(src ? { src } : { srcDoc: fallbackDoc || '' })}
+  // CM360 path — img + a
+  if (loadError) {
+    return (
+      <div style={{ ...wrapperStyle, background: '#2a1010', color: '#fca', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '11px ui-monospace,monospace', textAlign: 'center', padding: 8 }}>
+        Preview indisponível<br />{loadError}
+      </div>
+    );
+  }
+  if (!imageUrl) {
+    return (
+      <div style={{ ...wrapperStyle, background: 'var(--surface-2, #1a1a1a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: 'var(--text-2, #888)', font: '12px sans-serif' }}>Carregando preview…</span>
+      </div>
+    );
+  }
+
+  const img = (
+    <img
+      src={imageUrl}
+      alt={name}
       width={tagW}
       height={tagH}
-      style={iframeStyle}
+      onLoad={() => setLoaded(true)}
+      style={{ display: 'block', width: tagW, height: tagH, objectFit: 'contain', opacity: loaded ? 1 : 0, transition: 'opacity .2s' }}
     />
   );
+
+  return (
+    <div style={wrapperStyle}>
+      {clickUrl ? (
+        <a href={clickUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: tagW, height: tagH }}>
+          {img}
+        </a>
+      ) : img}
+    </div>
+  );
 }
+
 
 
 // ── Full Preview Modal ──
