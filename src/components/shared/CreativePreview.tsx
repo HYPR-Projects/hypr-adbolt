@@ -306,21 +306,11 @@ interface ThreePartyTagFrameProps {
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const writtenRef = useRef(false);
 
-  // Write the tag into the iframe on its first load event. Writing earlier
-  // (in useEffect right after mount) is a race against Chrome initializing
-  // about:blank — Chrome can and does re-init and wipe our content, which
-  // is why our React preview showed blank while the same open/write/close
-  // code works on a static HTML page where the iframe is parsed in-document.
-  //
-  // doc.close() dispatches another load event once parsing is done, so we
-  // guard with writtenRef to make the second callback a no-op.
-  function handleLoad() {
-    if (writtenRef.current) return;
+  useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    const doc = iframe.contentDocument;
     if (!doc) return;
 
     const html = `<!DOCTYPE html>
@@ -340,30 +330,18 @@ html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparen
       doc.open();
       doc.write(html);
       doc.close();
-      writtenRef.current = true;
     } catch (e) {
       console.error('[preview] open/write/close failed:', e);
     }
-  }
+  }, [tagContent, tagW, tagH]);
 
-  // Note: no opacity: 0 fade-in. Chrome deprioritizes loading for iframes that
-  // are invisible at insertion time; dcmads.js in iframe mode creates a nested
-  // iframe that never finishes loading when its ancestor is opacity: 0.
-  // Visible from the start is a correctness requirement, not a style choice.
   return (
     <iframe
       ref={iframeRef}
-      onLoad={handleLoad}
       title={`Preview: ${name}`}
-      scrolling="no"
       width={tagW}
       height={tagH}
-      style={{
-        display: 'block', border: 'none', background: 'transparent',
-        width: tagW, height: tagH,
-        transformOrigin: '0 0',
-        transform: scale < 1 ? `scale(${scale})` : undefined,
-      }}
+      style={scale < 1 ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' } : { border: 'none', display: 'block' }}
     />
   );
 }
