@@ -305,47 +305,53 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
-  // The iframe loads /preview/render-tag.html, a real HTTP-served page, and
-  // the tag is passed in the URL fragment (base64 + URL-encoded). The hosted
-  // page does open/write/close on a sub-iframe — the exact setup that
-  // debug-colgate.html v1 and debug-contextos.html confirmed to work for this
-  // origin and placement. We avoid srcdoc and direct JS DOM injection because
-  // those both failed in the React-created iframe path due to Chrome's
-  // about:blank race.
   const encoded = encodeURIComponent(
     btoa(unescape(encodeURIComponent(tagContent)))
   );
-  // Mount-stable unique id. Purpose: force a unique iframe src on every
-  // component mount so the browser does not serve render-tag.html from
-  // memory cache and — more importantly — so dcmads.js sees a fresh iframe
-  // identity and does not dedupe-silently the second call. Without this,
-  // opening the modal, closing it, and opening another tag would leave the
-  // second preview blank because the ad server treated it as a duplicate.
-  // useState with lazy init runs exactly once per mount, so this value is
-  // stable across re-renders but regenerated on remount.
   const [mountId] = useState(() => Math.random().toString(36).slice(2, 10) + Date.now().toString(36));
-  // Append ?debug=1 to the URL (manually, in a DevTools edit) to surface
-  // a yellow diagnostic overlay inside the iframe for deeper troubleshooting.
   const src = `/preview/render-tag.html?m=${mountId}#tag=${encoded}&w=${tagW}&h=${tagH}`;
 
-  // Surface render-tag.html error events into the modal. Silent blank is
-  // what cost us the last round; if something in the chain breaks, we want
-  // the reason visible in the UI instead of guessing.
-  const [status, setStatus] = useState<string | null>(null);
+  // Diagnostic trace of what render-tag.html reports back. On failure we show
+  // this inline so we can see exactly where the chain broke. Every message is
+  // logged so if the iframe never even boots, we notice.
+  const [trace, setTrace] = useState<string[]>([]);
+  const [status, setStatus] = useState<'idle' | 'booting' | 'rendered' | 'empty' | 'error'>('idle');
+
   useEffect(() => {
-    setStatus(null);
+    setTrace([]);
+    setStatus('booting');
+    let bootReceived = false;
+
     function onMsg(e: MessageEvent) {
-      const d = e.data as { source?: string; type?: string; payload?: { reason?: string; subIframeCount?: number } } | null;
+      const d = e.data as { source?: string; type?: string; payload?: Record<string, unknown> } | null;
       if (!d || typeof d !== 'object' || d.source !== 'adbolt-render-tag') return;
-      if (d.type === 'error') {
-        setStatus('render-tag error: ' + (d.payload?.reason || 'unknown'));
-      } else if (d.type === 'probe' && d.payload?.subIframeCount === 0) {
-        setStatus('dcmads sem sub-iframe (ad server bloqueou ou tag inválida)');
+      setTrace((t) => [...t, `${d.type} ${d.payload ? JSON.stringify(d.payload).slice(0, 90) : ''}`]);
+      if (d.type === 'boot') {
+        bootReceived = true;
+      } else if (d.type === 'error') {
+        setStatus('error');
+      } else if (d.type === 'probe' && d.payload) {
+        const p = d.payload as { at?: number; bodyHtmlLen?: number; firstIframeHasContent?: boolean | null };
+        if (p.at === 4000) {
+          if (p.firstIframeHasContent) setStatus('rendered');
+          else setStatus('empty');
+        }
       }
     }
     window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
+    const bootTimer = setTimeout(() => {
+      if (!bootReceived) {
+        setStatus('error');
+        setTrace((t) => [...t, 'no boot event in 2s — render-tag.html never loaded']);
+      }
+    }, 2000);
+    return () => {
+      window.removeEventListener('message', onMsg);
+      clearTimeout(bootTimer);
+    };
   }, [src]);
+
+  const showBar = status === 'error' || status === 'empty' || trace.length > 0;
 
   return (
     <div style={{ position: 'relative', width: tagW, height: tagH }}>
@@ -358,13 +364,18 @@ function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyT
           ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
           : { border: 'none', display: 'block' }}
       />
-      {status && (
+      {showBar && (
         <div style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
-          background: 'rgba(200,0,0,0.92)', color: 'white',
-          padding: '4px 8px', font: '11px ui-monospace, Menlo, monospace',
-          pointerEvents: 'none',
-        }}>{status}</div>
+          background: status === 'rendered' ? 'rgba(0,128,0,0.85)' : 'rgba(200,40,0,0.92)',
+          color: 'white',
+          padding: '4px 6px', font: '10px ui-monospace, Menlo, monospace',
+          pointerEvents: 'none', maxHeight: '50%', overflow: 'auto',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        }}>
+          status={status} | m={mountId}
+          {'\n'}{trace.join(' | ')}
+        </div>
       )}
     </div>
   );

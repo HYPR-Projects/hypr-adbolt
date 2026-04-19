@@ -30,9 +30,12 @@
       }
       function postToParent(type, payload) {
         try {
-          parent.postMessage({ source: 'adbolt-render-tag', type: type, payload: payload }, '*');
+          parent.postMessage({ source: 'adbolt-render-tag', type: type, payload: payload || {} }, '*');
         } catch (e) {}
       }
+
+      // Announce boot IMMEDIATELY so the parent knows we loaded at all.
+      postToParent('boot', { href: location.href, time: Date.now() });
 
       function parseFragment() {
         var frag = window.location.hash.replace(/^#/, '');
@@ -56,8 +59,6 @@
           return null;
         }
       }
-
-      postToParent('boot', { href: location.href });
 
       var params = parseFragment();
       if (!params.tag) {
@@ -115,20 +116,29 @@
 
       postToParent('written', { htmlLen: wrapped.length });
 
-      // Sanity probe — after 4s, report whether a sub-iframe (the ad server
-      // frame created by dcmads.js in iframe rendering mode) exists.
-      setTimeout(function () {
-        try {
-          var subIframes = doc.querySelectorAll('iframe');
-          postToParent('probe', {
-            subIframeCount: subIframes.length,
-            firstSrc: subIframes[0] ? (subIframes[0].src || '').slice(0, 120) : null,
-          });
-          if (debugEnabled) log('probe: ' + subIframes.length + ' sub-iframe(s)');
-        } catch (e) {
-          postToParent('probe-error', { msg: String(e) });
-        }
-      }, 4000);
+      // Progressive probes at 1s, 2s, 4s to detect WHEN the ad appears (or doesn't).
+      [1000, 2000, 4000].forEach(function (ms) {
+        setTimeout(function () {
+          try {
+            var subIframes = doc.querySelectorAll('iframe');
+            var scripts = doc.querySelectorAll('script');
+            var bodyHtmlLen = doc.body ? doc.body.innerHTML.length : 0;
+            postToParent('probe', {
+              at: ms,
+              subIframeCount: subIframes.length,
+              scriptCount: scripts.length,
+              bodyHtmlLen: bodyHtmlLen,
+              firstIframeSrc: subIframes[0] ? (subIframes[0].src || subIframes[0].getAttribute('src') || '').slice(0, 120) : null,
+              firstIframeHasContent: subIframes[0] && subIframes[0].contentDocument
+                ? subIframes[0].contentDocument.body && subIframes[0].contentDocument.body.innerHTML.length > 0
+                : null,
+            });
+            if (debugEnabled) log('probe@' + ms + 'ms: ' + subIframes.length + ' sub-iframe(s), body=' + bodyHtmlLen + 'B');
+          } catch (e) {
+            postToParent('probe-error', { at: ms, msg: String(e) });
+          }
+        }, ms);
+      });
     })();
   </script>
 </body>
