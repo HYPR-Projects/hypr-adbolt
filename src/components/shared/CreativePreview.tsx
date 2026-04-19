@@ -305,53 +305,45 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
+  // The hosted page at /preview/render-tag.html decides how to render:
+  // - For CM360 iframe-mode tags (the dominant case), it parses the placement
+  //   out of the tag and calls the ad server directly at ad.doubleclick.net
+  //   with a fresh `ord` cachebuster on every open. This bypasses dcmads.js,
+  //   which otherwise silently no-ops on the 2nd+ call inside the same top
+  //   window.
+  // - For anything else, it falls back to document.write-ing the tag into a
+  //   sub-iframe and letting the ad server's own loader script run.
+  //
+  // The ?v=2 is a bust-the-cache marker. Older browsers may have the first
+  // iteration of render-tag.html (srcdoc-only, no ad-server-direct path)
+  // still cached; ?v=2 forces a fresh fetch on first open after deploy.
+  //
+  // The mountId makes every open distinct from every other open in the same
+  // session, which matters for non-CM360 fallback tags whose client loader
+  // might also dedupe.
   const encoded = encodeURIComponent(
     btoa(unescape(encodeURIComponent(tagContent)))
   );
   const [mountId] = useState(() => Math.random().toString(36).slice(2, 10) + Date.now().toString(36));
-  const src = `/preview/render-tag.html?m=${mountId}#tag=${encoded}&w=${tagW}&h=${tagH}`;
+  const src = `/preview/render-tag.html?v=2&m=${mountId}#tag=${encoded}&w=${tagW}&h=${tagH}`;
 
-  // Diagnostic trace of what render-tag.html reports back. On failure we show
-  // this inline so we can see exactly where the chain broke. Every message is
-  // logged so if the iframe never even boots, we notice.
-  const [trace, setTrace] = useState<string[]>([]);
-  const [status, setStatus] = useState<'idle' | 'booting' | 'rendered' | 'empty' | 'error'>('idle');
-
+  // Silent-failure guard. render-tag.html posts an `error` message if it
+  // cannot even decode the fragment. In that case (should not happen with
+  // valid tags, but just in case) we surface a thin red bar so it is not a
+  // silent blank. Normal path renders with no bar at all.
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   useEffect(() => {
-    setTrace([]);
-    setStatus('booting');
-    let bootReceived = false;
-
+    setErrorMsg(null);
     function onMsg(e: MessageEvent) {
-      const d = e.data as { source?: string; type?: string; payload?: Record<string, unknown> } | null;
-      if (!d || typeof d !== 'object' || d.source !== 'adbolt-render-tag') return;
-      setTrace((t) => [...t, `${d.type} ${d.payload ? JSON.stringify(d.payload).slice(0, 90) : ''}`]);
-      if (d.type === 'boot') {
-        bootReceived = true;
-      } else if (d.type === 'error') {
-        setStatus('error');
-      } else if (d.type === 'probe' && d.payload) {
-        const p = d.payload as { at?: number; bodyHtmlLen?: number; firstIframeHasContent?: boolean | null };
-        if (p.at === 4000) {
-          if (p.firstIframeHasContent) setStatus('rendered');
-          else setStatus('empty');
-        }
+      const d = e.data as { source?: string; type?: string; payload?: { reason?: string } } | null;
+      if (!d || d.source !== 'adbolt-render-tag') return;
+      if (d.type === 'error') {
+        setErrorMsg(d.payload?.reason || 'erro ao renderizar');
       }
     }
     window.addEventListener('message', onMsg);
-    const bootTimer = setTimeout(() => {
-      if (!bootReceived) {
-        setStatus('error');
-        setTrace((t) => [...t, 'no boot event in 2s — render-tag.html never loaded']);
-      }
-    }, 2000);
-    return () => {
-      window.removeEventListener('message', onMsg);
-      clearTimeout(bootTimer);
-    };
+    return () => window.removeEventListener('message', onMsg);
   }, [src]);
-
-  const showBar = status === 'error' || status === 'empty' || trace.length > 0;
 
   return (
     <div style={{ position: 'relative', width: tagW, height: tagH }}>
@@ -364,18 +356,13 @@ function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyT
           ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
           : { border: 'none', display: 'block' }}
       />
-      {showBar && (
+      {errorMsg && (
         <div style={{
           position: 'absolute', left: 0, right: 0, bottom: 0,
-          background: status === 'rendered' ? 'rgba(0,128,0,0.85)' : 'rgba(200,40,0,0.92)',
-          color: 'white',
-          padding: '4px 6px', font: '10px ui-monospace, Menlo, monospace',
-          pointerEvents: 'none', maxHeight: '50%', overflow: 'auto',
-          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-        }}>
-          status={status} | m={mountId}
-          {'\n'}{trace.join(' | ')}
-        </div>
+          background: 'rgba(200,40,0,0.92)', color: 'white',
+          padding: '4px 8px', font: '11px ui-monospace, Menlo, monospace',
+          pointerEvents: 'none',
+        }}>{errorMsg}</div>
       )}
     </div>
   );

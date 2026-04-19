@@ -9,12 +9,30 @@
   </style>
 </head>
 <body>
+  <!--
+    Renders a 3P ad tag passed in the URL fragment (base64 + URL-encoded).
+    Loaded in an iframe by the CreativePreviewModal component.
+
+    Why a separate page and not srcdoc / document.write in the React component
+    directly: React creates iframes via JS, which races Chrome's about:blank
+    initialization. A real HTTP-served page sidesteps that entirely. Debug
+    pages proved this.
+
+    Why, for CM360 tags, we bypass dcmads.js and call the ad server directly:
+    dcmads.js has client-side state that causes it to silently no-op on the
+    2nd+ call within the same top window. Hitting ad.doubleclick.net/ddm/adi
+    ourselves with a fresh `ord` param on every open avoids the problem —
+    the ad server treats each call as a new impression and always responds.
+
+    Error reporting: if the fragment cannot be decoded, we postMessage an
+    `error` event to the parent so the modal can show a red bar instead of
+    a silent blank. Normal operation posts nothing.
+  -->
   <script>
     (function () {
-      function postToParent(type, payload) {
+      function post(type, payload) {
         try { parent.postMessage({ source: 'adbolt-render-tag', type: type, payload: payload || {} }, '*'); } catch (e) {}
       }
-      postToParent('boot', { href: location.href, time: Date.now() });
 
       function parseFragment() {
         var frag = window.location.hash.replace(/^#/, '');
@@ -38,46 +56,28 @@
       }
 
       var params = parseFragment();
-      if (!params.tag) { postToParent('error', { reason: 'missing-tag' }); return; }
+      if (!params.tag) { post('error', { reason: 'missing-tag' }); return; }
 
       var tagHtml = b64DecodeUtf8(params.tag);
-      if (!tagHtml) { postToParent('error', { reason: 'decode-failed' }); return; }
+      if (!tagHtml) { post('error', { reason: 'decode-failed' }); return; }
 
       var w = parseInt(params.w, 10) || 300;
       var h = parseInt(params.h, 10) || 250;
-      postToParent('decoded', { w: w, h: h, tagLen: tagHtml.length });
 
       document.documentElement.style.width = w + 'px';
       document.documentElement.style.height = h + 'px';
       document.body.style.width = w + 'px';
       document.body.style.height = h + 'px';
 
-      // --- Fast path: CM360 iframe-rendering-mode tags ---
-      //
-      // The dcmads.js script the tag loads from googletagservices.com does some
-      // client-side state management that causes the 2nd+ call in the same
-      // top-window to silently no-op, even if each call is inside a freshly
-      // created nested iframe with a unique URL. The sub-iframe gets created
-      // but its src is never set, so the ad never shows.
-      //
-      // For CM360 tags in iframe mode, we can skip dcmads entirely and hit
-      // the ad server directly. The URL format is well-known and the same one
-      // dcmads would have built. Appending ;ord=<random>? forces a new
-      // impression every time, so no caching / freq-cap confusion.
-      //
-      // Any tag that is not CM360 iframe mode falls through to the original
-      // dcmads path (document.write the tag into a sub-iframe).
+      // Fast path — CM360 iframe-rendering-mode tags. Parse the placement,
+      // build the /ddm/adi URL ourselves, and point an iframe straight at it.
       var placementMatch = tagHtml.match(/data-dcm-placement=['"]([^'"]+)['"]/);
       var renderingModeMatch = tagHtml.match(/data-dcm-rendering-mode=['"]([^'"]+)['"]/);
       var isCm360Iframe = placementMatch && renderingModeMatch && renderingModeMatch[1] === 'iframe';
 
       if (isCm360Iframe) {
-        var placement = placementMatch[1];
         var ord = Math.floor(Math.random() * 1e13).toString();
-        // /ddm/adi/ is the "ad iframe" endpoint — returns an HTML page that
-        // the browser can render directly in an iframe. /ddm/adj/ is the JS
-        // variant, /ddm/ad/ is the "expandable" mode. adi is what we want.
-        var directUrl = 'https://ad.doubleclick.net/ddm/adi/' + placement
+        var directUrl = 'https://ad.doubleclick.net/ddm/adi/' + placementMatch[1]
           + ';sz=' + w + 'x' + h
           + ';ord=' + ord + '?';
 
@@ -90,31 +90,12 @@
         adFrame.setAttribute('scrolling', 'no');
         adFrame.setAttribute('marginwidth', '0');
         adFrame.setAttribute('marginheight', '0');
-        adFrame.onload = function () {
-          postToParent('direct-loaded', { url: directUrl.slice(0, 200) });
-        };
-        adFrame.onerror = function () {
-          postToParent('direct-error', { url: directUrl.slice(0, 200) });
-        };
         document.body.appendChild(adFrame);
-
-        postToParent('direct', { url: directUrl.slice(0, 200) });
-
-        // Report rendered status after 3s (good enough for ad server response).
-        setTimeout(function () {
-          postToParent('probe', {
-            at: 3000,
-            mode: 'direct',
-            iframeSrcSet: !!adFrame.src,
-            // We can't read contentDocument because it's cross-origin, which
-            // is expected and fine. If the iframe didn't error out, the ad
-            // server served something.
-          });
-        }, 3000);
         return;
       }
 
-      // --- Fallback: dcmads path (non-CM360 or unknown tags) ---
+      // Fallback — non-CM360 tag or CM360 script-mode. Let the tag's own
+      // loader script run in a sub-iframe via document.write.
       var host = document.createElement('iframe');
       host.width = w;
       host.height = h;
@@ -124,7 +105,7 @@
       document.body.appendChild(host);
 
       var doc = host.contentDocument;
-      if (!doc) { postToParent('error', { reason: 'no-contentdoc' }); return; }
+      if (!doc) { post('error', { reason: 'no-contentdoc' }); return; }
 
       var wrapped =
         '<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">'
@@ -134,19 +115,6 @@
       doc.open();
       doc.write(wrapped);
       doc.close();
-      postToParent('written', { htmlLen: wrapped.length, mode: 'dcmads' });
-
-      setTimeout(function () {
-        try {
-          var subIframes = doc.querySelectorAll('iframe');
-          var bodyHtmlLen = doc.body ? doc.body.innerHTML.length : 0;
-          postToParent('probe', {
-            at: 3000, mode: 'dcmads',
-            subIframeCount: subIframes.length,
-            bodyHtmlLen: bodyHtmlLen,
-          });
-        } catch (e) { postToParent('probe-error', { msg: String(e) }); }
-      }, 3000);
     })();
   </script>
 </body>
