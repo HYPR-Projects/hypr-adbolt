@@ -16,7 +16,7 @@ export function App() {
   if (typeof window !== 'undefined' && window.location.pathname === '/debug-modal') {
     const colgateTag = `<ins class='dcmads' style='display:inline-block;width:300px;height:600px'
     data-dcm-placement='N1433191.4242296HYPRN/B35590397.444842268'
-    data-dcm-rendering-mode='iframe'
+    data-dcm-rendering-mode='script'
     data-dcm-https-only
     data-dcm-api-frameworks='[APIFRAMEWORKS]'
     data-dcm-omid-partner='[OMIDPARTNER]'
