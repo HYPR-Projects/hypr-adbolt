@@ -272,6 +272,95 @@ function openTagInPopup(tagContent: string, name: string, w: number, h: number):
   }
 }
 
+
+// ── 3P Tag Frame (open/write/close pattern) ──────────────────────────────────
+//
+// The definitive way to preview a third-party ad tag:
+//
+//   1. Create a blank <iframe> (no src). An iframe with no src inherits the
+//      parent's origin, so the parent can access iframe.contentDocument.
+//   2. Call contentDocument.open() to start a fresh parse stream in the iframe.
+//   3. contentDocument.write(htmlContainingTheTag) while the stream is open.
+//      Every <script> inside runs during the iframe's parse — including
+//      external ones like dcmads.js — and their own document.write() calls
+//      land in the same open stream instead of hitting the async-write block.
+//   4. contentDocument.close() to signal EOF.
+//
+// This is what test-a-tag.com, DV360 Studio preview, and CM360's in-product
+// tag tester all do under the hood. It is mode-agnostic (dcmads.js script mode
+// and iframe mode both work), network-agnostic (HYPRN, DV360BR, any other),
+// and ad-server-agnostic (Sizmek, Flashtalking, Innovid all rely on the same
+// assumption: "my scripts run during a real document parse").
+//
+// srcdoc, iframe with src=embed-page, and blob: URLs all fail this test
+// because either their protocol is not https: (dcmads.js aborts) or their
+// scripts are appended post-parse (document.write blocked).
+//
+interface ThreePartyTagFrameProps {
+  tagContent: string;
+  tagW: number;
+  tagH: number;
+  scale: number;
+  name: string;
+}
+
+function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base target="_blank">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}
+</style>
+</head>
+<body>${tagContent}</body>
+</html>`;
+
+    try {
+      doc.open();
+      doc.write(html);
+      doc.close();
+    } catch (e) {
+      console.error('[preview] open/write/close failed:', e);
+      return;
+    }
+
+    // The ad script may still be fetching. We flip "loaded" immediately after
+    // close() so the iframe fades in — subsequent ad render paints on top.
+    setLoaded(true);
+  }, [tagContent, tagW, tagH]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={`Preview: ${name}`}
+      scrolling="no"
+      width={tagW}
+      height={tagH}
+      style={{
+        display: 'block', border: 'none', background: 'transparent',
+        width: tagW, height: tagH,
+        transformOrigin: '0 0',
+        transform: scale < 1 ? `scale(${scale})` : undefined,
+        clipPath: 'inset(0 0 0 0)',
+        opacity: loaded ? 1 : 0,
+        transition: 'opacity 0.2s',
+      }}
+    />
+  );
+}
+
 // ── Full Preview Modal ──
 
 export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProps) {
@@ -393,44 +482,21 @@ export function CreativePreviewModal({ data, onClose }: CreativePreviewModalProp
       return null;
     }
 
-    // 3P Tag — load from same-origin static page so window.location.protocol
-    // is https:, not about:. srcdoc would work for permissive ad networks
-    // (e.g. DV360 creatives of JnJ) but silently fails for networks whose
-    // loader checks protocol before calling the ad server (CM360 placements
-    // on HYPRN return blank, for example). /preview/embed.html is a minimal
-    // page that accepts the tag in the URL fragment and runs it, which is the
-    // same strategy the "Abrir em nova janela" popup already uses.
+    // 3P Tag — rendered by <ThreePartyTagFrame />, which uses the document
+    // open/write/close pattern to inject the tag into a same-origin iframe.
+    // See the component below for the reasoning.
     if (data.type === '3p-tag' && data.tagContent) {
       const tagW = w || 300;
       const tagH = h || 250;
-      const embedSrc = `/preview/embed.html#tag=${base64UrlEncode(data.tagContent)}&w=${tagW}&h=${tagH}`;
       return (
         <div className={styles.previewFrame} style={{ width: renderW, height: renderH, overflow: 'hidden' }}>
-          {!iframeLoaded && (
-            <div className={styles.loading} style={{ width: renderW, height: renderH, position: 'absolute' }}>
-              <div className={styles.loadingDot} />
-              <div className={styles.loadingDot} />
-              <div className={styles.loadingDot} />
-            </div>
-          )}
-          <iframe
+          <ThreePartyTagFrame
             key={`tag-${previewKey}`}
-            src={embedSrc}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-            scrolling="no"
-            width={tagW}
-            height={tagH}
-            style={{
-              display: 'block', border: 'none', background: 'transparent',
-              width: tagW, height: tagH,
-              transformOrigin: '0 0',
-              transform: scale < 1 ? `scale(${scale})` : undefined,
-              clipPath: 'inset(0 0 0 0)',
-              opacity: iframeLoaded ? 1 : 0,
-              transition: 'opacity 0.3s',
-            }}
-            onLoad={() => setIframeLoaded(true)}
-            title={`Preview: ${data.name}`}
+            tagContent={data.tagContent}
+            tagW={tagW}
+            tagH={tagH}
+            scale={scale}
+            name={data.name}
           />
         </div>
       );
