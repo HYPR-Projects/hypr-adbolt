@@ -305,104 +305,33 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
-  // NO IFRAME. Fetch the ad server via our proxy, get back JSON with the
-  // creative image URL and click URL, render <img>/<a> directly in the React
-  // DOM. This entirely removes iframe-related state partitioning / dedupe /
-  // cross-origin from the picture.
-  //
-  // For CM360 iframe-mode tags we can extract a clean image; for anything
-  // else we fall back to a single srcdoc iframe (which worked before for
-  // non-CM360 tags, so we keep it as a safety net).
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [clickUrl, setClickUrl] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  const placementMatch = tagContent.match(/data-dcm-placement=['"]([^'"]+)['"]/);
-  const renderingMode = tagContent.match(/data-dcm-rendering-mode=['"]([^'"]+)['"]/);
-  const isCm360Iframe = !!(placementMatch && renderingMode && renderingMode[1] === 'iframe');
-
-  useEffect(() => {
-    if (!isCm360Iframe || !placementMatch) return;
-    const ord = Math.floor(Math.random() * 1e13).toString();
-    const proxyUrl = `/api/ad-proxy?placement=${encodeURIComponent(placementMatch[1])}&sz=${tagW}x${tagH}&ord=${ord}`;
-    let cancelled = false;
-    fetch(proxyUrl)
-      .then((r) => r.json())
-      .then((body: { image?: string; click?: string; error?: string }) => {
-        if (cancelled) return;
-        if (body.error) {
-          setLoadError(body.error);
-          return;
-        }
-        if (body.image) {
-          setImageUrl(body.image);
-          setClickUrl(body.click || null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setLoadError(String(e));
-      });
-    return () => { cancelled = true; };
-  }, [isCm360Iframe, placementMatch?.[1], tagW, tagH]);
+  // TEMP DIAGNOSTIC: hardcode the image URL. If this renders, <img> works fine
+  // and the problem is the fetch/proxy path. If this does NOT render (or shows
+  // the same gray-dots pattern), the problem is CSS/layout above this element.
+  const hardcodedImage = 'https://s0.2mdn.net/simgad/10153633310605899915';
 
   const wrapperStyle: React.CSSProperties = scale < 1
     ? { transformOrigin: '0 0', transform: `scale(${scale})`, width: tagW, height: tagH, display: 'block', position: 'relative' }
     : { width: tagW, height: tagH, display: 'block', position: 'relative' };
 
-  // Non-CM360 fallback: single srcdoc iframe
-  if (!isCm360Iframe) {
-    const fallbackDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}</style></head><body>${tagContent}</body></html>`;
-    return (
-      <iframe
-        title={`Preview: ${name}`}
-        srcDoc={fallbackDoc}
+  return (
+    <div style={wrapperStyle} data-debug="3ptag-bruteforce" data-tagw={tagW} data-tagh={tagH}>
+      <div style={{position:'absolute', top:0, left:0, right:0, padding:'4px 8px', background:'red', color:'white', font:'bold 14px monospace', zIndex:10}}>
+        DEBUG: ThreePartyTagFrame mounted, name={name}, tag={tagContent?.length ?? 'null'} chars
+      </div>
+      <img
+        src={hardcodedImage}
+        alt={name}
         width={tagW}
         height={tagH}
-        style={scale < 1
-          ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
-          : { border: 'none', display: 'block' }}
+        onLoad={() => console.log('[3ptag] img onLoad OK', hardcodedImage)}
+        onError={(e) => console.error('[3ptag] img onError', e)}
+        style={{ display: 'block', width: tagW, height: tagH, objectFit: 'contain', background: 'yellow' }}
       />
-    );
-  }
-
-  // CM360 path — img + a
-  if (loadError) {
-    return (
-      <div style={{ ...wrapperStyle, background: '#2a1010', color: '#fca', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '11px ui-monospace,monospace', textAlign: 'center', padding: 8 }}>
-        Preview indisponível<br />{loadError}
-      </div>
-    );
-  }
-  if (!imageUrl) {
-    return (
-      <div style={{ ...wrapperStyle, background: 'var(--surface-2, #1a1a1a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--text-2, #888)', font: '12px sans-serif' }}>Carregando preview…</span>
-      </div>
-    );
-  }
-
-  const img = (
-    <img
-      src={imageUrl}
-      alt={name}
-      width={tagW}
-      height={tagH}
-      onLoad={() => setLoaded(true)}
-      style={{ display: 'block', width: tagW, height: tagH, objectFit: 'contain', opacity: loaded ? 1 : 0, transition: 'opacity .2s' }}
-    />
-  );
-
-  return (
-    <div style={wrapperStyle}>
-      {clickUrl ? (
-        <a href={clickUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: tagW, height: tagH }}>
-          {img}
-        </a>
-      ) : img}
     </div>
   );
 }
+
 
 
 
