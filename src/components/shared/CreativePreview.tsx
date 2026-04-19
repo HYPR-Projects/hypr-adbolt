@@ -305,15 +305,17 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-
-    const html = `<!DOCTYPE html>
+  // Using srcdoc, not open/write/close. Debug pages proved the open/write/close
+  // pattern renders every CM360 iframe-mode tag correctly when the host iframe is
+  // parsed from initial HTML (debug-colgate.html, debug-contextos.html — all six
+  // nested-wrapper cases including the full modal stack). The same code failed
+  // inside this React component because React creates the iframe via JS: the
+  // useEffect fires in the same microtask as insertion, before Chrome finishes
+  // initializing about:blank. Our write succeeds, Chrome then re-initializes
+  // about:blank on top of it, and the content is wiped. srcdoc sidesteps the
+  // whole problem — the attribute is set as part of element creation, the
+  // browser uses its value as the initial document, no about:blank middle phase.
+  const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -326,21 +328,12 @@ html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparen
 <body>${tagContent}</body>
 </html>`;
 
-    try {
-      doc.open();
-      doc.write(html);
-      doc.close();
-    } catch (e) {
-      console.error('[preview] open/write/close failed:', e);
-    }
-  }, [tagContent, tagW, tagH]);
-
   return (
     <iframe
-      ref={iframeRef}
       title={`Preview: ${name}`}
       width={tagW}
       height={tagH}
+      srcDoc={html}
       style={scale < 1 ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' } : { border: 'none', display: 'block' }}
     />
   );
