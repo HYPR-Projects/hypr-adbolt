@@ -47,7 +47,9 @@ export const ASSET_DSP_LIMITS: Record<string, Record<string, number>> = {
 // ── Storage upload limit (bytes) ──
 // Teto do bucket Supabase `asset-uploads`. Precisa bater com o `file_size_limit`
 // configurado no Supabase Storage. Arquivos maiores recebem 413 do Supabase.
-export const STORAGE_UPLOAD_LIMIT = 500 * 1024 * 1024; // 500 MB
+// Alinhado com o teto de vídeo do DV360 (1GB via API) — DSP ativo mais restritivo.
+// Xandr aceita até 1.8GB, mas 1GB é o limite efetivo quando o criativo vai pros dois.
+export const STORAGE_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1 GB
 
 // ── Survey sizes ──
 
