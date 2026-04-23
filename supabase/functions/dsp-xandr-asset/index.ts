@@ -29,56 +29,45 @@ function normalizeTrackerInput(t: unknown): {url: string; format: string; eventT
 interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers:unknown[]; tracker?:string; duration?:number; thumbnailUrl?:string; html5PreviewUrl?:string; }
 interface Result { name:string; success:boolean; creativeId?:number; error?:string; step?:string; _input?:Input; }
 
-async function getFileBytes(sb:any, input:Input): Promise<Uint8Array> {
+// Retorna o asset como Blob (streaming-friendly). Evita alocar Uint8Array gigante em memória
+// - crítico para videos grandes, já que edge functions têm limite de ~512MB por isolate.
+async function getFileBlob(sb:any, input:Input): Promise<Blob> {
   if (input.storagePath) {
     const {data,error} = await sb.storage.from('asset-uploads').download(input.storagePath);
     if (error||!data) throw new Error(`Storage: ${error?.message||'no data'}`);
-    return new Uint8Array(await data.arrayBuffer());
+    return data as Blob;
   }
-  if (input.fileBase64) { const b=atob(input.fileBase64); const a=new Uint8Array(b.length); for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i); return a; }
+  if (input.fileBase64) {
+    const b=atob(input.fileBase64); const a=new Uint8Array(b.length);
+    for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);
+    return new Blob([a], { type: input.mimeType });
+  }
   throw new Error('No file data');
 }
 
-async function processCreative(token:string, advId:number, input:Input, brandUrl:string|null, langId:number, brandId:number|null, sla:number, sb:any): Promise<Result> {
+async function processCreative(token:string, advId:number, input:Input, brandUrl:string|null, langId:number, brandId:number|null, sla:number, sb:any): Promise<r> {
   try {
     const [w,h] = input.dimensions.split('x').map(Number);
-    const bytes = await getFileBytes(sb, input);
-    // Normalize landingPage URL
+    const blob = await getFileBlob(sb, input);
     const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
     const rawTrackers = [...(input.trackers||[]), ...(input.tracker?[input.tracker]:[])].filter(Boolean);
     const normalizedTrackers = rawTrackers.map(t => normalizeTrackerInput(t)).filter(n => n.url);
     let assetType = input.type;
     if (input.mimeType?.startsWith('video/') && assetType !== 'video') assetType = 'video';
 
-    // Derive click destination and audit URL consistently:
-    // - clickDest: where the user goes when clicking the ad (asset landing page, fallback to brandUrl)
-    // - auditUrl: brand URL for Xandr audit review (brandUrl, fallback to landing page)
     const clickDest = lp || brandUrl || '';
     const auditUrl = brandUrl || lp || '';
 
-    console.log(`[xandr-asset] Processing: ${input.name}, type=${assetType}, size=${bytes.length}, clickDest=${clickDest}, auditUrl(brandUrl)=${auditUrl}, trackers=${normalizedTrackers.length}`);
+    console.log(`[xandr-asset] Processing: ${input.name}, type=${assetType}, size=${blob.size}, clickDest=${clickDest}, auditUrl(brandUrl)=${auditUrl}, trackers=${normalizedTrackers.length}`);
 
     if (assetType === 'html5') {
-      const boundary = '----XH5'+Date.now();
-      const enc = new TextEncoder();
-      const parts: Uint8Array[] = [];
-      parts.push(enc.encode(`--${boundary}
-Content-Disposition: form-data; name="type"
-
-html
-`));
-      parts.push(enc.encode(`--${boundary}
-Content-Disposition: form-data; name="file"; filename="${input.fileName}"
-Content-Type: application/zip
-
-`));
-      parts.push(bytes);
-      parts.push(enc.encode(`
---${boundary}--
-`));
-      const len=parts.reduce((s,p)=>s+p.length,0); const body=new Uint8Array(len); let o=0; for(const p of parts){body.set(p,o);o+=p.length}
-      const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token,'Content-Type':`multipart/form-data; boundary=${boundary}`},body});
-      const ud = await ur.json();
+      // FormData nativo - fetch serializa em stream sem buffer completo na memória
+      const fd = new FormData();
+      fd.append('type', 'html');
+      fd.append('file', new Blob([blob], { type: 'application/zip' }), input.fileName);
+      const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token},body:fd});
+      const uploadText = await ur.text();
+      let ud; try{ud=JSON.parse(uploadText)}catch{return{name:input.name,success:false,error:`Upload parse: ${uploadText.substring(0,300)}`,step:'upload'}}
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload: ${JSON.stringify(ud.response||ud).substring(0,500)}`,step:'upload'};
       const cr:Record<string,unknown> = {
@@ -99,25 +88,11 @@ Content-Type: application/zip
 
     } else if (assetType === 'video') {
       console.log(`[xandr-asset] VIDEO upload for ${input.name}`);
-      const boundary = '----XV'+Date.now();
-      const enc = new TextEncoder();
-      const parts: Uint8Array[] = [];
-      parts.push(enc.encode(`--${boundary}
-Content-Disposition: form-data; name="type"
-
-video
-`));
-      parts.push(enc.encode(`--${boundary}
-Content-Disposition: form-data; name="file"; filename="${input.fileName}"
-Content-Type: ${input.mimeType}
-
-`));
-      parts.push(bytes);
-      parts.push(enc.encode(`
---${boundary}--
-`));
-      const len=parts.reduce((s,p)=>s+p.length,0); const body=new Uint8Array(len); let o=0; for(const p of parts){body.set(p,o);o+=p.length}
-      const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token,'Content-Type':`multipart/form-data; boundary=${boundary}`},body});
+      // FormData nativo - streaming sem estourar memória do isolate
+      const fd = new FormData();
+      fd.append('type', 'video');
+      fd.append('file', new Blob([blob], { type: input.mimeType }), input.fileName);
+      const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token},body:fd});
       const uploadText = await ur.text();
       let ud; try{ud=JSON.parse(uploadText)}catch{return{name:input.name,success:false,error:`Upload parse: ${uploadText.substring(0,300)}`,step:'upload'}}
       const ma = ud.response?.['media-asset']?.[0];
@@ -150,8 +125,6 @@ Content-Type: ${input.mimeType}
       };
       if(langId) vastCreative.language = {id: langId};
       if(brandId) vastCreative.brand_id = brandId;
-      // Note: video trackers go via inline.linear.trackers (VAST events), NOT via pixels
-      // Adding to pixels would duplicate them as generic impression pixels
       const vastBody = JSON.stringify({'creative-vast': vastCreative});
       console.log(`[xandr-asset] POST creative-vast: ${vastBody.substring(0,1000)}`);
       const res = await fetch(`${XANDR_API}/creative-vast?member_id=${MEMBER_ID}&advertiser_id=${advId}`,{ method:'POST', headers:{'Content-Type':'application/json',Authorization:token}, body:vastBody });
@@ -163,7 +136,8 @@ Content-Type: ${input.mimeType}
       return {name:input.name,success:false,error:`creative-vast: ${rd.response?.error_message||JSON.stringify(rd.response||rd).substring(0,500)}`,step:'create'};
 
     } else {
-      // Display image (template 4)
+      // Display image (template 4) - precisa dos bytes para base64
+      const bytes = new Uint8Array(await blob.arrayBuffer());
       const b64 = base64Encode(bytes);
       const cr:Record<string,unknown> = {
         name:input.name, advertiser_id:advId, width:w, height:h,
@@ -197,7 +171,6 @@ Deno.serve(async(req)=>{
     if (ae||!user) return new Response(JSON.stringify({error:'Auth failed'}),{status:401,headers:{...CORS,'Content-Type':'application/json'}});
     const body = await req.json();
     const {advertiserId=7392214, brandUrl=null, languageId=8, brandId=null, sla=0, campaignName='', advertiserName='', creatives=[], activationSessionId=null} = body;
-    // Normalize URLs: add https:// if missing protocol
     const normUrl = (u: string|null) => { if (!u) return null; const t = u.trim(); if (!t) return null; if (!/^https?:\/\//i.test(t)) return 'https://' + t; return t; };
     const safeBrandUrl = normUrl(brandUrl);
     if (!creatives.length) return new Response(JSON.stringify({error:'No creatives'}),{status:400,headers:{...CORS,'Content-Type':'application/json'}});

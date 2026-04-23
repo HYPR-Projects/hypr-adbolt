@@ -12,25 +12,29 @@ function normalizeTrackerInput(t: unknown): {url: string; format: string; eventT
 interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers?:unknown[]; duration?:number; thumbnailUrl?:string; html5PreviewUrl?:string; }
 interface Result { name:string; success:boolean; creativeId?:string; error?:string; step?:string; _input?:Input; }
 
-async function getFileBytes(sb: any, input: Input): Promise<Uint8Array> {
+// Retorna o asset como Blob (streaming-friendly). Evita alocar Uint8Array gigante em memória
+// - crítico para videos grandes, já que edge functions têm limite de ~512MB por isolate.
+async function getFileBlob(sb: any, input: Input): Promise<Blob> {
   if (input.storagePath) {
     const { data, error } = await sb.storage.from('asset-uploads').download(input.storagePath);
     if (error || !data) throw new Error(`Storage download: ${error?.message || 'no data'}`);
-    return new Uint8Array(await data.arrayBuffer());
+    return data as Blob;
   }
-  if (input.fileBase64) { const b = atob(input.fileBase64); const arr = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) arr[i] = b.charCodeAt(i); return arr; }
+  if (input.fileBase64) {
+    const b = atob(input.fileBase64); const arr = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) arr[i] = b.charCodeAt(i);
+    return new Blob([arr], { type: input.mimeType });
+  }
   throw new Error('No file data');
 }
 
-async function process(token: string, advId: string, input: Input, sb: any): Promise<Result> {
+async function process(token: string, advId: string, input: Input, sb: any): Promise<r> {
   try {
-    const bytes = await getFileBytes(sb, input);
+    const blob = await getFileBlob(sb, input);
     const isVideo = input.type === 'video';
     const [w,h] = input.dimensions.split('x').map(Number);
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
-    // Normalize landingPage URL
     const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
-    // DV360 thirdPartyUrls type mapping for video events
     const DV360_EVENT_MAP: Record<string, string> = {
       impression: 'THIRD_PARTY_URL_TYPE_IMPRESSION',
       start: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_START',
@@ -40,7 +44,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       completion: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_COMPLETE',
       click: 'THIRD_PARTY_URL_TYPE_CLICK_TRACKING',
       skip: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_SKIP',
-      error: 'THIRD_PARTY_URL_TYPE_IMPRESSION', // no error type in DV360, fallback to impression
+      error: 'THIRD_PARTY_URL_TYPE_IMPRESSION',
     };
     const allTrackerUrls: Array<{type: string; url: string}> = [];
     const seen = new Set<string>();
@@ -53,38 +57,29 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
         : 'THIRD_PARTY_URL_TYPE_IMPRESSION';
       allTrackerUrls.push({type: dv360Type, url: t.url});
     }
-    console.log(`[dv360-asset] Uploading ${input.fileName} (${bytes.length} bytes, ${input.mimeType}), type=${input.type}, trackers=${allTrackerUrls.length}, events=${allTrackerUrls.map(t=>t.type).join(',')}`);
-    if (isVideo && bytes.length < 1000) { return {name:input.name, success:false, error:`File too small (${bytes.length} bytes)`, step:'validate'}; }
+    console.log(`[dv360-asset] Uploading ${input.fileName} (${blob.size} bytes, ${input.mimeType}), type=${input.type}, trackers=${allTrackerUrls.length}, events=${allTrackerUrls.map(t=>t.type).join(',')}`);
+    if (isVideo && blob.size < 1000) { return {name:input.name, success:false, error:`File too small (${blob.size} bytes)`, step:'validate'}; }
 
-    const boundary = '----DV360' + Date.now() + Math.random().toString(36).substr(2,8);
-    const CRLF = '
-';
-    const enc = new TextEncoder();
-    const metaJson = JSON.stringify({filename: input.fileName});
-    const metaPart = enc.encode(`--${boundary}${CRLF}Content-Disposition: form-data; name="data"${CRLF}Content-Type: application/json; charset=UTF-8${CRLF}${CRLF}${metaJson}${CRLF}`);
-    const fileHeader = enc.encode(`--${boundary}${CRLF}Content-Disposition: form-data; name="file"; filename="${input.fileName}"${CRLF}Content-Type: ${input.mimeType}${CRLF}${CRLF}`);
-    const fileFooter = enc.encode(CRLF);
-    const closing = enc.encode(`--${boundary}--${CRLF}`);
-    const totalLen = metaPart.length + fileHeader.length + bytes.length + fileFooter.length + closing.length;
-    const body = new Uint8Array(totalLen);
-    let offset = 0;
-    body.set(metaPart, offset); offset += metaPart.length;
-    body.set(fileHeader, offset); offset += fileHeader.length;
-    body.set(bytes, offset); offset += bytes.length;
-    body.set(fileFooter, offset); offset += fileFooter.length;
-    body.set(closing, offset);
+    // FormData nativo: fetch serializa em stream sem materializar body completo na memória.
+    // Google DV360 aceita multipart padrão; o Blob "data" carrega Content-Type aplicação/json explícito.
+    const fd = new FormData();
+    fd.append('data', new Blob([JSON.stringify({filename: input.fileName})], { type: 'application/json; charset=UTF-8' }));
+    fd.append('file', new Blob([blob], { type: input.mimeType }), input.fileName);
 
-    const uploadRes = await fetch(`https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
-      { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body });
+    const uploadRes = await fetch(
+      `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd }
+    );
     const uploadText = await uploadRes.text();
     let uploadData;
     try { uploadData = JSON.parse(uploadText); } catch { return {name:input.name, success:false, error:`Upload parse: ${uploadText.substring(0,200)}`, step:'upload'}; }
     const mediaId = uploadData.asset?.mediaId;
     if (!mediaId) return {name:input.name, success:false, error:`No mediaId: ${uploadData.error?.message || uploadText.substring(0,200)}`, step:'upload'};
 
-    // Read actual dimensions from the file bytes (source of truth)
+    // Source of truth: read actual dimensions from file bytes (display only - videos skip this)
     let realW = w, realH = h;
     if (!isVideo) {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
       const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8;
       const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
       if (isJpeg) {
@@ -115,15 +110,11 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       assets: [{asset:{mediaId}, role:'ASSET_ROLE_MAIN'}],
       exitEvents: [{name:'Landing Page', type:'EXIT_EVENT_TYPE_DEFAULT', url:lp||'https://example.com'}]
     };
-    // Use actual file dimensions (not frontend-declared) to prevent ASPECT_RATIO_MISMATCH
     if (!isVideo) creative.dimensions = {widthPixels: realW || 1, heightPixels: realH || 1};
-    // Hosted creatives: display uses appendedTag, video uses thirdPartyUrls
     if (allTrackerUrls.length) {
       if (isVideo) {
-        // Video creatives use thirdPartyUrls array
         creative.thirdPartyUrls = allTrackerUrls.map(t => ({ type: t.type, url: t.url }));
       } else {
-        // Display/HTML5 use appendedTag (maps to "Append HTML tracking tag" in DV360 UI)
         const tagParts = allTrackerUrls.map(t => {
           const lower = t.url.toLowerCase();
           if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
@@ -131,8 +122,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
           }
           return `<img src="${t.url}" width="1" height="1" style="display:none" />`;
         });
-        creative.appendedTag = tagParts.join('
-');
+        creative.appendedTag = tagParts.join('\n');
       }
     }
 
