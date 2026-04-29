@@ -118,13 +118,12 @@ export function StepActivate() {
         toast(`${missingLp.length} asset(s) sem landing page. Preencha antes de ativar.`, 'error');
         return;
       }
-      // Bloqueio de vídeos com status fail (bitrate > hard threshold, codec
-      // incompatível, ou duration ilegível). Esses casos quebram preview e
-      // serving — a UI manual da Xandr/DV360 funciona porque transcoda
-      // automaticamente, mas a API não. Forçamos o usuário a otimizar antes.
-      const failedVideos = store.assetEntries.filter((a) => a.type === 'video' && a.videoStatus === 'fail' && !a.videoOptimized);
-      if (failedVideos.length) {
-        toast(`${failedVideos.length} vídeo(s) com problema bloqueante. Use o botão "Otimizar (obrig.)" antes de ativar.`, 'error');
+      // Bloqueio só de vídeos com duration ilegível — sem duration, o edge function
+      // não consegue gerar VAST válido. Bitrate alto não bloqueia mais: o edge
+      // function transcoda automaticamente via Cloudinary antes de enviar pra Xandr.
+      const brokenVideos = store.assetEntries.filter((a) => a.type === 'video' && (!a.duration || a.duration <= 0));
+      if (brokenVideos.length) {
+        toast(`${brokenVideos.length} vídeo(s) com metadata ilegível (duration=0). Re-importe os arquivos.`, 'error');
         return;
       }
       // Upload cache is validated by file hash inside uploadAssetToStorage —

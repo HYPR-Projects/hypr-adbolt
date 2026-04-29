@@ -38,18 +38,12 @@
 
 .weightHint { font-size: var(--fs-min); color: var(--text-tri); margin-left: 4px; opacity: 0.6; font-family: var(--mono); }
 
-/* Video metadata + transcoding affordances ─ aparecem na coluna de weight pra
-   manter densidade de info no row sem virar uma coluna nova. */
+/* Video metadata + bitrate badge — informativo apenas. Transcoding acontece
+   no servidor (edge function via Cloudinary), então a UI só mostra status. */
 .videoMeta { font-size: var(--fs-min); color: var(--text-tri); margin-left: 6px; font-family: var(--mono); }
-.videoStatus { display: inline-flex; align-items: center; font-size: var(--fs-min); font-weight: 600; padding: 2px 6px; margin-left: 6px; border-radius: var(--surface-radius-xs); border: var(--surface-border) solid transparent; cursor: default; font-family: var(--font); }
-button.videoStatus { cursor: pointer; transition: all var(--dur-f); }
-button.videoStatus:hover { filter: brightness(1.1); }
-.videoStatusOk { color: var(--accent); background: var(--accent-dim); border-color: var(--accent-ring); }
+.videoStatus { display: inline-flex; align-items: center; font-size: var(--fs-min); font-weight: 600; padding: 2px 6px; margin-left: 6px; border-radius: var(--surface-radius-xs); border: var(--surface-border) solid transparent; font-family: var(--mono); cursor: help; }
 .videoStatusWarn { color: var(--warning); background: var(--warning-dim); border-color: var(--warning); }
 .videoStatusFail { color: var(--error); background: var(--error-dim); border-color: var(--error); }
-.videoProgress { display: inline-block; position: relative; min-width: 120px; height: 16px; margin-left: 6px; background: var(--bg-base); border: var(--surface-border) solid var(--border); border-radius: var(--surface-radius-xs); overflow: hidden; vertical-align: middle; }
-.videoProgressBar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); transition: width 200ms ease; }
-.videoProgressLabel { position: relative; display: block; text-align: center; font-size: var(--fs-min); line-height: 16px; color: var(--text-sec); font-family: var(--mono); padding: 0 6px; mix-blend-mode: difference; }
 
 /* Tracker chips */
 .trackerCell { min-width: 180px; }

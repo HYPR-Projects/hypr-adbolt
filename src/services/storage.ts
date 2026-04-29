@@ -187,6 +187,8 @@ export function buildCreativePayload(
   landingPage: string;
   trackers: Tracker[];
   duration: number;
+  videoStatus?: 'ok' | 'warn' | 'fail';
+  bitrateKbps?: number;
 } {
   const file = asset._uploadedFile || asset.compressedFile || asset.originalFile;
 
@@ -201,6 +203,10 @@ export function buildCreativePayload(
     landingPage: asset.landingPage,
     trackers: mergeTrackers(asset.trackers || [], dsp),
     duration: asset.duration || 0,
+    // Sinalização pro edge function decidir se transcoda via Cloudinary.
+    // Sem esses campos, vídeo segue cru pra DSP (caso display/html5 ou vídeo OK).
+    videoStatus: asset.videoStatus,
+    bitrateKbps: asset.bitrateKbps,
   };
 }
 

@@ -33,7 +33,6 @@ export interface AssetEntry {
   videoCodec?: string;
   videoStatus?: 'ok' | 'warn' | 'fail';
   videoWarnings?: string[];
-  videoOptimized?: boolean;
   // ── Storage cache ──
   _storagePath?: string;
   _uploadedFile?: File;

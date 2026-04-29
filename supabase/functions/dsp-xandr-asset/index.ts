@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.208.0/encoding/base64.ts";
+import { cloudinaryTranscodeVideo, getCloudinaryConfig } from "../_shared/cloudinary.ts";
 
 const XANDR_API = "https://api.appnexus.com";
 const MEMBER_ID = 14843;
@@ -26,7 +27,7 @@ function normalizeTrackerInput(t: unknown): {url: string; format: string; eventT
   return {url: obj.url || '', format: obj.format || pixelFormat(obj.url || ''), eventType: obj.eventType};
 }
 
-interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers:unknown[]; tracker?:string; duration?:number; thumbnailUrl?:string; html5PreviewUrl?:string; }
+interface Input { name:string; type:'display'|'video'|'html5'; dimensions:string; fileName:string; mimeType:string; storagePath?:string; fileBase64?:string; fileSize?:number; landingPage:string; trackers:unknown[]; tracker?:string; duration?:number; thumbnailUrl?:string; html5PreviewUrl?:string; videoStatus?:'ok'|'warn'|'fail'; bitrateKbps?:number; }
 interface Result { name:string; success:boolean; creativeId?:number; error?:string; step?:string; _input?:Input; }
 
 // Retorna o asset como Blob (streaming-friendly). Evita alocar Uint8Array gigante em memória
@@ -95,16 +96,61 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       if (!input.duration || input.duration <= 0) {
         return { name: input.name, success: false, error: 'Duration ausente ou zero — não foi possível ler metadata do vídeo. Re-importe o arquivo no AdBolt.', step: 'validate' };
       }
+
+      // ── Transcoding via Cloudinary ──
+      // Vídeos com bitrate alto (>4 Mbps) ou codec não-H.264 quebram serving:
+      // a Xandr aceita o arquivo cru e faz audit, mas o pipeline interno de
+      // transcoding tem latência longa (vimos 4 dias num caso real). Durante
+      // essa janela, o VAST tem só 1 MediaFile que players de publisher não
+      // conseguem tocar a tempo em RTB → line item não entrega.
+      //
+      // Quando o cliente sinaliza videoStatus=warn|fail, mandamos o arquivo
+      // pro Cloudinary primeiro. A Cloudinary devolve uma versão otimizada
+      // (1280x720 max, H.264 baseline, 2.5 Mbps, faststart) que segue pra
+      // Xandr no lugar do original.
+      let videoBlob = blob;
+      let videoFileName = input.fileName;
+      let videoMimeType = input.mimeType;
+      let videoDuration = input.duration;
+      const needsTranscode = input.videoStatus === 'warn' || input.videoStatus === 'fail';
+      if (needsTranscode) {
+        const cloudinaryConfig = getCloudinaryConfig();
+        if (!cloudinaryConfig) {
+          // Sem Cloudinary configurado, segue com o original. Loga warning pra
+          // facilitar debug — o creative pode até passar audit mas vai falhar
+          // entrega como antes do fix. Não bloqueia: usuário pode ter setup
+          // pendente e a fila precisa continuar funcionando pra outros vídeos.
+          console.warn(`[xandr-asset] ${input.name} marcado como ${input.videoStatus} mas Cloudinary não configurado — enviando original (${blob.size} bytes, ${input.bitrateKbps || '?'} kbps)`);
+        } else {
+          console.log(`[xandr-asset] ${input.name}: transcodando via Cloudinary (input ${blob.size} bytes, ${input.bitrateKbps || '?'} kbps, status=${input.videoStatus})`);
+          const tStart = Date.now();
+          try {
+            const result = await cloudinaryTranscodeVideo(blob, input.fileName, cloudinaryConfig);
+            const reduction = Math.round((1 - result.bytes / blob.size) * 100);
+            console.log(`[xandr-asset] ${input.name}: transcode OK em ${Date.now() - tStart}ms (${result.bytes} bytes, ${result.bitrateKbps} kbps, -${reduction}%)`);
+            videoBlob = result.blob;
+            videoFileName = input.fileName.replace(/\.[^.]+$/, '') + '_optimized.mp4';
+            videoMimeType = 'video/mp4';
+            // Cloudinary devolve duration mais precisa que a leitura via <video> no client
+            if (result.durationSeconds > 0) videoDuration = result.durationSeconds;
+          } catch (err) {
+            // Falha no Cloudinary é fatal pra esse creative — usar o original
+            // levaria ao mesmo problema de não-entrega que o fix está resolvendo.
+            return { name: input.name, success: false, error: `Cloudinary transcode falhou: ${(err as Error).message}`, step: 'transcode' };
+          }
+        }
+      }
+
       // FormData nativo - streaming sem estourar memória do isolate
       const fd = new FormData();
       fd.append('type', 'video');
-      fd.append('file', new Blob([blob], { type: input.mimeType }), input.fileName);
+      fd.append('file', new Blob([videoBlob], { type: videoMimeType }), videoFileName);
       const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token},body:fd});
       const uploadText = await ur.text();
       let ud; try{ud=JSON.parse(uploadText)}catch{return{name:input.name,success:false,error:`Upload parse: ${uploadText.substring(0,300)}`,step:'upload'}}
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload failed: ${JSON.stringify(ud.response||ud).substring(0,300)}`,step:'upload'};
-      const durationMs = input.duration * 1000;
+      const durationMs = videoDuration * 1000;
       const inlineObj: Record<string, unknown> = { ad_title: input.name };
       if (normalizedTrackers.length > 0) {
         const VAST_EVENT_MAP: Record<string, string> = {

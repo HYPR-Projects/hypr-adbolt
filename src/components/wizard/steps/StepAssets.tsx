@@ -14,7 +14,6 @@ import {
   isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
 } from '@/lib/asset-processing';
 import { analyzeVideo } from '@/lib/video-analysis';
-import { transcodeVideo, type TranscodeProgress } from '@/lib/video-transcode';
 import { extractZipToFiles, processHTML5Zip } from '@/lib/html5-zip';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, formatBytes } from '@/lib/utils';
@@ -133,7 +132,6 @@ export function StepAssets() {
               videoCodec: v.codec,
               videoStatus: v.status,
               videoWarnings: v.warnings,
-              videoOptimized: false,
             });
           } else {
             const dims = await readFileDimensions(file, type);
@@ -242,89 +240,6 @@ export function StepAssets() {
     }
   };
 
-  // ── Video transcode handler ──
-  // Map asset.id → progresso atual. Permite múltiplos transcodes paralelos
-  // mostrarem barras independentes (não rodamos paralelo hoje, mas a UI tá pronta).
-  const [transcodeProgress, setTranscodeProgress] = useState<Record<number, TranscodeProgress>>({});
-  const handleTranscode = async (entry: AssetEntry) => {
-    if (entry.type !== 'video') return;
-    setTranscodeProgress((prev) => ({ ...prev, [entry.id]: { phase: 'loading-core', progress: 0, message: 'Iniciando…' } }));
-    try {
-      const result = await transcodeVideo(entry.originalFile, (p) => {
-        setTranscodeProgress((prev) => ({ ...prev, [entry.id]: p }));
-      });
-      // Re-analisa o output pra ter bitrate/codec/duration corretos
-      const analysis = await analyzeVideo(result.file);
-      const newThumb = await generateThumb(result.file, 'video');
-      updateAsset(entry.id, {
-        file: result.file,
-        compressedFile: result.file,
-        size: result.file.size,
-        w: analysis.w,
-        h: analysis.h,
-        dimensions: `${analysis.w}x${analysis.h}`,
-        duration: analysis.duration,
-        thumb: newThumb,
-        bitrateKbps: analysis.bitrateKbps,
-        videoCodec: analysis.codec,
-        videoStatus: analysis.status,
-        videoWarnings: analysis.warnings,
-        videoOptimized: true,
-        _storagePath: undefined,
-        _uploadedFile: undefined,
-      });
-      const reduction = Math.round((1 - result.outputSize / result.inputSize) * 100);
-      toast(`${entry.name} otimizado: ${formatBytes(result.outputSize)} (-${reduction}%)`, 'success');
-    } catch (err) {
-      console.error('Transcode error:', entry.name, err);
-      toast(`Erro ao otimizar ${entry.name}: ${(err as Error).message}`, 'error');
-    } finally {
-      setTranscodeProgress((prev) => {
-        const next = { ...prev };
-        delete next[entry.id];
-        return next;
-      });
-    }
-  };
-  const handleBulkTranscode = async () => {
-    const selected = [...selectedAssetIds].map((id) => assetMap.get(id)).filter(Boolean) as AssetEntry[];
-    const videos = selected.filter((a) => a.type === 'video' && !a.videoOptimized && a.videoStatus !== 'ok');
-    if (!videos.length) {
-      toast('Nenhum vídeo selecionado precisa de otimização', '');
-      return;
-    }
-    for (const v of videos) await handleTranscode(v);
-  };
-
-  // ── Auto-transcoding ──
-  // Roda transcode automaticamente pra qualquer vídeo com status warn/fail
-  // assim que ele aparece no state. UX que o user esperava: sem precisar clicar
-  // em nada, o vídeo é otimizado em background.
-  //
-  // Rastreia IDs já triggados num ref pra evitar loop infinito (handleTranscode
-  // atualiza assetEntries quando termina, o que dispara o useEffect de novo).
-  // Ref é fora do React state porque queremos que persista entre renders sem
-  // causar re-render quando muda.
-  const triggeredTranscodesRef = useRef<Set<number>>(new Set());
-  const handleTranscodeRef = useRef(handleTranscode);
-  useEffect(() => { handleTranscodeRef.current = handleTranscode; });
-  useEffect(() => {
-    const pending = assetEntries.filter((e) =>
-      e.type === 'video'
-      && (e.videoStatus === 'warn' || e.videoStatus === 'fail')
-      && !e.videoOptimized
-      && !triggeredTranscodesRef.current.has(e.id),
-    );
-    if (!pending.length) return;
-    pending.forEach((e) => triggeredTranscodesRef.current.add(e.id));
-    toast(`Otimizando ${pending.length} vídeo(s) automaticamente…`, '');
-    void (async () => {
-      for (const entry of pending) {
-        await handleTranscodeRef.current(entry);
-      }
-    })();
-  }, [assetEntries, toast]);
-
   // ── Modal state ──
   const [renameOpen, setRenameOpen] = useState(false);
   const [frOpen, setFrOpen] = useState(false);
@@ -430,7 +345,6 @@ export function StepAssets() {
     { label: 'Find & Replace', onClick: () => setFrOpen(true) },
     { label: 'Duplicar', onClick: handleBulkDuplicate },
     { label: 'Comprimir', onClick: handleBulkCompress },
-    { label: 'Otimizar vídeos', onClick: handleBulkTranscode },
     {
       label: 'Remover', onClick: () => {
         if (!confirm(`Remover ${selectedCount} asset(s)?`)) return;
@@ -602,46 +516,23 @@ export function StepAssets() {
                         {a.type === 'html5' && wc !== 'ok' && (
                           <span className={styles.weightHint} title="HTML5 ZIPs não podem ser comprimidos pelo AdBolt">ZIP</span>
                         )}
-                        {a.type === 'video' && (() => {
-                          const prog = transcodeProgress[a.id];
-                          if (prog) {
-                            return (
-                              <div className={styles.videoProgress} title={prog.message}>
-                                <div className={styles.videoProgressBar} style={{ width: `${Math.round(prog.progress * 100)}%` }} />
-                                <span className={styles.videoProgressLabel}>{prog.message}</span>
-                              </div>
-                            );
-                          }
-                          if (a.videoOptimized) {
-                            return (
-                              <span className={`${styles.videoStatus} ${styles.videoStatusOk}`} title={`${a.duration}s @ ${a.bitrateKbps?.toLocaleString()} kbps`}>
-                                ✓ Otimizado
-                              </span>
-                            );
-                          }
-                          // Auto-trigger pega esses casos no useEffect — aqui só mostramos
-                          // "aguardando" enquanto o trigger não disparou ainda. Se ficar
-                          // travado, o user pode re-uploadar ou clicar bulk Otimizar.
-                          if (a.videoStatus === 'fail' || a.videoStatus === 'warn') {
-                            const triggered = triggeredTranscodesRef.current.has(a.id);
-                            return (
-                              <span
-                                className={`${styles.videoStatus} ${a.videoStatus === 'fail' ? styles.videoStatusFail : styles.videoStatusWarn}`}
-                                title={a.videoWarnings?.join('\n') || ''}
-                              >
-                                {triggered ? 'Aguardando…' : 'Pendente'}
-                              </span>
-                            );
-                          }
-                          if (a.videoStatus === 'ok' && a.bitrateKbps) {
-                            return (
-                              <span className={styles.videoMeta} title={`${a.duration}s, codec ${a.videoCodec || '?'}`}>
-                                {a.bitrateKbps.toLocaleString()} kbps
-                              </span>
-                            );
-                          }
-                          return null;
-                        })()}
+                        {a.type === 'video' && a.bitrateKbps ? (
+                          // Transcoding acontece no servidor (edge function via Cloudinary).
+                          // Aqui o badge é só informativo — vídeos com bitrate alto vão ser
+                          // otimizados automaticamente na ativação, sem ação do usuário.
+                          a.videoStatus === 'fail' || a.videoStatus === 'warn' ? (
+                            <span
+                              className={`${styles.videoStatus} ${a.videoStatus === 'fail' ? styles.videoStatusFail : styles.videoStatusWarn}`}
+                              title={`${a.bitrateKbps.toLocaleString()} kbps · ${a.duration}s · ${a.videoCodec || '?'}\nSerá otimizado automaticamente na ativação`}
+                            >
+                              {a.bitrateKbps.toLocaleString()} kbps
+                            </span>
+                          ) : (
+                            <span className={styles.videoMeta} title={`${a.duration}s, codec ${a.videoCodec || '?'}`}>
+                              {a.bitrateKbps.toLocaleString()} kbps
+                            </span>
+                          )
+                        ) : null}
                       </td>
                       <td>
                         <input
