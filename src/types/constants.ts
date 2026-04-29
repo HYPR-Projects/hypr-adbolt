@@ -51,6 +51,29 @@ export const ASSET_DSP_LIMITS: Record<string, Record<string, number>> = {
 // Xandr aceita até 1.8GB, mas 1GB é o limite efetivo quando o criativo vai pros dois.
 export const STORAGE_UPLOAD_LIMIT = 1024 * 1024 * 1024; // 1 GB
 
+// ── Video transcoding thresholds ──
+// Bitrates em kbps. Calibrados pra serving via VAST nas DSPs ativas (Xandr/DV360),
+// considerando que a UI manual da Xandr transcoda automaticamente pra ~2500 kbps
+// e a API não. Vídeos acima de HARD travam preview e não entregam em RTB.
+export const VIDEO_BITRATE_OK_KBPS = 4000;
+export const VIDEO_BITRATE_HARD_KBPS = 8000;
+
+// Target de transcoding via ffmpeg.wasm. Bate com a recomendação da Xandr
+// (1280x720 @ 2500 kbps no topo da escala suportada) e mantém compatibilidade
+// com o player de qualquer publisher web/mobile.
+export const VIDEO_TRANSCODE_TARGET = {
+  maxWidth: 1280,
+  maxHeight: 720,
+  videoBitrateKbps: 2500,
+  audioBitrateKbps: 128,
+  profile: 'baseline' as const,
+  level: '3.1' as const,
+};
+
+// Codecs aceitáveis sem transcoding obrigatório. HEVC/AV1/etc geram VAST com
+// MediaFile que a maioria dos players web/mobile não decoda — força transcode.
+export const VIDEO_CODECS_OK = new Set(['avc1', 'h264']);
+
 // ── Survey sizes ──
 
 export const SURVEY_SIZES = ['300x600', '300x250', '320x480'];

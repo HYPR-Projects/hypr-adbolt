@@ -13,6 +13,8 @@ import {
   getAssetType, readFileDimensions, generateThumb,
   isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
 } from '@/lib/asset-processing';
+import { analyzeVideo } from '@/lib/video-analysis';
+import { transcodeVideo, preloadFFmpeg, type TranscodeProgress } from '@/lib/video-transcode';
 import { extractZipToFiles, processHTML5Zip } from '@/lib/html5-zip';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, formatBytes } from '@/lib/utils';
@@ -106,25 +108,57 @@ export function StepAssets() {
           continue;
         }
         try {
-          const dims = await readFileDimensions(file, type);
           const thumb = await generateThumb(file, type);
-          newEntries.push({
-            id: getNextAssetId(),
-            type,
-            file,
-            originalFile: file,
-            name: file.name.replace(/\.\w+$/, ''),
-            dimensions: `${dims.w}x${dims.h}`,
-            w: dims.w,
-            h: dims.h,
-            duration: dims.duration || 0,
-            size: file.size,
-            thumb,
-            landingPage: '',
-            trackers: [],
-            compressed: false,
-            compressedFile: null,
-          });
+          if (type === 'video') {
+            // Análise mais rica pra video: bitrate + codec + status. Permite UI
+            // mostrar warning/erro antes do upload e habilita botão Otimizar.
+            const v = await analyzeVideo(file);
+            newEntries.push({
+              id: getNextAssetId(),
+              type,
+              file,
+              originalFile: file,
+              name: file.name.replace(/\.\w+$/, ''),
+              dimensions: `${v.w}x${v.h}`,
+              w: v.w,
+              h: v.h,
+              duration: v.duration,
+              size: file.size,
+              thumb,
+              landingPage: '',
+              trackers: [],
+              compressed: false,
+              compressedFile: null,
+              bitrateKbps: v.bitrateKbps,
+              videoCodec: v.codec,
+              videoStatus: v.status,
+              videoWarnings: v.warnings,
+              videoOptimized: false,
+            });
+            // Pré-carrega o ffmpeg.wasm em background quando detecta vídeo que
+            // provavelmente vai precisar de transcode — assim quando o usuário
+            // clicar "Otimizar", o core já tá quente.
+            if (v.status !== 'ok') void preloadFFmpeg();
+          } else {
+            const dims = await readFileDimensions(file, type);
+            newEntries.push({
+              id: getNextAssetId(),
+              type,
+              file,
+              originalFile: file,
+              name: file.name.replace(/\.\w+$/, ''),
+              dimensions: `${dims.w}x${dims.h}`,
+              w: dims.w,
+              h: dims.h,
+              duration: dims.duration || 0,
+              size: file.size,
+              thumb,
+              landingPage: '',
+              trackers: [],
+              compressed: false,
+              compressedFile: null,
+            });
+          }
         } catch (err) {
           console.error('File processing error:', file.name, err);
           toast(`Erro ao processar ${file.name}`, 'error');
@@ -210,6 +244,60 @@ export function StepAssets() {
       console.error('Resize error:', entry.name, err);
       toast('Erro ao redimensionar', 'error');
     }
+  };
+
+  // ── Video transcode handler ──
+  // Map asset.id → progresso atual. Permite múltiplos transcodes paralelos
+  // mostrarem barras independentes (não rodamos paralelo hoje, mas a UI tá pronta).
+  const [transcodeProgress, setTranscodeProgress] = useState<Record<number, TranscodeProgress>>({});
+  const handleTranscode = async (entry: AssetEntry) => {
+    if (entry.type !== 'video') return;
+    setTranscodeProgress((prev) => ({ ...prev, [entry.id]: { phase: 'loading-core', progress: 0, message: 'Iniciando…' } }));
+    try {
+      const result = await transcodeVideo(entry.originalFile, (p) => {
+        setTranscodeProgress((prev) => ({ ...prev, [entry.id]: p }));
+      });
+      // Re-analisa o output pra ter bitrate/codec/duration corretos
+      const analysis = await analyzeVideo(result.file);
+      const newThumb = await generateThumb(result.file, 'video');
+      updateAsset(entry.id, {
+        file: result.file,
+        compressedFile: result.file,
+        size: result.file.size,
+        w: analysis.w,
+        h: analysis.h,
+        dimensions: `${analysis.w}x${analysis.h}`,
+        duration: analysis.duration,
+        thumb: newThumb,
+        bitrateKbps: analysis.bitrateKbps,
+        videoCodec: analysis.codec,
+        videoStatus: analysis.status,
+        videoWarnings: analysis.warnings,
+        videoOptimized: true,
+        _storagePath: undefined,
+        _uploadedFile: undefined,
+      });
+      const reduction = Math.round((1 - result.outputSize / result.inputSize) * 100);
+      toast(`${entry.name} otimizado: ${formatBytes(result.outputSize)} (-${reduction}%)`, 'success');
+    } catch (err) {
+      console.error('Transcode error:', entry.name, err);
+      toast(`Erro ao otimizar ${entry.name}: ${(err as Error).message}`, 'error');
+    } finally {
+      setTranscodeProgress((prev) => {
+        const next = { ...prev };
+        delete next[entry.id];
+        return next;
+      });
+    }
+  };
+  const handleBulkTranscode = async () => {
+    const selected = [...selectedAssetIds].map((id) => assetMap.get(id)).filter(Boolean) as AssetEntry[];
+    const videos = selected.filter((a) => a.type === 'video' && !a.videoOptimized && a.videoStatus !== 'ok');
+    if (!videos.length) {
+      toast('Nenhum vídeo selecionado precisa de otimização', '');
+      return;
+    }
+    for (const v of videos) await handleTranscode(v);
   };
 
   // ── Modal state ──
@@ -317,6 +405,7 @@ export function StepAssets() {
     { label: 'Find & Replace', onClick: () => setFrOpen(true) },
     { label: 'Duplicar', onClick: handleBulkDuplicate },
     { label: 'Comprimir', onClick: handleBulkCompress },
+    { label: 'Otimizar vídeos', onClick: handleBulkTranscode },
     {
       label: 'Remover', onClick: () => {
         if (!confirm(`Remover ${selectedCount} asset(s)?`)) return;
@@ -488,6 +577,54 @@ export function StepAssets() {
                         {a.type === 'html5' && wc !== 'ok' && (
                           <span className={styles.weightHint} title="HTML5 ZIPs não podem ser comprimidos pelo AdBolt">ZIP</span>
                         )}
+                        {a.type === 'video' && (() => {
+                          const prog = transcodeProgress[a.id];
+                          if (prog) {
+                            return (
+                              <div className={styles.videoProgress} title={prog.message}>
+                                <div className={styles.videoProgressBar} style={{ width: `${Math.round(prog.progress * 100)}%` }} />
+                                <span className={styles.videoProgressLabel}>{prog.message}</span>
+                              </div>
+                            );
+                          }
+                          if (a.videoOptimized) {
+                            return (
+                              <span className={`${styles.videoStatus} ${styles.videoStatusOk}`} title={`${a.duration}s @ ${a.bitrateKbps?.toLocaleString()} kbps`}>
+                                ✓ Otimizado
+                              </span>
+                            );
+                          }
+                          if (a.videoStatus === 'fail') {
+                            return (
+                              <button
+                                className={`${styles.videoStatus} ${styles.videoStatusFail}`}
+                                onClick={() => handleTranscode(a)}
+                                title={a.videoWarnings?.join('\n') || ''}
+                              >
+                                Otimizar (obrig.)
+                              </button>
+                            );
+                          }
+                          if (a.videoStatus === 'warn') {
+                            return (
+                              <button
+                                className={`${styles.videoStatus} ${styles.videoStatusWarn}`}
+                                onClick={() => handleTranscode(a)}
+                                title={a.videoWarnings?.join('\n') || ''}
+                              >
+                                Otimizar
+                              </button>
+                            );
+                          }
+                          if (a.videoStatus === 'ok' && a.bitrateKbps) {
+                            return (
+                              <span className={styles.videoMeta} title={`${a.duration}s, codec ${a.videoCodec || '?'}`}>
+                                {a.bitrateKbps.toLocaleString()} kbps
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </td>
                       <td>
                         <input

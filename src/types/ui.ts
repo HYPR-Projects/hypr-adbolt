@@ -28,6 +28,13 @@ export interface AssetEntry {
   html5Warnings?: string[];
   html5Content?: string;
   resized?: boolean;
+  // ── Video-specific metadata (populated by analyzeVideo) ──
+  bitrateKbps?: number;
+  videoCodec?: string;
+  videoStatus?: 'ok' | 'warn' | 'fail';
+  videoWarnings?: string[];
+  videoOptimized?: boolean;
+  // ── Storage cache ──
   _storagePath?: string;
   _uploadedFile?: File;
   _uploadedFileHash?: string;
