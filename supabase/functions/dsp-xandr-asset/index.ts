@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.208.0/encoding/base64.ts";
-import { cloudinaryTranscodeVideo, getCloudinaryConfig } from "../_shared/cloudinary.ts";
+import { cloudinaryTranscodeVideoFromUrl, getCloudinaryConfig } from "../_shared/cloudinary.ts";
 
 const XANDR_API = "https://api.appnexus.com";
 const MEMBER_ID = 14843;
@@ -46,10 +46,13 @@ async function getFileBlob(sb:any, input:Input): Promise<Blob> {
   throw new Error('No file data');
 }
 
-async function processCreative(token:string, advId:number, input:Input, brandUrl:string|null, langId:number, brandId:number|null, sla:number, sb:any): Promise<r> {
+async function processCreative(token:string, advId:number, input:Input, brandUrl:string|null, langId:number, brandId:number|null, sla:number, sb:any): Promise<Result> {
   try {
     const [w,h] = input.dimensions.split('x').map(Number);
-    const blob = await getFileBlob(sb, input);
+    // IMPORTANTE: NÃO baixamos o blob aqui. Pra videos, o caminho usa signed URL
+    // direto do storage pro Cloudinary, sem carregar o arquivo na RAM do edge
+    // function (que tem limite de 256MB). Pra display/html5, o download é feito
+    // dentro de cada branch.
     const lp = input.landingPage ? (!/^https?:\/\//i.test(input.landingPage.trim()) ? 'https://' + input.landingPage.trim() : input.landingPage.trim()) : '';
     const rawTrackers = [...(input.trackers||[]), ...(input.tracker?[input.tracker]:[])].filter(Boolean);
     const normalizedTrackers = rawTrackers.map(t => normalizeTrackerInput(t)).filter(n => n.url);
@@ -59,9 +62,10 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
     const clickDest = lp || brandUrl || '';
     const auditUrl = brandUrl || lp || '';
 
-    console.log(`[xandr-asset] Processing: ${input.name}, type=${assetType}, size=${blob.size}, clickDest=${clickDest}, auditUrl(brandUrl)=${auditUrl}, trackers=${normalizedTrackers.length}`);
+    console.log(`[xandr-asset] Processing: ${input.name}, type=${assetType}, fileSize=${input.fileSize || '?'}, clickDest=${clickDest}, auditUrl(brandUrl)=${auditUrl}, trackers=${normalizedTrackers.length}`);
 
     if (assetType === 'html5') {
+      const blob = await getFileBlob(sb, input);
       // FormData nativo - fetch serializa em stream sem buffer completo na memória
       const fd = new FormData();
       fd.append('type', 'html');
@@ -97,48 +101,51 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
         return { name: input.name, success: false, error: 'Duration ausente ou zero — não foi possível ler metadata do vídeo. Re-importe o arquivo no AdBolt.', step: 'validate' };
       }
 
-      // ── Transcoding via Cloudinary ──
-      // Vídeos com bitrate alto (>4 Mbps) ou codec não-H.264 quebram serving:
-      // a Xandr aceita o arquivo cru e faz audit, mas o pipeline interno de
-      // transcoding tem latência longa (vimos 4 dias num caso real). Durante
-      // essa janela, o VAST tem só 1 MediaFile que players de publisher não
-      // conseguem tocar a tempo em RTB → line item não entrega.
+      // ── Pipeline: signed URL → Cloudinary → blob transcoded → Xandr ──
+      // Edge function NUNCA carrega o arquivo grande na memória. Em vez disso:
+      //  1. Gera signed URL do storage Supabase (válida 30min)
+      //  2. Manda URL pro Cloudinary (Cloudinary baixa direto da URL)
+      //  3. Cloudinary transcoda eager → output ~1-5MB
+      //  4. Edge function baixa só o transcoded (cabe na RAM)
+      //  5. Faz upload do transcoded pra Xandr
       //
-      // Quando o cliente sinaliza videoStatus=warn|fail, mandamos o arquivo
-      // pro Cloudinary primeiro. A Cloudinary devolve uma versão otimizada
-      // (1280x720 max, H.264 baseline, 2.5 Mbps, faststart) que segue pra
-      // Xandr no lugar do original.
-      let videoBlob = blob;
+      // Crítico pra arquivos > 80MB: blob nativo + FormData duplica memória
+      // até estourar 256MB do isolate (status 546 Worker OOM).
+
+      const cloudinaryConfig = getCloudinaryConfig();
+      let videoBlob: Blob;
       let videoFileName = input.fileName;
       let videoMimeType = input.mimeType;
       let videoDuration = input.duration;
-      const needsTranscode = input.videoStatus === 'warn' || input.videoStatus === 'fail';
-      if (needsTranscode) {
-        const cloudinaryConfig = getCloudinaryConfig();
-        if (!cloudinaryConfig) {
-          // Sem Cloudinary configurado, segue com o original. Loga warning pra
-          // facilitar debug — o creative pode até passar audit mas vai falhar
-          // entrega como antes do fix. Não bloqueia: usuário pode ter setup
-          // pendente e a fila precisa continuar funcionando pra outros vídeos.
-          console.warn(`[xandr-asset] ${input.name} marcado como ${input.videoStatus} mas Cloudinary não configurado — enviando original (${blob.size} bytes, ${input.bitrateKbps || '?'} kbps)`);
-        } else {
-          console.log(`[xandr-asset] ${input.name}: transcodando via Cloudinary (input ${blob.size} bytes, ${input.bitrateKbps || '?'} kbps, status=${input.videoStatus})`);
-          const tStart = Date.now();
-          try {
-            const result = await cloudinaryTranscodeVideo(blob, input.fileName, cloudinaryConfig);
-            const reduction = Math.round((1 - result.bytes / blob.size) * 100);
-            console.log(`[xandr-asset] ${input.name}: transcode OK em ${Date.now() - tStart}ms (${result.bytes} bytes, ${result.bitrateKbps} kbps, -${reduction}%)`);
-            videoBlob = result.blob;
-            videoFileName = input.fileName.replace(/\.[^.]+$/, '') + '_optimized.mp4';
-            videoMimeType = 'video/mp4';
-            // Cloudinary devolve duration mais precisa que a leitura via <video> no client
-            if (result.durationSeconds > 0) videoDuration = result.durationSeconds;
-          } catch (err) {
-            // Falha no Cloudinary é fatal pra esse creative — usar o original
-            // levaria ao mesmo problema de não-entrega que o fix está resolvendo.
-            return { name: input.name, success: false, error: `Cloudinary transcode falhou: ${(err as Error).message}`, step: 'transcode' };
-          }
+
+      if (cloudinaryConfig && input.storagePath) {
+        // Caminho preferido: Cloudinary baixa direto do storage via signed URL
+        const { data: signed, error: signErr } = await sb.storage
+          .from('asset-uploads')
+          .createSignedUrl(input.storagePath, 1800); // 30 min, suficiente pro Cloudinary processar
+        if (signErr || !signed?.signedUrl) {
+          return { name: input.name, success: false, error: `Falha ao gerar signed URL do storage: ${signErr?.message}`, step: 'sign-url' };
         }
+        console.log(`[xandr-asset] ${input.name}: transcodando via Cloudinary (URL → ${input.bitrateKbps || '?'} kbps, status=${input.videoStatus})`);
+        const tStart = Date.now();
+        try {
+          const result = await cloudinaryTranscodeVideoFromUrl(signed.signedUrl, input.fileName, cloudinaryConfig);
+          console.log(`[xandr-asset] ${input.name}: transcode OK em ${Date.now() - tStart}ms (${result.bytes} bytes output, ${result.bitrateKbps} kbps)`);
+          videoBlob = result.blob;
+          videoFileName = input.fileName.replace(/\.[^.]+$/, '') + '_optimized.mp4';
+          videoMimeType = 'video/mp4';
+          if (result.durationSeconds > 0) videoDuration = result.durationSeconds;
+        } catch (err) {
+          // Falha no Cloudinary é fatal — fallback ao original carregaria
+          // o blob grande e estouraria RAM do isolate de qualquer jeito.
+          return { name: input.name, success: false, error: `Cloudinary transcode falhou: ${(err as Error).message}`, step: 'transcode' };
+        }
+      } else {
+        // Sem Cloudinary configurado, baixa do storage direto. RISCO: arquivos
+        // > 80MB vão estourar RAM e crashar o isolate (status 546). Pra isso
+        // funcionar de forma confiável, Cloudinary precisa estar configurado.
+        console.warn(`[xandr-asset] ${input.name}: Cloudinary não configurado — caminho direto pode estourar RAM em arquivos grandes (>80MB)`);
+        videoBlob = await getFileBlob(sb, input);
       }
 
       // FormData nativo - streaming sem estourar memória do isolate
@@ -238,6 +245,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
 
     } else {
       // Display image (template 4) - precisa dos bytes para base64
+      const blob = await getFileBlob(sb, input);
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const b64 = base64Encode(bytes);
       const cr:Record<string,unknown> = {
