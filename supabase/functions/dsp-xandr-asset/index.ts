@@ -151,24 +151,43 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload failed: ${JSON.stringify(ud.response||ud).substring(0,300)}`,step:'upload'};
       const durationMs = videoDuration * 1000;
-      const inlineObj: Record<string, unknown> = { ad_title: input.name };
+
+      // `inline.linear` é mandatory pra creative VAST inline. Quando null, a
+      // Xandr aceita o creative mas o preview falha com "missing
+      // creative_vast_inline_linear" e players de publisher não conseguem
+      // tocar em RTB. O código antigo só setava `linear` se tivesse trackers,
+      // o que quebrava qualquer creative sem tracker.
+      //
+      // `linear.media_files` é populated automaticamente pela Xandr durante o
+      // pipeline interno de transcoding (quando o creative é criado via API,
+      // pode levar dias). Pré-transcodar via Cloudinary acelera isso porque
+      // o arquivo já chega no formato esperado pra serving.
+      const linearObj: Record<string, unknown> = {};
       if (normalizedTrackers.length > 0) {
-        const VAST_EVENT_MAP: Record<string, string> = {
-          impression: 'impression', start: 'start', skip: 'skip', error: 'error',
-          first_quartile: 'first_quartile', midpoint: 'midpoint', third_quartile: 'third_quartile',
-          completion: 'completion', click: 'click',
+        const VAST_EVENT_ID_MAP: Record<string, number> = {
+          impression: 9, start: 2, first_quartile: 5, midpoint: 6,
+          third_quartile: 7, completion: 8, click: 10, skip: 3, error: 4,
         };
-        inlineObj.linear = {
-          trackers: normalizedTrackers.slice(0, 5).map((t, i) => ({
-            name: `tracker_${i}`,
-            vast_event_type: VAST_EVENT_MAP[t.eventType || 'impression'] || 'impression',
-            url: t.url,
-            secure_url: t.url.replace(/^http:/, 'https:'),
-          })),
-        };
+        linearObj.trackers = normalizedTrackers.slice(0, 5).map((t, i) => ({
+          name: `tracker_${i}`,
+          vast_event_type_id: VAST_EVENT_ID_MAP[t.eventType || 'impression'] || 9,
+          url: t.url,
+          secure_url: t.url.replace(/^http:/, 'https:'),
+        }));
       }
+      const inlineObj: Record<string, unknown> = {
+        ad_title: input.name,
+        linear: linearObj,
+      };
+
+      // Width/height no creative-vast top-level são metadata. A Xandr usa
+      // 1×1 mesmo pra videos hosted (vimos isso em creatives que entregam).
+      // Passamos as dimensões reais mesmo assim — não atrapalha e ajuda em
+      // alguns relatórios da UI.
       const vastCreative: Record<string,unknown> = {
-        name: input.name, advertiser_id: advId, template: {id: 6439},
+        name: input.name, advertiser_id: advId,
+        width: w || 1, height: h || 1,
+        template: {id: 6439},
         media_assets: [{media_asset_id: ma.id}],
         click_url: clickDest, click_target: clickDest,
         landing_page_url: auditUrl,
