@@ -88,6 +88,13 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
 
     } else if (assetType === 'video') {
       console.log(`[xandr-asset] VIDEO upload for ${input.name}`);
+      // Duration é required pelo VAST. Sem isso, mandar 30s default cria mismatch
+      // entre <Duration> no XML e o arquivo real, o que faz alguns players
+      // dropparem como "VAST validation error" e quebra serving. Falhar aqui
+      // é melhor que criar creative que parece OK mas não entrega.
+      if (!input.duration || input.duration <= 0) {
+        return { name: input.name, success: false, error: 'Duration ausente ou zero — não foi possível ler metadata do vídeo. Re-importe o arquivo no AdBolt.', step: 'validate' };
+      }
       // FormData nativo - streaming sem estourar memória do isolate
       const fd = new FormData();
       fd.append('type', 'video');
@@ -97,7 +104,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       let ud; try{ud=JSON.parse(uploadText)}catch{return{name:input.name,success:false,error:`Upload parse: ${uploadText.substring(0,300)}`,step:'upload'}}
       const ma = ud.response?.['media-asset']?.[0];
       if (!ma?.id) return {name:input.name,success:false,error:`Upload failed: ${JSON.stringify(ud.response||ud).substring(0,300)}`,step:'upload'};
-      const durationMs = (input.duration || 30) * 1000;
+      const durationMs = input.duration * 1000;
       const inlineObj: Record<string, unknown> = { ad_title: input.name };
       if (normalizedTrackers.length > 0) {
         const VAST_EVENT_MAP: Record<string, string> = {
