@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getDV360Token, DV360_API } from "../_shared/dv360-auth.ts";
+import { streamingMultipartUpload, getStorageSignedUrl } from "../_shared/streaming-upload.ts";
 
 const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type, x-client-info, apikey","Access-Control-Allow-Methods":"POST, OPTIONS"};
 
@@ -32,9 +33,8 @@ function escapeFilename(name: string): string {
   return name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-async function process(token: string, advId: string, input: Input, sb: any): Promise<r> {
+async function process(token: string, advId: string, input: Input, sb: any): Promise<Result> {
   try {
-    const blob = await getFileBlob(sb, input);
     const isVideo = input.type === 'video';
     const [w,h] = input.dimensions.split('x').map(Number);
     const normalizedTrackers = (input.trackers||[]).map(t => normalizeTrackerInput(t)).filter(n => n.url);
@@ -61,51 +61,99 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
         : 'THIRD_PARTY_URL_TYPE_IMPRESSION';
       allTrackerUrls.push({type: dv360Type, url: t.url});
     }
-    console.log(`[dv360-asset] Uploading ${input.fileName} (${blob.size} bytes, ${input.mimeType}), type=${input.type}, trackers=${allTrackerUrls.length}`);
-    if (isVideo && blob.size < 1000) { return {name:input.name, success:false, error:`File too small (${blob.size} bytes)`, step:'validate'}; }
 
-    // Body como Blob combinado - formato multipart exato da doc do DV360.
-    // Blob eh lazy: partes sao referenciadas, nao copiadas. Deno faz streaming
-    // interno no fetch e seta Content-Length automaticamente (chunked nao eh
-    // aceito por varias APIs do Google).
-    const boundary = '----DV360' + Date.now() + Math.random().toString(36).substring(2, 10);
-    const CRLF = '\r\n';
-    const enc = new TextEncoder();
-    const metaPart = enc.encode(
-      `--${boundary}${CRLF}` +
-      `Content-Disposition: form-data; name="data"${CRLF}` +
-      `Content-Type: application/json; charset=UTF-8${CRLF}${CRLF}` +
-      `${JSON.stringify({ filename: input.fileName })}${CRLF}`
-    );
-    const fileHeader = enc.encode(
-      `--${boundary}${CRLF}` +
-      `Content-Disposition: form-data; name="file"; filename="${escapeFilename(input.fileName)}"${CRLF}` +
-      `Content-Type: ${input.mimeType}${CRLF}${CRLF}`
-    );
-    const fileFooter = enc.encode(CRLF);
-    const closing = enc.encode(`--${boundary}--${CRLF}`);
-    const bodyBlob = new Blob([metaPart, fileHeader, blob, fileFooter, closing]);
+    // ── Upload: streaming pra video, Blob combinado pra display/html5 ──
+    // Pra video: arquivo pode ser >100MB, materializar como Blob estoura
+    // RAM do isolate (status 546). Streaming via signed URL → ReadableStream
+    // mantém pico de memória pequeno.
+    // Pra display: arquivos são pequenos (<10MB), Blob lazy é OK e
+    // permite leitura inline pra extrair dimensões reais.
+    let mediaId: string;
+    let blob: Blob | null = null;
 
-    const uploadRes = await fetch(
-      `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        body: bodyBlob,
+    if (isVideo) {
+      if (!input.storagePath) {
+        return { name: input.name, success: false, error: 'Vídeo sem storagePath — re-importe pelo AdBolt.', step: 'validate' };
       }
-    );
-    const uploadText = await uploadRes.text();
-    let uploadData;
-    try { uploadData = JSON.parse(uploadText); } catch { return {name:input.name, success:false, error:`Upload parse: ${uploadText.substring(0,200)}`, step:'upload'}; }
-    const mediaId = uploadData.asset?.mediaId;
-    if (!mediaId) return {name:input.name, success:false, error:`No mediaId: ${uploadData.error?.message || uploadText.substring(0,200)}`, step:'upload'};
+      console.log(`[dv360-asset] Streaming video upload: ${input.fileName} (${input.fileSize || '?'} bytes, ${input.mimeType})`);
+      try {
+        const { signedUrl, size } = await getStorageSignedUrl(sb, 'asset-uploads', input.storagePath);
+        if (size < 1000) {
+          return { name: input.name, success: false, error: `File too small (${size} bytes)`, step: 'validate' };
+        }
+        const uploadRes = await streamingMultipartUpload({
+          sourceUrl: signedUrl,
+          sourceSize: size,
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+          fileFieldName: 'file',
+          fields: [{
+            name: 'data',
+            value: JSON.stringify({ filename: input.fileName }),
+            contentType: 'application/json; charset=UTF-8',
+          }],
+          targetUrl: `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
+          targetHeaders: { Authorization: `Bearer ${token}` },
+        });
+        const uploadText = await uploadRes.text();
+        let uploadData;
+        try { uploadData = JSON.parse(uploadText); }
+        catch { return { name: input.name, success: false, error: `Upload parse: ${uploadText.substring(0, 200)}`, step: 'upload' }; }
+        const id = uploadData.asset?.mediaId;
+        if (!id) return { name: input.name, success: false, error: `No mediaId: ${uploadData.error?.message || uploadText.substring(0, 200)}`, step: 'upload' };
+        mediaId = id;
+      } catch (err) {
+        return { name: input.name, success: false, error: `Streaming upload falhou: ${(err as Error).message}`, step: 'upload' };
+      }
+    } else {
+      // Display/html5 path: Blob combinado pra permitir leitura de dimensões depois
+      blob = await getFileBlob(sb, input);
+      console.log(`[dv360-asset] Uploading ${input.fileName} (${blob.size} bytes, ${input.mimeType}), type=${input.type}, trackers=${allTrackerUrls.length}`);
+
+      // Body como Blob combinado - formato multipart exato da doc do DV360.
+      // Blob eh lazy: partes sao referenciadas, nao copiadas. Deno faz streaming
+      // interno no fetch e seta Content-Length automaticamente (chunked nao eh
+      // aceito por varias APIs do Google).
+      const boundary = '----DV360' + Date.now() + Math.random().toString(36).substring(2, 10);
+      const CRLF = '\r\n';
+      const enc = new TextEncoder();
+      const metaPart = enc.encode(
+        `--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="data"${CRLF}` +
+        `Content-Type: application/json; charset=UTF-8${CRLF}${CRLF}` +
+        `${JSON.stringify({ filename: input.fileName })}${CRLF}`
+      );
+      const fileHeader = enc.encode(
+        `--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="file"; filename="${escapeFilename(input.fileName)}"${CRLF}` +
+        `Content-Type: ${input.mimeType}${CRLF}${CRLF}`
+      );
+      const fileFooter = enc.encode(CRLF);
+      const closing = enc.encode(`--${boundary}--${CRLF}`);
+      const bodyBlob = new Blob([metaPart, fileHeader, blob, fileFooter, closing]);
+
+      const uploadRes = await fetch(
+        `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          },
+          body: bodyBlob,
+        }
+      );
+      const uploadText = await uploadRes.text();
+      let uploadData;
+      try { uploadData = JSON.parse(uploadText); } catch { return {name:input.name, success:false, error:`Upload parse: ${uploadText.substring(0,200)}`, step:'upload'}; }
+      const id = uploadData.asset?.mediaId;
+      if (!id) return {name:input.name, success:false, error:`No mediaId: ${uploadData.error?.message || uploadText.substring(0,200)}`, step:'upload'};
+      mediaId = id;
+    }
 
     // Dimensoes reais do arquivo (apenas display; videos pulam)
     let realW = w, realH = h;
-    if (!isVideo) {
+    if (!isVideo && blob) {
       const bytes = new Uint8Array(await blob.arrayBuffer());
       const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8;
       const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;

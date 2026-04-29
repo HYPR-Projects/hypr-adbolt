@@ -14,7 +14,6 @@ import {
   isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
 } from '@/lib/asset-processing';
 import { analyzeVideo } from '@/lib/video-analysis';
-import { transcodeVideo, preloadFFmpeg, type TranscodeProgress } from '@/lib/video-transcode';
 import { extractZipToFiles, processHTML5Zip } from '@/lib/html5-zip';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, formatBytes } from '@/lib/utils';
@@ -110,69 +109,29 @@ export function StepAssets() {
         try {
           const thumb = await generateThumb(file, type);
           if (type === 'video') {
-            // Análise mais rica pra video: bitrate + codec + status. Permite decidir
-            // se precisa transcodar antes de subir pro storage.
+            // Análise mais rica pra video: bitrate + codec + status. Permite UI
+            // mostrar warning/erro antes do upload e habilita botão Otimizar.
             const v = await analyzeVideo(file);
-
-            // Transcode automático no client quando o arquivo:
-            //  - tem bitrate alto demais pra serving (status warn/fail), OU
-            //  - é grande demais pra cabe na RAM do edge function Supabase
-            //    (limite ~256MB; FormData duplica memória, então > 80MB já estoura)
-            //
-            // ffmpeg.wasm roda no browser do user — zero custo, sem dependência
-            // de SaaS de transcoding. Carrega ~30MB do WASM core na primeira
-            // vez (cached daí em diante).
-            const TRANSCODE_SIZE_THRESHOLD = 80 * 1024 * 1024; // 80MB
-            const needsTranscode = v.status === 'fail' || v.status === 'warn' || file.size > TRANSCODE_SIZE_THRESHOLD;
-
-            let workingFile = file;
-            let workingAnalysis = v;
-
-            if (needsTranscode) {
-              toast(`Otimizando ${file.name} (${formatBytes(file.size)} → padrão Xandr)…`, '');
-              try {
-                const result = await transcodeVideo(file, (p: TranscodeProgress) => {
-                  if (p.phase === 'transcoding') {
-                    // Atualiza toast a cada 10% pra não floodar
-                    const pct = Math.round(p.progress * 100);
-                    if (pct % 10 === 0) {
-                      toast(`Otimizando ${file.name}: ${pct}%`, '');
-                    }
-                  }
-                });
-                workingFile = result.file;
-                // Re-analisa o output pra pegar bitrate/codec do arquivo otimizado
-                workingAnalysis = await analyzeVideo(result.file);
-                const reduction = Math.round((1 - result.outputSize / result.inputSize) * 100);
-                toast(`${file.name} otimizado: ${formatBytes(result.inputSize)} → ${formatBytes(result.outputSize)} (-${reduction}%)`, 'success');
-              } catch (err) {
-                console.error('Transcode error:', err);
-                toast(`Erro ao otimizar ${file.name}: ${(err as Error).message}. Usando arquivo original.`, 'error');
-                // Mantém o original — vai falhar no edge function se for grande,
-                // mas pelo menos o user vê a tentativa e pode decidir pré-comprimir.
-              }
-            }
-
             newEntries.push({
               id: getNextAssetId(),
               type,
-              file: workingFile,
+              file,
               originalFile: file,
               name: file.name.replace(/\.\w+$/, ''),
-              dimensions: `${workingAnalysis.w}x${workingAnalysis.h}`,
-              w: workingAnalysis.w,
-              h: workingAnalysis.h,
-              duration: workingAnalysis.duration,
-              size: workingFile.size,
+              dimensions: `${v.w}x${v.h}`,
+              w: v.w,
+              h: v.h,
+              duration: v.duration,
+              size: file.size,
               thumb,
               landingPage: '',
               trackers: [],
-              compressed: workingFile !== file,
-              compressedFile: workingFile !== file ? workingFile : null,
-              bitrateKbps: workingAnalysis.bitrateKbps,
-              videoCodec: workingAnalysis.codec,
-              videoStatus: workingAnalysis.status,
-              videoWarnings: workingAnalysis.warnings,
+              compressed: false,
+              compressedFile: null,
+              bitrateKbps: v.bitrateKbps,
+              videoCodec: v.codec,
+              videoStatus: v.status,
+              videoWarnings: v.warnings,
             });
           } else {
             const dims = await readFileDimensions(file, type);

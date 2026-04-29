@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.208.0/encoding/base64.ts";
-import { cloudinaryTranscodeVideoFromUrl, getCloudinaryConfig } from "../_shared/cloudinary.ts";
+import { streamingMultipartUpload, getStorageSignedUrl } from "../_shared/streaming-upload.ts";
 
 const XANDR_API = "https://api.appnexus.com";
 const MEMBER_ID = 14843;
@@ -100,63 +100,54 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       if (!input.duration || input.duration <= 0) {
         return { name: input.name, success: false, error: 'Duration ausente ou zero — não foi possível ler metadata do vídeo. Re-importe o arquivo no AdBolt.', step: 'validate' };
       }
-
-      // ── Pipeline: signed URL → Cloudinary → blob transcoded → Xandr ──
-      // Edge function NUNCA carrega o arquivo grande na memória. Em vez disso:
-      //  1. Gera signed URL do storage Supabase (válida 30min)
-      //  2. Manda URL pro Cloudinary (Cloudinary baixa direto da URL)
-      //  3. Cloudinary transcoda eager → output ~1-5MB
-      //  4. Edge function baixa só o transcoded (cabe na RAM)
-      //  5. Faz upload do transcoded pra Xandr
-      //
-      // Crítico pra arquivos > 80MB: blob nativo + FormData duplica memória
-      // até estourar 256MB do isolate (status 546 Worker OOM).
-
-      const cloudinaryConfig = getCloudinaryConfig();
-      let videoBlob: Blob;
-      let videoFileName = input.fileName;
-      let videoMimeType = input.mimeType;
-      let videoDuration = input.duration;
-
-      if (cloudinaryConfig && input.storagePath) {
-        // Caminho preferido: Cloudinary baixa direto do storage via signed URL
-        const { data: signed, error: signErr } = await sb.storage
-          .from('asset-uploads')
-          .createSignedUrl(input.storagePath, 1800); // 30 min, suficiente pro Cloudinary processar
-        if (signErr || !signed?.signedUrl) {
-          return { name: input.name, success: false, error: `Falha ao gerar signed URL do storage: ${signErr?.message}`, step: 'sign-url' };
-        }
-        console.log(`[xandr-asset] ${input.name}: transcodando via Cloudinary (URL → ${input.bitrateKbps || '?'} kbps, status=${input.videoStatus})`);
-        const tStart = Date.now();
-        try {
-          const result = await cloudinaryTranscodeVideoFromUrl(signed.signedUrl, input.fileName, cloudinaryConfig);
-          console.log(`[xandr-asset] ${input.name}: transcode OK em ${Date.now() - tStart}ms (${result.bytes} bytes output, ${result.bitrateKbps} kbps)`);
-          videoBlob = result.blob;
-          videoFileName = input.fileName.replace(/\.[^.]+$/, '') + '_optimized.mp4';
-          videoMimeType = 'video/mp4';
-          if (result.durationSeconds > 0) videoDuration = result.durationSeconds;
-        } catch (err) {
-          // Falha no Cloudinary é fatal — fallback ao original carregaria
-          // o blob grande e estouraria RAM do isolate de qualquer jeito.
-          return { name: input.name, success: false, error: `Cloudinary transcode falhou: ${(err as Error).message}`, step: 'transcode' };
-        }
-      } else {
-        // Sem Cloudinary configurado, baixa do storage direto. RISCO: arquivos
-        // > 80MB vão estourar RAM e crashar o isolate (status 546). Pra isso
-        // funcionar de forma confiável, Cloudinary precisa estar configurado.
-        console.warn(`[xandr-asset] ${input.name}: Cloudinary não configurado — caminho direto pode estourar RAM em arquivos grandes (>80MB)`);
-        videoBlob = await getFileBlob(sb, input);
+      if (!input.storagePath) {
+        // Streaming requer storage path (signed URL). fileBase64 in-context
+        // não é suportado pra videos — só pra display pequeno.
+        return { name: input.name, success: false, error: 'Vídeo sem storagePath — re-importe pelo AdBolt.', step: 'validate' };
       }
 
-      // FormData nativo - streaming sem estourar memória do isolate
-      const fd = new FormData();
-      fd.append('type', 'video');
-      fd.append('file', new Blob([videoBlob], { type: videoMimeType }), videoFileName);
-      const ur = await fetch(`${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,{method:'POST',headers:{Authorization:token},body:fd});
-      const uploadText = await ur.text();
-      let ud; try{ud=JSON.parse(uploadText)}catch{return{name:input.name,success:false,error:`Upload parse: ${uploadText.substring(0,300)}`,step:'upload'}}
-      const ma = ud.response?.['media-asset']?.[0];
-      if (!ma?.id) return {name:input.name,success:false,error:`Upload failed: ${JSON.stringify(ud.response||ud).substring(0,300)}`,step:'upload'};
+      // ── Pipeline: signed URL → streaming multipart → Xandr ──────────
+      // Edge function NUNCA materializa o arquivo na memória. Bytes do
+      // storage passam em chunks (~64KB) direto pro fetch da Xandr API.
+      //
+      // Por que streaming em vez de baixar+enviar:
+      //   - Edge function tem ~256MB RAM por isolate
+      //   - Vídeo de 100MB+ + FormData duplica memória → status 546 OOM
+      //   - Streaming mantém pico de memória pequeno (apenas 1 chunk)
+      //
+      // Limites reais da Xandr API: ~220MB (doc oficial). Validado também
+      // que a Xandr aceita arquivo cru e transcoda internamente — não
+      // precisamos otimizar bitrate antes de enviar.
+      console.log(`[xandr-asset] ${input.name}: streaming upload (${input.fileSize || '?'} bytes, ${input.bitrateKbps || '?'} kbps)`);
+      const tStart = Date.now();
+      let mediaAssetId: number;
+      try {
+        const { signedUrl, size } = await getStorageSignedUrl(sb, 'asset-uploads', input.storagePath);
+        const uploadRes = await streamingMultipartUpload({
+          sourceUrl: signedUrl,
+          sourceSize: size,
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+          fileFieldName: 'file',
+          fields: [{ name: 'type', value: 'video' }],
+          targetUrl: `${XANDR_API}/creative-upload?member_id=${MEMBER_ID}`,
+          targetHeaders: { Authorization: token },
+        });
+        const uploadText = await uploadRes.text();
+        console.log(`[xandr-asset] ${input.name}: upload streamed em ${Date.now() - tStart}ms, status ${uploadRes.status}`);
+        let ud;
+        try { ud = JSON.parse(uploadText); }
+        catch { return { name: input.name, success: false, error: `Upload parse: ${uploadText.substring(0, 300)}`, step: 'upload' }; }
+        const ma = ud.response?.['media-asset']?.[0];
+        if (!ma?.id) {
+          return { name: input.name, success: false, error: `Upload failed: ${JSON.stringify(ud.response || ud).substring(0, 300)}`, step: 'upload' };
+        }
+        mediaAssetId = ma.id;
+      } catch (err) {
+        return { name: input.name, success: false, error: `Streaming upload falhou: ${(err as Error).message}`, step: 'upload' };
+      }
+
+      const videoDuration = input.duration;
       const durationMs = videoDuration * 1000;
 
       // `inline.linear` é mandatory pra creative VAST inline. Quando null, a
@@ -195,7 +186,7 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
         name: input.name, advertiser_id: advId,
         width: w || 1, height: h || 1,
         template: {id: 6439},
-        media_assets: [{media_asset_id: ma.id}],
+        media_assets: [{media_asset_id: mediaAssetId}],
         click_url: clickDest, click_target: clickDest,
         landing_page_url: auditUrl,
         mobile: auditUrl ? { alternative_landing_page_url: auditUrl } : undefined,

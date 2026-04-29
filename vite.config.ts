@@ -9,17 +9,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: {
-    // ffmpeg.wasm multi-thread precisa de SharedArrayBuffer, que exige isolamento
-    // cross-origin. Em dev, esses headers replicam o que o vercel.json define em prod.
-    // `credentialless` é a versão menos invasiva — permite recursos cross-origin
-    // sem exigir CORP, ao custo de não enviar credentials (cookies). Isso não afeta
-    // o ad serving real, que acontece nas DSPs, fora do AdBolt.
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'credentialless',
-    },
-  },
   optimizeDeps: {
     // ffmpeg.wasm carrega o core via toBlobURL em runtime; não bundlar.
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
