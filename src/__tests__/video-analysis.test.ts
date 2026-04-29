@@ -37,18 +37,29 @@ function makeMp4File(brand: string, totalSize: number, name = 'test.mp4'): File 
 }
 
 /** Cria um elemento mock que dispara onloadedmetadata com os valores fixos. */
+interface MockVideoEl {
+  preload: string;
+  muted: boolean;
+  videoWidth: number;
+  videoHeight: number;
+  duration: number;
+  onloadedmetadata: null | (() => void);
+  onerror: null | (() => void);
+  _src: string;
+  src: string;
+}
 function mockVideoMeta(width: number, height: number, duration: number) {
   const realCreate = document.createElement.bind(document);
   vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
     if (tag !== 'video') return realCreate(tag);
-    const el = {
+    const el: MockVideoEl = {
       preload: '',
       muted: false,
       videoWidth: width,
       videoHeight: height,
       duration,
-      onloadedmetadata: null as null | (() => void),
-      onerror: null as null | (() => void),
+      onloadedmetadata: null,
+      onerror: null,
       _src: '',
       get src() { return this._src; },
       set src(v: string) {
@@ -59,15 +70,15 @@ function mockVideoMeta(width: number, height: number, duration: number) {
           else this.onerror?.();
         });
       },
-    } as unknown as HTMLVideoElement;
-    return el;
+    };
+    return el as unknown as HTMLVideoElement;
   });
 }
 
 // URL.createObjectURL / revokeObjectURL não existem em jsdom por padrão
 beforeEach(() => {
-  global.URL.createObjectURL = vi.fn(() => 'blob:mock');
-  global.URL.revokeObjectURL = vi.fn();
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock');
+  globalThis.URL.revokeObjectURL = vi.fn();
 });
 
 // ── Tests ──
