@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getDV360Token, DV360_API } from "../_shared/dv360-auth.ts";
-import { streamingMultipartUpload, getStorageSignedUrl } from "../_shared/streaming-upload.ts";
+import { streamingMultipartUploadV2, getStorageSignedUrl } from "../_shared/streaming-upload-v2.ts";
 
 const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type, x-client-info, apikey","Access-Control-Allow-Methods":"POST, OPTIONS"};
 
@@ -94,7 +94,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
             console.log(`[dv360-asset] Upload retry ${attempt}/${UPLOAD_MAX_RETRIES} for ${input.fileName} after ${delay}ms (last error: ${lastError.substring(0, 100)})`);
             await new Promise(r => setTimeout(r, delay));
           }
-          const uploadRes = await streamingMultipartUpload({
+          const uploadRes = await streamingMultipartUploadV2({
             sourceUrl: signedUrl,
             sourceSize: size,
             fileName: input.fileName,
