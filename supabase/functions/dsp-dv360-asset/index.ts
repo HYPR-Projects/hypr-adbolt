@@ -81,27 +81,55 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
         if (size < 1000) {
           return { name: input.name, success: false, error: `File too small (${size} bytes)`, step: 'validate' };
         }
-        const uploadRes = await streamingMultipartUpload({
-          sourceUrl: signedUrl,
-          sourceSize: size,
-          fileName: input.fileName,
-          mimeType: input.mimeType,
-          fileFieldName: 'file',
-          fields: [{
-            name: 'data',
-            value: JSON.stringify({ filename: input.fileName }),
-            contentType: 'application/json; charset=UTF-8',
-          }],
-          targetUrl: `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
-          targetHeaders: { Authorization: `Bearer ${token}` },
-        });
-        const uploadText = await uploadRes.text();
-        let uploadData;
-        try { uploadData = JSON.parse(uploadText); }
-        catch { return { name: input.name, success: false, error: `Upload parse: ${uploadText.substring(0, 200)}`, step: 'upload' }; }
-        const id = uploadData.asset?.mediaId;
-        if (!id) return { name: input.name, success: false, error: `No mediaId: ${uploadData.error?.message || uploadText.substring(0, 200)}`, step: 'upload' };
-        mediaId = id;
+        // Retry com backoff exponencial pra "Internal Error" do transcoder do DV360.
+        // Esse erro é silencioso e intermitente quando o transcoder satura.
+        // Tentativas: imediato, +5s, +10s, +20s. Total worst-case: ~35s extras.
+        const UPLOAD_MAX_RETRIES = 3;
+        const UPLOAD_RETRY_DELAYS_MS = [5000, 10000, 20000];
+        let lastError = '';
+        let mediaIdResolved: string | null = null;
+        for (let attempt = 0; attempt <= UPLOAD_MAX_RETRIES; attempt++) {
+          if (attempt > 0) {
+            const delay = UPLOAD_RETRY_DELAYS_MS[attempt - 1];
+            console.log(`[dv360-asset] Upload retry ${attempt}/${UPLOAD_MAX_RETRIES} for ${input.fileName} after ${delay}ms (last error: ${lastError.substring(0, 100)})`);
+            await new Promise(r => setTimeout(r, delay));
+          }
+          const uploadRes = await streamingMultipartUpload({
+            sourceUrl: signedUrl,
+            sourceSize: size,
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            fileFieldName: 'file',
+            fields: [{
+              name: 'data',
+              value: JSON.stringify({ filename: input.fileName }),
+              contentType: 'application/json; charset=UTF-8',
+            }],
+            targetUrl: `https://displayvideo.googleapis.com/upload/v4/advertisers/${advId}/assets?uploadType=multipart`,
+            targetHeaders: { Authorization: `Bearer ${token}` },
+          });
+          const uploadText = await uploadRes.text();
+          let uploadData;
+          try { uploadData = JSON.parse(uploadText); }
+          catch { return { name: input.name, success: false, error: `Upload parse: ${uploadText.substring(0, 200)}`, step: 'upload' }; }
+          const id = uploadData.asset?.mediaId;
+          if (id) {
+            console.log(`[dv360-asset] Upload OK ${input.fileName} → mediaId=${id} (attempt ${attempt + 1})`);
+            mediaIdResolved = id;
+            break;
+          }
+          lastError = uploadData.error?.message || uploadText.substring(0, 200);
+          // Retry só pra erros transientes do transcoder. Erros 4xx (auth, formato inválido)
+          // não vão melhorar com retry - aborta na hora.
+          const isTransient = /internal error|timeout|unavailable|try again/i.test(lastError);
+          if (!isTransient) {
+            return { name: input.name, success: false, error: `No mediaId: ${lastError}`, step: 'upload' };
+          }
+        }
+        if (!mediaIdResolved) {
+          return { name: input.name, success: false, error: `No mediaId após ${UPLOAD_MAX_RETRIES + 1} tentativas: ${lastError}`, step: 'upload' };
+        }
+        mediaId = mediaIdResolved;
       } catch (err) {
         return { name: input.name, success: false, error: `Streaming upload falhou: ${(err as Error).message}`, step: 'upload' };
       }

@@ -73,10 +73,14 @@ export async function activateDV360Assets(
       allResults.push({ success: false, name: c.name, error: 'Upload failed: ' + c._uploadError })
     );
 
-    // Videos: pairs of 2 with 1.5s stagger (edge function has retry for CONCURRENCY)
-    const VIDEO_PARALLEL = 2;
+    // Videos: 100% serial com 4s de delay. Paralelismo aqui satura o transcoder
+    // do DV360 por advertiser e retorna "No mediaId: Internal Error" silencioso.
+    // Edge function tem retry no upload, mas mesmo assim o ideal é não ofender
+    // o rate limit do Google. 1 vídeo por chamada, 1 chamada por vez.
+    const VIDEO_PARALLEL = 1;
+    const VIDEO_STAGGER_MS = 4000;
     for (let i = 0; i < videoCreatives.length; i += VIDEO_PARALLEL) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 1500));
+      if (i > 0) await new Promise((r) => setTimeout(r, VIDEO_STAGGER_MS));
       const batch = videoCreatives.slice(i, i + VIDEO_PARALLEL);
       const batchPromises = batch.map((vc, bi) => {
         const idx = i + bi;
