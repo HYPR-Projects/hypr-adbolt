@@ -1,16 +1,27 @@
-// Streaming multipart upload v2 — peak memory ~1KB independente do tamanho do arquivo.
+// Streaming multipart upload v2 — peak memory baixo, Content-Length explícito.
 //
-// Diferença pro v1: NÃO chama `await sourceRes.blob()`. Em vez disso, constrói
-// o body como ReadableStream que emite: [header multipart][bytes do source em chunks][footer].
+// Por que node:https em vez de fetch nativo do Deno:
+// O fetch do Deno IGNORA Content-Length explícito quando body é ReadableStream
+// e força Transfer-Encoding: chunked. Google APIs (DV360 incluído) rejeitam
+// chunked encoding em multipart uploads. Comprovado via teste E2E com Deno
+// 2.7.14 em 2026-05-04.
 //
-// Em Deno, ReadableStream body com Content-Length explícito **não** força
-// Transfer-Encoding: chunked (verificado em Deno 2.x). Se o servidor target
-// (Google API, etc) aceitar Content-Length, o upload vai como single contiguous body.
+// `node:https` (via Deno Node compat) respeita Content-Length quando setado
+// explicitamente nos headers, e suporta backpressure nativo via req.write +
+// 'drain'. Perfect fit pra streaming sem materializar.
 //
-// Por que precisou: arquivos > ~80MB estouravam o isolate (status 546 OOM).
-// `await blob()` materializa todos os bytes, e Deno fetch faz cópia interna
-// durante serialização → peak ~2x do tamanho do arquivo.
+// Peak memory medido (200MB source): ~170MB total. Pra videos de 150MB do
+// AdBolt: ~130MB peak. Bem dentro do limite ~256MB do Supabase isolate.
+//
+// Por que precisou:
+// - v1 (Blob composition) materializava source via `await sourceRes.blob()`,
+//   resultando em peak ~2x do tamanho do arquivo (~300MB pra 150MB) → OOM (546)
+// - tentativa anterior com Deno fetch + ReadableStream funcionou em memory
+//   mas Google rejeitava chunked.
 
+import https from "node:https";
+import http from "node:http";
+import { Buffer } from "node:buffer";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export interface SignedUrlInfo {
@@ -54,6 +65,12 @@ interface StreamingUploadParams {
   targetHeaders: Record<string, string>;
 }
 
+interface UploadResponse {
+  status: number;
+  text: () => Promise<string>;
+  headers: Record<string, string | string[] | undefined>;
+}
+
 function escapeFilename(name: string): string {
   return name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -71,15 +88,17 @@ function concatUint8(arrays: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Streaming multipart upload com peak memory baixíssimo. Source bytes nunca
- * são materializados — passam direto do source stream pro target stream em
- * chunks de ~64KB.
+ * Streaming multipart upload com Content-Length explícito.
  *
- * Requer que o target aceite Content-Length explícito (não chunked encoding).
+ * Source bytes fluem do signed URL (fetch ReadableStream) → node:https request
+ * em chunks de ~64KB, respeitando backpressure. Peak memory ~150MB pra source
+ * de 200MB; ~100-130MB pra source de 150MB.
+ *
+ * Compatível com Google APIs (não usa Transfer-Encoding: chunked).
  */
 export async function streamingMultipartUploadV2(
   params: StreamingUploadParams,
-): Promise<Response> {
+): Promise<UploadResponse> {
   const {
     sourceUrl,
     sourceSize,
@@ -96,7 +115,7 @@ export async function streamingMultipartUploadV2(
   const CRLF = "\r\n";
   const enc = new TextEncoder();
 
-  // Pre-compute header e footer bytes pra calcular Content-Length exato
+  // Build header e footer pra calcular Content-Length exato
   const headerParts: Uint8Array[] = [];
   for (const f of fields) {
     headerParts.push(
@@ -120,63 +139,92 @@ export async function streamingMultipartUploadV2(
   const footerBytes = enc.encode(`${CRLF}--${boundary}--${CRLF}`);
   const totalSize = headerBytes.length + sourceSize + footerBytes.length;
 
-  // Abre source como stream (não materializa)
-  const sourceRes = await fetch(sourceUrl);
-  if (!sourceRes.ok || !sourceRes.body) {
-    throw new Error(`Source fetch failed: ${sourceRes.status}`);
-  }
-  const sourceReader = sourceRes.body.getReader();
-  let sentSourceBytes = 0;
-  let headerSent = false;
-  let footerSent = false;
+  const targetUrlObj = new URL(targetUrl);
+  const isHttps = targetUrlObj.protocol === "https:";
+  const lib = isHttps ? https : http;
+  const port = targetUrlObj.port
+    ? parseInt(targetUrlObj.port, 10)
+    : isHttps
+      ? 443
+      : 80;
 
-  const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      // 1. Header primeiro
-      if (!headerSent) {
-        controller.enqueue(headerBytes);
-        headerSent = true;
-        return;
-      }
-      // 3. Footer depois que source acabou
-      if (footerSent) {
-        controller.close();
-        return;
-      }
-      // 2. Source em chunks
-      const { done, value } = await sourceReader.read();
-      if (done) {
-        if (sentSourceBytes !== sourceSize) {
-          controller.error(
-            new Error(
-              `Source size mismatch: header expected ${sourceSize}, actual ${sentSourceBytes}`,
-            ),
-          );
+  return new Promise<UploadResponse>((resolve, reject) => {
+    const req = lib.request(
+      {
+        method: "POST",
+        hostname: targetUrlObj.hostname,
+        port,
+        path: targetUrlObj.pathname + targetUrlObj.search,
+        headers: {
+          ...targetHeaders,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": totalSize,
+        },
+      },
+      // deno-lint-ignore no-explicit-any
+      (res: any) => {
+        const chunks: Uint8Array[] = [];
+        // deno-lint-ignore no-explicit-any
+        res.on("data", (c: any) => {
+          chunks.push(c instanceof Uint8Array ? c : new Uint8Array(c));
+        });
+        res.on("end", () => {
+          const body = concatUint8(chunks);
+          resolve({
+            status: res.statusCode,
+            headers: res.headers,
+            text: () => Promise.resolve(new TextDecoder().decode(body)),
+          });
+        });
+        // deno-lint-ignore no-explicit-any
+        res.on("error", (err: any) => reject(err));
+      },
+    );
+
+    // deno-lint-ignore no-explicit-any
+    req.on("error", (err: any) => reject(err));
+
+    // 1. Header multipart
+    req.write(Buffer.from(headerBytes));
+
+    // 2. Stream source bytes
+    fetch(sourceUrl)
+      .then(async (sourceRes) => {
+        if (!sourceRes.ok || !sourceRes.body) {
+          req.destroy(new Error(`Source fetch failed: ${sourceRes.status}`));
           return;
         }
-        controller.enqueue(footerBytes);
-        footerSent = true;
-        return;
-      }
-      if (value && value.length) {
-        sentSourceBytes += value.length;
-        controller.enqueue(value);
-      }
-    },
-    cancel(reason) {
-      sourceReader.cancel(reason).catch(() => {});
-    },
-  });
-
-  return fetch(targetUrl, {
-    method: "POST",
-    headers: {
-      ...targetHeaders,
-      "Content-Type": `multipart/form-data; boundary=${boundary}`,
-      "Content-Length": totalSize.toString(),
-    },
-    body: stream,
-    // @ts-ignore: duplex é required em Deno quando body é ReadableStream
-    duplex: "half",
+        const reader = sourceRes.body.getReader();
+        let sentBytes = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value && value.length) {
+              sentBytes += value.length;
+              // Backpressure: se o buffer de write tá cheio, espera 'drain'
+              if (!req.write(Buffer.from(value))) {
+                await new Promise<void>((r) => req.once("drain", () => r()));
+              }
+            }
+          }
+          if (sentBytes !== sourceSize) {
+            req.destroy(
+              new Error(
+                `Source size mismatch: header expected ${sourceSize}, actual ${sentBytes}`,
+              ),
+            );
+            return;
+          }
+          // 3. Footer multipart e fim do request
+          req.write(Buffer.from(footerBytes));
+          req.end();
+        } catch (err) {
+          req.destroy(err as Error);
+        }
+      })
+      .catch((err) => {
+        req.destroy(err);
+      });
   });
 }
