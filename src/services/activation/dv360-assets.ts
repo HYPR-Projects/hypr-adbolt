@@ -73,43 +73,86 @@ export async function activateDV360Assets(
       allResults.push({ success: false, name: c.name, error: 'Upload failed: ' + c._uploadError })
     );
 
-    // Videos: 100% serial com 4s de delay. Paralelismo aqui satura o transcoder
-    // do DV360 por advertiser e retorna "No mediaId: Internal Error" silencioso.
-    // Edge function tem retry no upload, mas mesmo assim o ideal é não ofender
-    // o rate limit do Google. 1 vídeo por chamada, 1 chamada por vez.
+    // Videos: 100% serial com 4s de delay entre vídeos novos. Paralelismo
+    // aqui satura o transcoder do DV360 por advertiser e retorna
+    // "No mediaId: Internal Error" silencioso.
+    //
+    // Retry é feito AQUI no frontend (não no edge function) para que cada
+    // tentativa seja em um isolate fresco do Deno - elimina risco de OOM
+    // por estado acumulado dentro de uma mesma execução do edge function.
+    // Backoff: 6s, 15s, 30s entre tentativas. Detecta erro transiente
+    // tanto em data.results[].error quanto em status HTTP do response.
     const VIDEO_PARALLEL = 1;
     const VIDEO_STAGGER_MS = 4000;
+    const VIDEO_RETRY_DELAYS_MS = [6000, 15000, 30000];
+    const isTransientError = (msg: string): boolean =>
+      /internal error|timeout|unavailable|try again|worker.*limit|memory/i.test(msg);
+
+    const callDV360 = async (vc: typeof videoCreatives[number]) => {
+      const res = await fetchWithRetry(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          advertiserId: config.advertiserId,
+          campaignName: config.campaignName,
+          advertiserName: config.advertiserName,
+          brandName: config.brandName,
+          activationSessionId: activationSessionId || null,
+          creatives: [vc],
+        }),
+      });
+      if (!res.ok) {
+        return { httpStatus: res.status, results: [] as Array<{ name: string; success: boolean; creativeId?: string; error?: string }> };
+      }
+      const data = await res.json();
+      return { httpStatus: res.status, results: (data.results || []) as Array<{ name: string; success: boolean; creativeId?: string; error?: string }> };
+    };
+
     for (let i = 0; i < videoCreatives.length; i += VIDEO_PARALLEL) {
       if (i > 0) await new Promise((r) => setTimeout(r, VIDEO_STAGGER_MS));
       const batch = videoCreatives.slice(i, i + VIDEO_PARALLEL);
-      const batchPromises = batch.map((vc, bi) => {
+      const batchPromises = batch.map(async (vc, bi) => {
         const idx = i + bi;
         processed++;
         onProgress?.(processed, total, `Criando video ${idx + 1}/${videoCreatives.length} na DV360: ${vc.name}`);
-        return fetchWithRetry(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-          body: JSON.stringify({
-            advertiserId: config.advertiserId,
-            campaignName: config.campaignName,
-            advertiserName: config.advertiserName,
-            brandName: config.brandName,
-            activationSessionId: activationSessionId || null,
-            creatives: [vc],
-          }),
-        }).then(async (res) => {
-          const data = await res.json();
-          for (const r of data.results || []) {
-            allResults.push(r);
-            if (r.success) successCount++;
+
+        let lastResult: { name: string; success: boolean; creativeId?: string; error?: string } | null = null;
+        for (let attempt = 0; attempt <= VIDEO_RETRY_DELAYS_MS.length; attempt++) {
+          if (attempt > 0) {
+            const delay = VIDEO_RETRY_DELAYS_MS[attempt - 1];
+            console.warn(`[dv360] Retry ${attempt}/${VIDEO_RETRY_DELAYS_MS.length} for ${vc.name} after ${delay}ms (last: ${lastResult?.error?.substring(0, 100) || 'http error'})`);
+            onProgress?.(processed, total, `Retry ${attempt} para ${vc.name}...`);
+            await new Promise((r) => setTimeout(r, delay));
           }
-        }).catch((err) => {
-          allResults.push({
-            success: false,
-            name: vc.name,
-            error: (err as Error).message || 'Network error',
-          });
-        });
+          try {
+            const { httpStatus, results } = await callDV360(vc);
+            // HTTP error transiente (546 worker limit, 5xx do Supabase)
+            if (httpStatus >= 500) {
+              lastResult = { success: false, name: vc.name, error: `HTTP ${httpStatus}` };
+              if (attempt < VIDEO_RETRY_DELAYS_MS.length) continue;
+              allResults.push(lastResult);
+              return;
+            }
+            // Edge function respondeu 2xx - inspeciona resultados
+            const r = results[0];
+            if (r?.success) {
+              allResults.push(r);
+              successCount++;
+              return;
+            }
+            lastResult = r || { success: false, name: vc.name, error: 'Empty response' };
+            if (attempt < VIDEO_RETRY_DELAYS_MS.length && isTransientError(lastResult.error || '')) {
+              continue;
+            }
+            allResults.push(lastResult);
+            return;
+          } catch (err) {
+            lastResult = { success: false, name: vc.name, error: (err as Error).message || 'Network error' };
+            if (attempt < VIDEO_RETRY_DELAYS_MS.length) continue;
+            allResults.push(lastResult);
+            return;
+          }
+        }
       });
       await Promise.all(batchPromises);
     }
