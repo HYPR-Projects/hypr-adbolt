@@ -184,6 +184,7 @@ export function StepActivate() {
       const assets = useWizardStore.getState().assetEntries;
 
       // Phase 1: Upload all assets + thumbnails + previews to storage
+      const phase1Failures: Array<{ name: string; error: string }> = [];
       if (apiDsps.length) {
         const firstDsp = apiDsps[0];
         for (let i = 0; i < assets.length; i++) {
@@ -216,8 +217,41 @@ export function StepActivate() {
                 if (previewUrl) store.updateAsset(a.id, { _html5PreviewUrl: previewUrl });
               }
             }
-          } catch (e) { console.error('Upload failed:', a.name, e); }
+          } catch (e) {
+            // Captura falha pra avisar usuário antes de prosseguir.
+            // Antes esse erro era só logado no console e o asset seguia
+            // sem _storagePath, fazendo Phase 2 entrar em loop de re-upload
+            // que acabava demorando 40s+ por asset quebrado.
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error('Upload failed:', a.name, e);
+            phase1Failures.push({ name: a.name, error: msg });
+          }
         }
+
+        // Se houve falhas no upload, avisa o usuário antes de prosseguir.
+        // Os assets que falharam não vão pra Phase 2 (xandr-assets/dv360-assets
+        // pulam quem não tem _storagePath agora) — mas pelo menos o usuário
+        // sabe disso na hora, em vez de só descobrir no resultado.
+        if (phase1Failures.length > 0) {
+          const total = assets.length;
+          const ok = total - phase1Failures.length;
+          const sample = phase1Failures.slice(0, 5).map((f) => `• ${f.name}: ${f.error}`).join('\n');
+          const more = phase1Failures.length > 5 ? `\n... e mais ${phase1Failures.length - 5}` : '';
+          const proceed = confirm(
+            `${phase1Failures.length} de ${total} uploads falharam.\n\n` +
+            `${sample}${more}\n\n` +
+            `Continuar e ativar os ${ok} criativos que subiram com sucesso?\n\n` +
+            `(Cancelar pra investigar antes de ativar.)`,
+          );
+          if (!proceed) {
+            store.setActivating(false);
+            window.removeEventListener('beforeunload', preventUnload);
+            setShowProgress(false);
+            toast(`Ativação cancelada. ${phase1Failures.length} uploads falharam.`, 'error');
+            return;
+          }
+        }
+
         // Reset progress for Phase 2
         apiDsps.forEach((d) =>
           setProgress((prev) => prev.map((p) => p.dsp === d ? { ...p, current: 0, message: 'Aguardando ativação...' } : p))

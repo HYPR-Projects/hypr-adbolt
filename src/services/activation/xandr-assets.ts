@@ -1,7 +1,7 @@
 import { SUPABASE_FUNCTIONS_URL } from '@/services/supabase';
 import { DSP_DEFAULTS } from '@/lib/dsp-config';
 import type { AssetEntry, ActivationResult } from '@/types';
-import { uploadAssetToStorage, buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
+import { buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { fetchWithRetry } from './retry';
 
 interface XandrAssetConfig {
@@ -35,11 +35,18 @@ export async function activateXandrAssets(
 
       try {
         const prepared = buildCreativePayload(a, 'xandr');
+        // Phase 1 deve ter feito upload de todos os assets. Se chegou aqui sem
+        // storagePath, é porque Phase 1 falhou pra esse asset — não tenta
+        // re-uploadar (gerava 40s+ de delay por asset quebrado, prolongando o
+        // batch inteiro). Registra erro e pula pro próximo.
         if (!prepared.storagePath) {
-          await uploadAssetToStorage(a, token, (msg) =>
-            onProgress?.(i, assets.length, msg)
-          );
-          Object.assign(prepared, buildCreativePayload(a, 'xandr'));
+          results.push({
+            name: a.name,
+            success: false,
+            error: 'Asset não foi enviado pro storage (Phase 1 falhou). Re-tente a ativação.',
+          });
+          onProgress?.(i + 1, assets.length, `✗ ${i + 1}/${assets.length}`);
+          continue;
         }
 
         // Use pre-uploaded URLs from Phase 1, fallback to upload here

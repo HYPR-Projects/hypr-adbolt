@@ -1,6 +1,6 @@
 import { SUPABASE_FUNCTIONS_URL } from '@/services/supabase';
 import type { AssetEntry, ActivationResult } from '@/types';
-import { uploadAssetToStorage, buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
+import { buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { fetchWithRetry } from './retry';
 
 interface DV360AssetConfig {
@@ -35,12 +35,18 @@ export async function activateDV360Assets(
     const creatives: Array<ReturnType<typeof buildCreativePayload> & { _uploadError?: string; thumbnailUrl?: string; html5PreviewUrl?: string }> = [];
     for (let i = 0; i < total; i++) {
       const a = assets[i];
+      // Phase 1 deve ter feito upload de todos os assets. Se chegou aqui sem
+      // _storagePath, é porque Phase 1 falhou pra esse asset — não tenta
+      // re-uploadar (gerava 40s+ de delay por asset quebrado, prolongando o
+      // batch inteiro). Marca como erro e segue.
+      if (!a._storagePath) {
+        creatives.push({
+          ...buildCreativePayload(a, 'dv360'),
+          _uploadError: 'Asset não foi enviado pro storage (Phase 1 falhou). Re-tente a ativação.',
+        });
+        continue;
+      }
       try {
-        if (!a._storagePath) {
-          await uploadAssetToStorage(a, token, (msg) =>
-            onProgress?.(i, total, msg)
-          );
-        }
         const payload = buildCreativePayload(a, 'dv360');
         // Use pre-uploaded URLs from Phase 1, fallback to upload here
         let thumbnailUrl = a._thumbnailUrl || '';
