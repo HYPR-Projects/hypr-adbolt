@@ -1,0 +1,254 @@
+.settings {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 64px 32px 80px;
+}
+
+.header {
+  margin-bottom: 40px;
+  opacity: 0;
+  animation: slideUp 0.5s var(--ease-out) 0.05s both;
+}
+
+.header h2 {
+  font-size: var(--fs-hero);
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  margin: 0 0 6px;
+}
+
+.header p {
+  font-size: var(--fs-base);
+  color: var(--text-sec);
+  opacity: 0.75;
+  margin: 0;
+}
+
+.section {
+  opacity: 0;
+  animation: slideUp 0.5s var(--ease-out) 0.15s both;
+}
+
+.sectionHeader {
+  margin-bottom: 20px;
+}
+
+.sectionHeader h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin: 0 0 4px;
+  letter-spacing: -0.2px;
+}
+
+.sectionHeader p {
+  font-size: var(--fs-sm);
+  color: var(--text-tri);
+  opacity: 0.7;
+  margin: 0;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.card {
+  background: var(--bg-surface);
+  border: var(--surface-border) solid var(--border);
+  border-radius: var(--surface-radius);
+  padding: 20px 24px;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.card:hover {
+  border-color: var(--border-active);
+}
+
+.cardManaged {
+  opacity: 0.65;
+}
+
+.cardManaged:hover {
+  border-color: var(--border);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dspIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTitle h4 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.cardSub {
+  font-size: 12px;
+  color: var(--text-tri);
+  opacity: 0.7;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+
+.badgeOk {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badgeOff {
+  background: var(--accent-dim);
+  color: var(--text-tri);
+  border: 1px solid var(--border);
+}
+
+.badgeError {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badgeNeutral {
+  background: var(--bg-base);
+  color: var(--text-tri);
+  border: 1px solid var(--border);
+}
+
+.badgeManaged {
+  background: var(--bg-base);
+  color: var(--text-tri);
+  border: 1px solid var(--border);
+}
+
+.cardBody {
+  margin-top: 16px;
+}
+
+.muted {
+  font-size: var(--fs-sm);
+  color: var(--text-tri);
+  margin: 0;
+  opacity: 0.85;
+  line-height: 1.6;
+}
+
+.details {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px 14px;
+  margin: 0;
+}
+
+.details > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.details > div:last-child {
+  border-bottom: none;
+}
+
+.details dt {
+  color: var(--text-tri);
+  font-weight: 500;
+  margin: 0;
+}
+
+.details dd {
+  color: var(--text-pri);
+  margin: 0;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  text-align: right;
+  word-break: break-all;
+  max-width: 60%;
+}
+
+.errorBox {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-sec);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono, monospace);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.cardFoot {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px var(--accent-shadow);
+}
+
+.btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+@media (max-width: 640px) {
+  .settings {
+    padding: 32px 16px 48px;
+  }
+
+  .details dd {
+    max-width: 50%;
+    font-size: 11px;
+  }
+}
+
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

@@ -105,7 +105,7 @@ export interface ActivationResult {
 // ── Wizard ──
 
 export type WizardMode = 'tags' | 'surveys' | 'assets';
-export type AppView = 'home' | 'wizard' | 'dashboard';
+export type AppView = 'home' | 'wizard' | 'dashboard' | 'settings';
 
 export interface WizardConfig {
   steps: string[];
