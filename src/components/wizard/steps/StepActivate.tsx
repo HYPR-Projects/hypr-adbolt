@@ -18,7 +18,8 @@ import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/ser
 import { buildSurveyIframe } from '@/services/typeform';
 import { normalizeUrl } from '@/lib/utils';
 import { filterApiCapable, hasApiCapableDsp } from '@/lib/dsp-config';
-import type { ActivationResult, Placement } from '@/types';
+import { getFreshToken } from '@/lib/auth-token';
+import type { AssetEntry, ActivationResult, Placement } from '@/types';
 import { DSP_LABELS } from '@/types';
 import styles from './StepActivate.module.css';
 import { useState } from 'react';
@@ -184,48 +185,87 @@ export function StepActivate() {
       const assets = useWizardStore.getState().assetEntries;
 
       // Phase 1: Upload all assets + thumbnails + previews to storage
+      //
+      // Estratégia: chunks de 5 assets em paralelo, com retry exponencial por
+      // asset. Asset que falhar 3x é registrado em phase1Failures e a Phase 2
+      // pula ele (xandr-assets/dv360-assets ignoram quem não tem _storagePath).
+      //
+      // Token fresco a cada upload via getFreshToken — em batches grandes
+      // (200+) o loop pode passar de 1h e o token inicial estaria expirado.
       const phase1Failures: Array<{ name: string; error: string }> = [];
       if (apiDsps.length) {
         const firstDsp = apiDsps[0];
-        for (let i = 0; i < assets.length; i++) {
-          const a = assets[i];
-          setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? {
-            ...p, current: i, message: `Upload ${i + 1}/${assets.length}: ${a.name}`,
-          } : p));
-          try {
-            // Upload asset file to private storage
-            await uploadAssetToStorage(a, token, (msg) =>
-              setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? { ...p, message: msg } : p))
-            );
-            // Persist _storagePath to store (uploadAssetToStorage mutates the object directly)
-            if (a._storagePath) {
-              store.updateAsset(a.id, { _storagePath: a._storagePath, _uploadedFile: a._uploadedFile });
+        const PARALLEL = 5;
+        const RETRY_DELAYS_MS = [1000, 3000, 8000];
+
+        // Upload de um único asset com retry — encapsula asset principal +
+        // thumbnail + html5 preview pra que falha em qualquer um deles seja
+        // tratada uniformemente.
+        const uploadOne = async (a: AssetEntry, idx: number, total: number): Promise<{ ok: boolean; name: string; error?: string }> => {
+          for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+            if (attempt > 0) {
+              await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
             }
-            // Upload small thumbnail (JPEG 96x72) for table display
-            if (a.thumb && !a._thumbnailUrl) {
-              const thumbUrl = await uploadThumbnail(a.thumb, token);
-              if (thumbUrl) store.updateAsset(a.id, { _thumbnailUrl: thumbUrl });
-            }
-            // Upload full-size preview to public bucket
-            if (a.type === 'html5') {
-              // HTML5: upload rendered HTML content
-              if (a.html5Content && !a._html5PreviewUrl) {
-                setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? {
-                  ...p, message: `Preview ${i + 1}/${assets.length}: ${a.name}`,
-                } : p));
-                const previewUrl = await uploadHtml5Preview(a.html5Content, token);
-                if (previewUrl) store.updateAsset(a.id, { _html5PreviewUrl: previewUrl });
+            try {
+              const token = await getFreshToken();
+              // Asset principal pro storage privado
+              await uploadAssetToStorage(a, token, (msg) =>
+                setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? { ...p, message: `${msg} (${idx + 1}/${total})` } : p)),
+              );
+              if (a._storagePath) {
+                store.updateAsset(a.id, { _storagePath: a._storagePath, _uploadedFile: a._uploadedFile });
               }
+              // Thumbnail (não-bloqueante: falha aqui não impede ativação)
+              if (a.thumb && !a._thumbnailUrl) {
+                try {
+                  const thumbUrl = await uploadThumbnail(a.thumb, token);
+                  if (thumbUrl) store.updateAsset(a.id, { _thumbnailUrl: thumbUrl });
+                } catch (thumbErr) {
+                  console.warn('Thumbnail upload failed (não-bloqueante):', a.name, thumbErr);
+                }
+              }
+              // HTML5 preview (também não-bloqueante)
+              if (a.type === 'html5' && a.html5Content && !a._html5PreviewUrl) {
+                try {
+                  const previewUrl = await uploadHtml5Preview(a.html5Content, token);
+                  if (previewUrl) store.updateAsset(a.id, { _html5PreviewUrl: previewUrl });
+                } catch (previewErr) {
+                  console.warn('HTML5 preview upload failed (não-bloqueante):', a.name, previewErr);
+                }
+              }
+              return { ok: true, name: a.name };
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (attempt < RETRY_DELAYS_MS.length) {
+                console.warn(`[phase1] Retry ${attempt + 1}/${RETRY_DELAYS_MS.length} for ${a.name}: ${msg}`);
+                continue;
+              }
+              console.error('Upload failed after retries:', a.name, e);
+              return { ok: false, name: a.name, error: msg };
             }
-          } catch (e) {
-            // Captura falha pra avisar usuário antes de prosseguir.
-            // Antes esse erro era só logado no console e o asset seguia
-            // sem _storagePath, fazendo Phase 2 entrar em loop de re-upload
-            // que acabava demorando 40s+ por asset quebrado.
-            const msg = e instanceof Error ? e.message : String(e);
-            console.error('Upload failed:', a.name, e);
-            phase1Failures.push({ name: a.name, error: msg });
           }
+          return { ok: false, name: a.name, error: 'Unknown' };
+        };
+
+        let processed = 0;
+        for (let i = 0; i < assets.length; i += PARALLEL) {
+          const chunk = assets.slice(i, i + PARALLEL);
+          setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? {
+            ...p,
+            current: processed,
+            message: `Upload ${processed + 1}-${Math.min(processed + chunk.length, assets.length)}/${assets.length}`,
+          } : p));
+          const chunkResults = await Promise.allSettled(
+            chunk.map((a, ci) => uploadOne(a, i + ci, assets.length)),
+          );
+          for (const cr of chunkResults) {
+            if (cr.status === 'fulfilled' && !cr.value.ok) {
+              phase1Failures.push({ name: cr.value.name, error: cr.value.error || 'Unknown' });
+            } else if (cr.status === 'rejected') {
+              phase1Failures.push({ name: 'desconhecido', error: cr.reason?.message || 'Promise rejected' });
+            }
+          }
+          processed += chunk.length;
         }
 
         // Se houve falhas no upload, avisa o usuário antes de prosseguir.
@@ -261,7 +301,7 @@ export function StepActivate() {
       // Phase 2: Activate per DSP — re-read from store to get updated _storagePath/_thumbnailUrl
       const updatedAssets = useWizardStore.getState().assetEntries;
       if (store.selectedDsps.has('xandr')) {
-        const r = await activateXandrAssets(token, updatedAssets, {
+        const r = await activateXandrAssets(getFreshToken, updatedAssets, {
           brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
           brandId: store.xandrBrandId, sla: store.xandrSla,
         }, (cur, total, msg) =>
@@ -274,7 +314,7 @@ export function StepActivate() {
       }
 
       if (store.selectedDsps.has('dv360')) {
-        const r = await activateDV360Assets(token, updatedAssets, {
+        const r = await activateDV360Assets(getFreshToken, updatedAssets, {
           advertiserId: store.dv360AdvId,
           campaignName: store.parsedData?.campaignName || '',
           advertiserName: store.parsedData?.advertiserName || '',

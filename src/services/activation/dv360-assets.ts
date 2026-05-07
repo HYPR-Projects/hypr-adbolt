@@ -2,6 +2,7 @@ import { SUPABASE_FUNCTIONS_URL } from '@/services/supabase';
 import type { AssetEntry, ActivationResult } from '@/types';
 import { buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { fetchWithRetry } from './retry';
+import type { TokenProvider } from '@/lib/auth-token';
 
 interface DV360AssetConfig {
   advertiserId: string;
@@ -12,13 +13,15 @@ interface DV360AssetConfig {
 
 /**
  * Activate asset creatives in DV360 via dsp-dv360-asset.
- * Videos go 1 at a time with 3s delay (transcoding is serial per advertiser).
+ * Videos go 1 at a time with 4s delay (transcoding is serial per advertiser).
  * Display/HTML5 go in chunks of 5.
  *
- * Ported from legacy: async function activateDV360Assets(token) — lines 1453-1527
+ * `getToken` é uma factory que retorna o access_token atual da sessão
+ * (sempre fresco, vide src/lib/auth-token.ts). É chamado antes de cada
+ * upload/ativação pra garantir que loops longos não usem token expirado.
  */
 export async function activateDV360Assets(
-  token: string,
+  getToken: TokenProvider,
   assets: AssetEntry[],
   config: DV360AssetConfig,
   onProgress?: (current: number, total: number, msg: string) => void,
@@ -48,6 +51,9 @@ export async function activateDV360Assets(
       }
       try {
         const payload = buildCreativePayload(a, 'dv360');
+        // Token fresco a cada asset — uploads de thumbnail/preview podem
+        // levar segundos cada e o loop como um todo pode passar de 1h.
+        const token = await getToken();
         // Use pre-uploaded URLs from Phase 1, fallback to upload here
         let thumbnailUrl = a._thumbnailUrl || '';
         if (!thumbnailUrl && a.thumb) {
@@ -95,6 +101,7 @@ export async function activateDV360Assets(
       /internal error|timeout|unavailable|try again|worker.*limit|memory/i.test(msg);
 
     const callDV360 = async (vc: typeof videoCreatives[number]) => {
+      const token = await getToken();
       const res = await fetchWithRetry(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
@@ -171,6 +178,9 @@ export async function activateDV360Assets(
       onProgress?.(processed, total, `Criando display ${Math.min(i + CHUNK, otherCreatives.length)}/${otherCreatives.length} na DV360...`);
 
       try {
+        // Token fresco por chunk — em batches grandes, esse loop pode
+        // passar do tempo de vida do JWT inicial.
+        const token = await getToken();
         const res = await fetchWithRetry(`${SUPABASE_FUNCTIONS_URL}/dsp-dv360-asset`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },

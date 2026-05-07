@@ -3,6 +3,7 @@ import { DSP_DEFAULTS } from '@/lib/dsp-config';
 import type { AssetEntry, ActivationResult } from '@/types';
 import { buildCreativePayload, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { fetchWithRetry } from './retry';
+import type { TokenProvider } from '@/lib/auth-token';
 
 interface XandrAssetConfig {
   brandUrl: string;
@@ -13,10 +14,13 @@ interface XandrAssetConfig {
 
 /**
  * Activate asset creatives in Xandr one-by-one via dsp-xandr-asset.
- * Ported from legacy: async function activateXandrAssets(token) — lines 1405-1451
+ *
+ * `getToken` é uma factory que retorna o access_token atual da sessão
+ * (sempre fresco, vide src/lib/auth-token.ts). É chamado antes de cada
+ * upload/ativação pra garantir que loops longos não usem token expirado.
  */
 export async function activateXandrAssets(
-  token: string,
+  getToken: TokenProvider,
   assets: AssetEntry[],
   config: XandrAssetConfig,
   onProgress?: (current: number, total: number, msg: string) => void,
@@ -48,6 +52,10 @@ export async function activateXandrAssets(
           onProgress?.(i + 1, assets.length, `✗ ${i + 1}/${assets.length}`);
           continue;
         }
+
+        // Token fresco a cada iteração — em batches de 200+ assets, esse loop
+        // pode rodar por 10+ minutos e o token de início estaria expirando.
+        const token = await getToken();
 
         // Use pre-uploaded URLs from Phase 1, fallback to upload here
         let thumbnailUrl = a._thumbnailUrl || '';
