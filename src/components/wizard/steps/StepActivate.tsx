@@ -182,150 +182,211 @@ export function StepActivate() {
       // Normalize landing pages (via store action, not direct mutation)
       store.normalizeAssetLandingPages();
       // Re-read from store after normalization (store creates new objects)
-      const assets = useWizardStore.getState().assetEntries;
+      const allAssets = useWizardStore.getState().assetEntries;
 
-      // Phase 1: Upload all assets + thumbnails + previews to storage
-      //
-      // Estratégia: chunks de 5 assets em paralelo, com retry exponencial por
-      // asset. Asset que falhar 3x é registrado em phase1Failures e a Phase 2
-      // pula ele (xandr-assets/dv360-assets ignoram quem não tem _storagePath).
-      //
-      // Token fresco a cada upload via getFreshToken — em batches grandes
-      // (200+) o loop pode passar de 1h e o token inicial estaria expirado.
-      const phase1Failures: Array<{ name: string; error: string }> = [];
-      if (apiDsps.length) {
-        const firstDsp = apiDsps[0];
-        const PARALLEL = 5;
-        const RETRY_DELAYS_MS = [1000, 3000, 8000];
+      // Chunked processing — divide o batch em sub-batches de SUB_BATCH_SIZE.
+      // Cada sub-batch executa Phase 1 + Phase 2 (Xandr + DV360) completamente
+      // antes do próximo começar. Benefícios pra batches grandes (>30 criativos):
+      //   - Memória do browser não acumula 240+ assets simultaneamente
+      //   - Falha em 1 sub-batch não afeta os outros (já estão ativados)
+      //   - Cada sub-batch é curto (~3min), JWT nem chega perto de expirar
+      //   - Progresso visível por lote
+      // Pra batches ≤ SUB_BATCH_SIZE comportamento é idêntico ao anterior
+      // (só 1 sub-batch).
+      const SUB_BATCH_SIZE = 30;
+      const subBatches: AssetEntry[][] = [];
+      for (let i = 0; i < allAssets.length; i += SUB_BATCH_SIZE) {
+        subBatches.push(allAssets.slice(i, i + SUB_BATCH_SIZE));
+      }
+      const totalBatches = subBatches.length;
+      const isChunked = totalBatches > 1;
 
-        // Upload de um único asset com retry — encapsula asset principal +
-        // thumbnail + html5 preview pra que falha em qualquer um deles seja
-        // tratada uniformemente.
-        const uploadOne = async (a: AssetEntry, idx: number, total: number): Promise<{ ok: boolean; name: string; error?: string }> => {
-          for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-            if (attempt > 0) {
-              await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+      // Acumuladores agregados ao longo dos sub-batches
+      const allPhase1Failures: Array<{ name: string; error: string }> = [];
+      const aggXandr: Array<{ name: string; success: boolean; creativeId?: string; error?: string }> = [];
+      const aggDv360: Array<{ name: string; success: boolean; creativeId?: string; error?: string }> = [];
+
+      for (let sbi = 0; sbi < totalBatches; sbi++) {
+        const subAssets = subBatches[sbi];
+        const batchLabel = isChunked ? `Lote ${sbi + 1}/${totalBatches} — ` : '';
+
+        // Phase 1: Upload assets do sub-batch atual em paralelo (chunks de 5
+        // dentro do sub-batch). Retry exponencial por asset.
+        if (apiDsps.length) {
+          const firstDsp = apiDsps[0];
+          const PARALLEL = 5;
+          const RETRY_DELAYS_MS = [1000, 3000, 8000];
+
+          const uploadOne = async (a: AssetEntry, idx: number, total: number): Promise<{ ok: boolean; name: string; error?: string }> => {
+            for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+              if (attempt > 0) {
+                await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+              }
+              try {
+                const token = await getFreshToken();
+                await uploadAssetToStorage(a, token, (msg) =>
+                  setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? { ...p, message: `${batchLabel}${msg} (${idx + 1}/${total})` } : p)),
+                );
+                if (a._storagePath) {
+                  store.updateAsset(a.id, { _storagePath: a._storagePath, _uploadedFile: a._uploadedFile });
+                }
+                if (a.thumb && !a._thumbnailUrl) {
+                  try {
+                    const thumbUrl = await uploadThumbnail(a.thumb, token);
+                    if (thumbUrl) store.updateAsset(a.id, { _thumbnailUrl: thumbUrl });
+                  } catch (thumbErr) {
+                    console.warn('Thumbnail upload failed (não-bloqueante):', a.name, thumbErr);
+                  }
+                }
+                if (a.type === 'html5' && a.html5Content && !a._html5PreviewUrl) {
+                  try {
+                    const previewUrl = await uploadHtml5Preview(a.html5Content, token);
+                    if (previewUrl) store.updateAsset(a.id, { _html5PreviewUrl: previewUrl });
+                  } catch (previewErr) {
+                    console.warn('HTML5 preview upload failed (não-bloqueante):', a.name, previewErr);
+                  }
+                }
+                return { ok: true, name: a.name };
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                if (attempt < RETRY_DELAYS_MS.length) {
+                  console.warn(`[phase1] Retry ${attempt + 1}/${RETRY_DELAYS_MS.length} for ${a.name}: ${msg}`);
+                  continue;
+                }
+                console.error('Upload failed after retries:', a.name, e);
+                return { ok: false, name: a.name, error: msg };
+              }
             }
-            try {
-              const token = await getFreshToken();
-              // Asset principal pro storage privado
-              await uploadAssetToStorage(a, token, (msg) =>
-                setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? { ...p, message: `${msg} (${idx + 1}/${total})` } : p)),
-              );
-              if (a._storagePath) {
-                store.updateAsset(a.id, { _storagePath: a._storagePath, _uploadedFile: a._uploadedFile });
+            return { ok: false, name: a.name, error: 'Unknown' };
+          };
+
+          const subBatchFailures: Array<{ name: string; error: string }> = [];
+          const baseProcessed = sbi * SUB_BATCH_SIZE;
+          for (let i = 0; i < subAssets.length; i += PARALLEL) {
+            const chunk = subAssets.slice(i, i + PARALLEL);
+            setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? {
+              ...p,
+              current: baseProcessed + i,
+              total: allAssets.length,
+              message: `${batchLabel}Upload ${baseProcessed + i + 1}-${Math.min(baseProcessed + i + chunk.length, allAssets.length)}/${allAssets.length}`,
+            } : p));
+            const chunkResults = await Promise.allSettled(
+              chunk.map((a, ci) => uploadOne(a, i + ci, subAssets.length)),
+            );
+            for (const cr of chunkResults) {
+              if (cr.status === 'fulfilled' && !cr.value.ok) {
+                subBatchFailures.push({ name: cr.value.name, error: cr.value.error || 'Unknown' });
+              } else if (cr.status === 'rejected') {
+                subBatchFailures.push({ name: 'desconhecido', error: cr.reason?.message || 'Promise rejected' });
               }
-              // Thumbnail (não-bloqueante: falha aqui não impede ativação)
-              if (a.thumb && !a._thumbnailUrl) {
-                try {
-                  const thumbUrl = await uploadThumbnail(a.thumb, token);
-                  if (thumbUrl) store.updateAsset(a.id, { _thumbnailUrl: thumbUrl });
-                } catch (thumbErr) {
-                  console.warn('Thumbnail upload failed (não-bloqueante):', a.name, thumbErr);
-                }
-              }
-              // HTML5 preview (também não-bloqueante)
-              if (a.type === 'html5' && a.html5Content && !a._html5PreviewUrl) {
-                try {
-                  const previewUrl = await uploadHtml5Preview(a.html5Content, token);
-                  if (previewUrl) store.updateAsset(a.id, { _html5PreviewUrl: previewUrl });
-                } catch (previewErr) {
-                  console.warn('HTML5 preview upload failed (não-bloqueante):', a.name, previewErr);
-                }
-              }
-              return { ok: true, name: a.name };
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              if (attempt < RETRY_DELAYS_MS.length) {
-                console.warn(`[phase1] Retry ${attempt + 1}/${RETRY_DELAYS_MS.length} for ${a.name}: ${msg}`);
-                continue;
-              }
-              console.error('Upload failed after retries:', a.name, e);
-              return { ok: false, name: a.name, error: msg };
             }
           }
-          return { ok: false, name: a.name, error: 'Unknown' };
-        };
+          allPhase1Failures.push(...subBatchFailures);
 
-        let processed = 0;
-        for (let i = 0; i < assets.length; i += PARALLEL) {
-          const chunk = assets.slice(i, i + PARALLEL);
-          setProgress((prev) => prev.map((p) => p.dsp === firstDsp ? {
-            ...p,
-            current: processed,
-            message: `Upload ${processed + 1}-${Math.min(processed + chunk.length, assets.length)}/${assets.length}`,
-          } : p));
-          const chunkResults = await Promise.allSettled(
-            chunk.map((a, ci) => uploadOne(a, i + ci, assets.length)),
-          );
-          for (const cr of chunkResults) {
-            if (cr.status === 'fulfilled' && !cr.value.ok) {
-              phase1Failures.push({ name: cr.value.name, error: cr.value.error || 'Unknown' });
-            } else if (cr.status === 'rejected') {
-              phase1Failures.push({ name: 'desconhecido', error: cr.reason?.message || 'Promise rejected' });
+          // Pro PRIMEIRO sub-batch, se a maioria dos uploads falhar é provável
+          // que tenha um problema sistêmico (rede, credencial, bucket cheio).
+          // Aborta antes de tentar mais sub-batches.
+          if (sbi === 0 && subBatchFailures.length > subAssets.length / 2) {
+            const sample = subBatchFailures.slice(0, 3).map((f) => `• ${f.name}: ${f.error}`).join('\n');
+            const proceed = confirm(
+              `${subBatchFailures.length} de ${subAssets.length} uploads falharam no primeiro lote.\n\n` +
+              `${sample}\n\n` +
+              `Provavelmente tem um problema sistêmico (rede, storage, sessão). ` +
+              `Continuar com os outros lotes mesmo assim?`,
+            );
+            if (!proceed) {
+              store.setActivating(false);
+              window.removeEventListener('beforeunload', preventUnload);
+              setShowProgress(false);
+              toast(`Ativação cancelada. ${subBatchFailures.length} uploads falharam.`, 'error');
+              return;
             }
           }
-          processed += chunk.length;
         }
 
-        // Se houve falhas no upload, avisa o usuário antes de prosseguir.
-        // Os assets que falharam não vão pra Phase 2 (xandr-assets/dv360-assets
-        // pulam quem não tem _storagePath agora) — mas pelo menos o usuário
-        // sabe disso na hora, em vez de só descobrir no resultado.
-        if (phase1Failures.length > 0) {
-          const total = assets.length;
-          const ok = total - phase1Failures.length;
-          const sample = phase1Failures.slice(0, 5).map((f) => `• ${f.name}: ${f.error}`).join('\n');
-          const more = phase1Failures.length > 5 ? `\n... e mais ${phase1Failures.length - 5}` : '';
-          const proceed = confirm(
-            `${phase1Failures.length} de ${total} uploads falharam.\n\n` +
-            `${sample}${more}\n\n` +
-            `Continuar e ativar os ${ok} criativos que subiram com sucesso?\n\n` +
-            `(Cancelar pra investigar antes de ativar.)`,
-          );
-          if (!proceed) {
-            store.setActivating(false);
-            window.removeEventListener('beforeunload', preventUnload);
-            setShowProgress(false);
-            toast(`Ativação cancelada. ${phase1Failures.length} uploads falharam.`, 'error');
-            return;
-          }
-        }
-
-        // Reset progress for Phase 2
+        // Reset progress dos DSPs pra esse sub-batch
+        const baseProcessed = sbi * SUB_BATCH_SIZE;
         apiDsps.forEach((d) =>
-          setProgress((prev) => prev.map((p) => p.dsp === d ? { ...p, current: 0, message: 'Aguardando ativação...' } : p))
+          setProgress((prev) => prev.map((p) => p.dsp === d ? {
+            ...p, current: baseProcessed, total: allAssets.length, message: `${batchLabel}Aguardando ativação...`,
+          } : p))
         );
+
+        // Phase 2 desse sub-batch — re-read assets do store pra pegar
+        // _storagePath/_thumbnailUrl atualizados pelo Phase 1 deste batch.
+        const stateAssets = useWizardStore.getState().assetEntries;
+        const subAssetIds = new Set(subAssets.map((a) => a.id));
+        const subUpdated = stateAssets.filter((a) => subAssetIds.has(a.id));
+
+        if (store.selectedDsps.has('xandr')) {
+          const r = await activateXandrAssets(getFreshToken, subUpdated, {
+            brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
+            brandId: store.xandrBrandId, sla: store.xandrSla,
+          }, (cur, _total, msg) =>
+            setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? {
+              ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
+            } : p))
+          , activationSessionId);
+          if (r.results) aggXandr.push(...r.results);
+        }
+
+        if (store.selectedDsps.has('dv360')) {
+          const r = await activateDV360Assets(getFreshToken, subUpdated, {
+            advertiserId: store.dv360AdvId,
+            campaignName: store.parsedData?.campaignName || '',
+            advertiserName: store.parsedData?.advertiserName || '',
+            brandName: store.brand,
+          }, (cur, _total, msg) =>
+            setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
+              ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
+            } : p))
+          , activationSessionId);
+          if (r.results) aggDv360.push(...r.results);
+        }
       }
 
-      // Phase 2: Activate per DSP — re-read from store to get updated _storagePath/_thumbnailUrl
-      const updatedAssets = useWizardStore.getState().assetEntries;
+      // Agrega resultados de todos os sub-batches em um único ActivationResult por DSP.
+      const buildAggregated = (
+        dsp: string,
+        agg: Array<{ name: string; success: boolean; creativeId?: string; error?: string }>,
+      ): ActivationResult => {
+        const ok = agg.filter((r) => r.success).length;
+        const status: ActivationResult['status'] =
+          agg.length === 0 ? 'error' :
+          ok === agg.length ? 'success' :
+          ok > 0 ? 'partial' : 'error';
+        return {
+          dsp,
+          status,
+          detail: `${ok}/${agg.length} criativos criados`,
+          results: agg,
+        };
+      };
+
       if (store.selectedDsps.has('xandr')) {
-        const r = await activateXandrAssets(getFreshToken, updatedAssets, {
-          brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
-          brandId: store.xandrBrandId, sla: store.xandrSla,
-        }, (cur, total, msg) =>
-          setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? { ...p, current: cur, total, message: msg } : p))
-        , activationSessionId);
+        const r = buildAggregated('Xandr', aggXandr);
         results.push(r);
         setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? {
-          ...p, current: updatedAssets.length, message: r.detail, status: r.status === 'success' ? 'done' : 'error',
+          ...p, current: allAssets.length, total: allAssets.length, message: r.detail,
+          status: r.status === 'success' ? 'done' : 'error',
+        } : p));
+      }
+      if (store.selectedDsps.has('dv360')) {
+        const r = buildAggregated('DV360', aggDv360);
+        results.push(r);
+        setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
+          ...p, current: allAssets.length, total: allAssets.length, message: r.detail,
+          status: r.status === 'success' ? 'done' : 'error',
         } : p));
       }
 
-      if (store.selectedDsps.has('dv360')) {
-        const r = await activateDV360Assets(getFreshToken, updatedAssets, {
-          advertiserId: store.dv360AdvId,
-          campaignName: store.parsedData?.campaignName || '',
-          advertiserName: store.parsedData?.advertiserName || '',
-          brandName: store.brand,
-        }, (cur, total, msg) =>
-          setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? { ...p, current: cur, total, message: msg } : p))
-        , activationSessionId);
-        results.push(r);
-        setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
-          ...p, current: updatedAssets.length, message: r.detail, status: r.status === 'success' ? 'done' : 'error',
-        } : p));
+      // Resumo agregado de falhas Phase 1
+      if (allPhase1Failures.length > 0) {
+        toast(
+          `${allPhase1Failures.length} de ${allAssets.length} uploads falharam ao longo da ativação. ` +
+          `Cheque os logs do navegador (F12) pra detalhes.`,
+          'error',
+        );
       }
     } else {
       // ── Tag/Survey activation ──
