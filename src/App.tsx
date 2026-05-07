@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
@@ -18,10 +18,29 @@ const WizardShell = lazy(() =>
 const Dashboard = lazy(() =>
   import('@/components/dashboard/Dashboard').then((m) => ({ default: m.Dashboard })),
 );
+const Settings = lazy(() =>
+  import('@/components/settings/Settings').then((m) => ({ default: m.Settings })),
+);
+const AmazonCallback = lazy(() =>
+  import('@/components/settings/AmazonCallback').then((m) => ({ default: m.AmazonCallback })),
+);
+
+/**
+ * Detect a few special URLs the SPA needs to handle out-of-band from the
+ * normal `currentView` state. OAuth callbacks land on `/auth/...` paths
+ * via the Vercel SPA rewrite — we render a dedicated component instead of
+ * the home view so the user sees feedback while the code is exchanged.
+ */
+function detectSpecialRoute(): 'amazon-callback' | null {
+  const path = window.location.pathname;
+  if (path === '/auth/amazon/callback') return 'amazon-callback';
+  return null;
+}
 
 export function App() {
   const { user, isLoading, initialize } = useAuthStore();
   const { currentView, theme } = useUIStore();
+  const [specialRoute] = useState(detectSpecialRoute);
 
   // Initialize auth on mount
   useEffect(() => {
@@ -57,9 +76,16 @@ export function App() {
       <div id="main-content">
         <ErrorBoundary>
           <Suspense fallback={null}>
-            {currentView === 'home' && <FlowSelector />}
-            {currentView === 'wizard' && <WizardShell />}
-            {currentView === 'dashboard' && <Dashboard />}
+            {specialRoute === 'amazon-callback' ? (
+              <AmazonCallback />
+            ) : (
+              <>
+                {currentView === 'home' && <FlowSelector />}
+                {currentView === 'wizard' && <WizardShell />}
+                {currentView === 'dashboard' && <Dashboard />}
+                {currentView === 'settings' && <Settings />}
+              </>
+            )}
           </Suspense>
         </ErrorBoundary>
       </div>
