@@ -15,7 +15,7 @@ const TAG_SUBTITLES: Record<DspType, string> = {
   dv360:      'CSV · Ativação direta',
   xandr:      'XLSX · Ativação direta',
   stackadapt: 'XLSX · Upload manual',
-  amazondsp:  'XLSX · Upload manual',
+  amazondsp:  'API · Ativação direta',
 };
 
 const ASSET_SUBTITLES: Record<DspType, string> = {
