@@ -11,6 +11,7 @@ import { fillAmazonDSPTemplate } from '@/generators/amazon';
 import { downloadCSV, downloadXLSX, downloadBlob } from '@/generators/download';
 import { activateXandrTags } from '@/services/activation/xandr-tags';
 import { activateDV360Tags } from '@/services/activation/dv360-tags';
+import { activateAmazonDspTags } from '@/services/activation/amazondsp-tags';
 import { activateXandrAssets } from '@/services/activation/xandr-assets';
 import { activateDV360Assets } from '@/services/activation/dv360-assets';
 import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
@@ -279,6 +280,19 @@ export function StepActivate() {
           ...p, current: allPlacements.length, message: r.detail, status: r.status === 'success' ? 'done' : 'error',
         } : p));
       }
+
+      if (store.selectedDsps.has('amazondsp')) {
+        const r = await activateAmazonDspTags(token, allPlacements, {
+          campaignName: store.parsedData?.campaignName || 'Survey',
+          advertiserName: store.parsedData?.advertiserName || '',
+          brandName: store.brand,
+          sourceType: store.mode === 'surveys' ? 'surveys' : 'tags',
+        }, activationSessionId);
+        results.push(r);
+        setProgress((prev) => prev.map((p) => p.dsp === 'amazondsp' ? {
+          ...p, current: allPlacements.length, message: r.detail, status: r.status === 'success' ? 'done' : 'error',
+        } : p));
+      }
     }
 
     // Template-only DSPs don't get an API call — we surface them here so the
@@ -290,11 +304,11 @@ export function StepActivate() {
         detail: isAssetMode ? 'Asset upload não suportado — API pendente' : 'Use "Baixar Templates" e suba o XLSX manualmente',
       });
     }
-    if (store.selectedDsps.has('amazondsp')) {
+    if (store.selectedDsps.has('amazondsp') && isAssetMode) {
       results.push({
         dsp: 'Amazon DSP',
         status: 'pending',
-        detail: isAssetMode ? 'Asset upload não suportado — API pendente' : 'Use "Baixar Templates" e suba o XLSX manualmente',
+        detail: 'Asset upload na Amazon DSP ainda não suportado — use "Baixar Templates" e suba o XLSX manualmente',
       });
     }
 

@@ -41,7 +41,7 @@ export const DSP_CAPABILITIES: Record<DspType, { template: boolean; api: boolean
   xandr:      { template: true, api: true },
   dv360:      { template: true, api: true },
   stackadapt: { template: true, api: false },
-  amazondsp:  { template: true, api: false },
+  amazondsp:  { template: true, api: true },
 };
 
 /**
