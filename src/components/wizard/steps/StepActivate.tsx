@@ -19,6 +19,7 @@ import { buildSurveyIframe } from '@/services/typeform';
 import { normalizeUrl } from '@/lib/utils';
 import { filterApiCapable, hasApiCapableDsp } from '@/lib/dsp-config';
 import { getFreshToken } from '@/lib/auth-token';
+import { buildAggregatedResult } from '@/services/activation/aggregate';
 import type { AssetEntry, ActivationResult, Placement } from '@/types';
 import { DSP_LABELS } from '@/types';
 import styles from './StepActivate.module.css';
@@ -345,26 +346,10 @@ export function StepActivate() {
         }
       }
 
-      // Agrega resultados de todos os sub-batches em um único ActivationResult por DSP.
-      const buildAggregated = (
-        dsp: string,
-        agg: Array<{ name: string; success: boolean; creativeId?: string; error?: string }>,
-      ): ActivationResult => {
-        const ok = agg.filter((r) => r.success).length;
-        const status: ActivationResult['status'] =
-          agg.length === 0 ? 'error' :
-          ok === agg.length ? 'success' :
-          ok > 0 ? 'partial' : 'error';
-        return {
-          dsp,
-          status,
-          detail: `${ok}/${agg.length} criativos criados`,
-          results: agg,
-        };
-      };
-
+      // Agrega resultados de todos os sub-batches em um único ActivationResult
+      // por DSP. Lógica em src/services/activation/aggregate.ts (testável).
       if (store.selectedDsps.has('xandr')) {
-        const r = buildAggregated('Xandr', aggXandr);
+        const r = buildAggregatedResult('Xandr', aggXandr);
         results.push(r);
         setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? {
           ...p, current: allAssets.length, total: allAssets.length, message: r.detail,
@@ -372,7 +357,7 @@ export function StepActivate() {
         } : p));
       }
       if (store.selectedDsps.has('dv360')) {
-        const r = buildAggregated('DV360', aggDv360);
+        const r = buildAggregatedResult('DV360', aggDv360);
         results.push(r);
         setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
           ...p, current: allAssets.length, total: allAssets.length, message: r.detail,
