@@ -191,8 +191,8 @@ serve(async (req: Request) => {
     const { data: batchData, error: batchError } = await supabase
       .from("creative_batches")
       .insert({
-        created_by_email: user.email!,
-        created_by_name: user.user_metadata?.full_name || user.email,
+        user_email: user.email!,
+        user_name: user.user_metadata?.full_name || user.email,
         source_type: sourceType === "surveys" ? "surveys" : "tags",
         campaign_name: campaignName || null,
         advertiser_name: advertiserName || null,
