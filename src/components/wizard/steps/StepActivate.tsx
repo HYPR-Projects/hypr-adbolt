@@ -319,30 +319,63 @@ export function StepActivate() {
         const subAssetIds = new Set(subAssets.map((a) => a.id));
         const subUpdated = stateAssets.filter((a) => subAssetIds.has(a.id));
 
-        if (store.selectedDsps.has('xandr')) {
-          const r = await activateXandrAssets(getFreshToken, subUpdated, {
-            brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
-            brandId: store.xandrBrandId, sla: store.xandrSla,
-          }, (cur, _total, msg) =>
-            setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? {
-              ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
-            } : p))
-          , activationSessionId);
-          if (r.results) aggXandr.push(...r.results);
+        // Xandr e DV360 são APIs totalmente independentes (advertisers,
+        // tokens e rate limits separados). Rodar as duas em paralelo via
+        // Promise.allSettled corta o tempo do sub-batch quase pela metade
+        // pra batches que ativam nas duas DSPs simultaneamente. Mesmo se
+        // uma falhar, a outra completa normalmente.
+        const xandrPromise = store.selectedDsps.has('xandr')
+          ? activateXandrAssets(getFreshToken, subUpdated, {
+              brandUrl: normalizedBrandUrl, languageId: store.xandrLangId,
+              brandId: store.xandrBrandId, sla: store.xandrSla,
+            }, (cur, _total, msg) =>
+              setProgress((prev) => prev.map((p) => p.dsp === 'xandr' ? {
+                ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
+              } : p))
+            , activationSessionId)
+          : null;
+
+        const dv360Promise = store.selectedDsps.has('dv360')
+          ? activateDV360Assets(getFreshToken, subUpdated, {
+              advertiserId: store.dv360AdvId,
+              campaignName: store.parsedData?.campaignName || '',
+              advertiserName: store.parsedData?.advertiserName || '',
+              brandName: store.brand,
+            }, (cur, _total, msg) =>
+              setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
+                ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
+              } : p))
+            , activationSessionId)
+          : null;
+
+        const [xandrSettled, dv360Settled] = await Promise.allSettled([
+          xandrPromise ?? Promise.resolve(null),
+          dv360Promise ?? Promise.resolve(null),
+        ]);
+
+        // Coleta resultado Xandr (se DSP selecionada)
+        if (xandrPromise) {
+          if (xandrSettled.status === 'fulfilled' && xandrSettled.value?.results) {
+            aggXandr.push(...xandrSettled.value.results);
+          } else if (xandrSettled.status === 'rejected') {
+            // Promise rejeitou (network total, exception fora do try/catch interno).
+            // Marca todos os criativos do sub-batch como falha pra refletir
+            // a realidade: nenhum entrou nessa DSP nesse lote.
+            const reason = xandrSettled.reason instanceof Error ? xandrSettled.reason.message : 'Activation rejected';
+            console.error(`[xandr sub-batch ${sbi + 1}] rejected:`, xandrSettled.reason);
+            subUpdated.forEach((a) => aggXandr.push({ name: a.name, success: false, error: reason }));
+          }
         }
 
-        if (store.selectedDsps.has('dv360')) {
-          const r = await activateDV360Assets(getFreshToken, subUpdated, {
-            advertiserId: store.dv360AdvId,
-            campaignName: store.parsedData?.campaignName || '',
-            advertiserName: store.parsedData?.advertiserName || '',
-            brandName: store.brand,
-          }, (cur, _total, msg) =>
-            setProgress((prev) => prev.map((p) => p.dsp === 'dv360' ? {
-              ...p, current: baseProcessed + cur, total: allAssets.length, message: `${batchLabel}${msg}`,
-            } : p))
-          , activationSessionId);
-          if (r.results) aggDv360.push(...r.results);
+        // Coleta resultado DV360 (se DSP selecionada)
+        if (dv360Promise) {
+          if (dv360Settled.status === 'fulfilled' && dv360Settled.value?.results) {
+            aggDv360.push(...dv360Settled.value.results);
+          } else if (dv360Settled.status === 'rejected') {
+            const reason = dv360Settled.reason instanceof Error ? dv360Settled.reason.message : 'Activation rejected';
+            console.error(`[dv360 sub-batch ${sbi + 1}] rejected:`, dv360Settled.reason);
+            subUpdated.forEach((a) => aggDv360.push({ name: a.name, success: false, error: reason }));
+          }
         }
       }
 
