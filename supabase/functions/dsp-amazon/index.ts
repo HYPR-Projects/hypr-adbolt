@@ -1,15 +1,22 @@
 // dsp-amazon Edge Function — Create third-party display creatives via Amazon DSP API.
 //
 // Endpoint:  POST /dsp/v1/adCreatives
-// Schema confirmed empirically (see commit feat/amazon-dsp-creative-api):
+// Schema (per Amazon launch announcement, May 30 2024):
 //   {
 //     name, language, country, hostedType: "THIRD_PARTY_HOSTED",
 //     adCreativeFormatProperties: {
 //       adCreativeFormatType: "THIRD_PARTY",
+//       adExperience: "THIRD_PARTY_DISPLAY",  ← REQUIRED for new Creative Manager visibility
 //       creativeSizes: [{ width, height, responsive: false }],
 //       thirdPartyTag: { tagSource, tagType: "DISPLAY", destinationOnAmazon: "OFF_AMAZON" }
 //     }
 //   }
+//
+// Without `adExperience`, the API still returns 2xx with an `adCreativeId` but
+// the creative falls into the legacy "Third Party" / "Third Party - mobile AAP"
+// templates that don't surface in the modern Creatives UI. Adding the field
+// pins the creative to the consolidated 3P display experience that supports
+// 54 placement sizes and is browseable in the Creative Manager.
 //
 // Headers (ALL three required, found via probing):
 //   Authorization: Bearer <access_token>
@@ -49,6 +56,10 @@ interface CreativeResult {
   name: string;
   creativeId?: string;
   error?: string;
+  // Per-call diagnostic captured for every Amazon API attempt. Persisted in
+  // activation_log.response_summary so silent successes (2xx + adCreativeId
+  // but no creative visible in the UI) leave forensic traces.
+  diagnostic?: { httpStatus: number; bodyPreview: string };
 }
 
 function parseDimensions(dim: string): { w: number; h: number } {
@@ -87,6 +98,7 @@ async function createCreative(
     hostedType: "THIRD_PARTY_HOSTED",
     adCreativeFormatProperties: {
       adCreativeFormatType: "THIRD_PARTY",
+      adExperience: "THIRD_PARTY_DISPLAY",
       creativeSizes: [{ width: w, height: h, responsive: false }],
       thirdPartyTag: {
         tagSource: creative.jsTag,
@@ -121,11 +133,16 @@ async function createCreative(
     }
 
     const text = await res.text();
+    const bodyPreview = text.substring(0, 600);
+    console.log(`[amazon] ${creative.name} → HTTP ${res.status}: ${bodyPreview.substring(0, 300)}`);
+
     let parsed: { adCreativeId?: string; errors?: Array<{ errorCode?: string; errorMessage?: string }>; message?: string } = {};
     try { parsed = JSON.parse(text); } catch { /* keep empty, fall through */ }
 
+    const diagnostic = { httpStatus: res.status, bodyPreview };
+
     if (res.ok && parsed.adCreativeId) {
-      return { success: true, name: creative.name, creativeId: String(parsed.adCreativeId) };
+      return { success: true, name: creative.name, creativeId: String(parsed.adCreativeId), diagnostic };
     }
 
     // 429 → retry
@@ -135,7 +152,7 @@ async function createCreative(
     const errMsg = parsed.errors?.[0]
       ? `${parsed.errors[0].errorCode}: ${parsed.errors[0].errorMessage}`
       : parsed.message || `HTTP ${res.status}: ${text.substring(0, 200)}`;
-    return { success: false, name: creative.name, error: errMsg };
+    return { success: false, name: creative.name, error: errMsg, diagnostic };
   }
 
   return { success: false, name: creative.name, error: "Max retries exceeded" };
@@ -316,6 +333,10 @@ serve(async (req: Request) => {
         advertiserId: AMAZON_HYPR_ADVERTISER_ID,
         creativesCount: creatives.length,
         batchId,
+        // Verifies which DSP-side identifiers the request actually carried.
+        // If the wrong account/profile is being injected, this is where we'll see it.
+        sentAccountId: headers["Amazon-Ads-AccountId"],
+        sentProfileId: headers["Amazon-Advertising-API-Scope"],
       },
       response_summary: {
         total: results.length,
@@ -323,6 +344,15 @@ serve(async (req: Request) => {
         failed: results.length - successCount,
         batchId,
         creativeIds: results.filter((r) => r.success).map((r) => r.creativeId),
+        // Forensic trail: HTTP status + first 600 chars of Amazon's response
+        // for every creative attempt. Lets us debug silent successes after
+        // the fact instead of needing to repro live.
+        diagnostics: results.map((r) => ({
+          name: r.name,
+          success: r.success,
+          httpStatus: r.diagnostic?.httpStatus,
+          bodyPreview: r.diagnostic?.bodyPreview,
+        })),
       },
       error_message: status === "error" ? results[0]?.error || null : null,
     });
