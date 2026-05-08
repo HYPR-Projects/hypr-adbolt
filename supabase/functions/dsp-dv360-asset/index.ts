@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getDV360Token, DV360_API } from "../_shared/dv360-auth.ts";
 import { streamingMultipartUploadV2, getStorageSignedUrl } from "../_shared/streaming-upload-v2.ts";
+import { retryDbWrite } from "../_shared/db-retry.ts";
 
 const CORS = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type, x-client-info, apikey","Access-Control-Allow-Methods":"POST, OPTIONS"};
 
@@ -262,8 +263,14 @@ Deno.serve(async(req)=>{
     const {campaignName='',advertiserName='',brandName='',creatives=[],activationSessionId=null} = body;
     const normLp = (u: string|null|undefined) => { if (!u) return null; const t = u.trim(); if (!t) return null; if (!/^https?:\/\//i.test(t)) return 'https://' + t; return t; };
     if (!creatives.length) return new Response(JSON.stringify({error:'No creatives'}),{status:400,headers:{...CORS,'Content-Type':'application/json'}});
-    const {data:bd} = await sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,brand_name:brandName||null,total_creatives:0,dsps_activated:['dv360']}).select('id').single();
-    const batchId = bd?.id||null;
+    // Cria batch com retry — se falhar, batchId fica null e os criativos
+    // que forem criados na DV360 viram zumbis (logados no response_summary).
+    const batchInsert = await retryDbWrite<{id:string}[]>(
+      () => sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,brand_name:brandName||null,total_creatives:0,dsps_activated:['dv360']}).select('id').single(),
+      { context: 'creative_batches.insert (dv360)' },
+    );
+    const batchId = (batchInsert.data as unknown as {id:string})?.id || null;
+    if (!batchId) console.error(`[dv360-asset] batch insert failed after retries: ${batchInsert.error}`);
     const t0 = Date.now();
     const token = await getDV360Token();
     const results: Result[] = [];
@@ -279,6 +286,9 @@ Deno.serve(async(req)=>{
       results.push(await process(token, advId, videoCreatives[i], sb));
     }
     const ok = results.filter(r=>r.success&&r._input);
+    // Zumbis: criativos criados na DV360 (custam $$) que não conseguimos
+    // persistir no banco. Retornados pro frontend pra reconciliação manual.
+    const zombies: Array<{name:string; creativeId:string|number}> = [];
     if (ok.length>0 && batchId) {
       const rows = ok.map(r=>{
         const i=r._input!;
@@ -293,8 +303,22 @@ Deno.serve(async(req)=>{
           dsp_config:JSON.stringify({advertiser_id:advId,storage_path:i.storagePath||null}),
           status:'active', audit_status:'pending', thumbnail_url:i.thumbnailUrl||null, last_synced_at:new Date().toISOString()};
       });
-      await sb.from('creatives').insert(rows);
-      await sb.from('creative_batches').update({total_creatives:ok.length}).eq('id',batchId);
+      // Insert dos creatives com retry. Falhas após retries viram zumbis.
+      const creativesInsert = await retryDbWrite(
+        () => sb.from('creatives').insert(rows),
+        { context: 'creatives.insert (dv360)' },
+      );
+      if (creativesInsert.error) {
+        console.error(`[dv360-asset] CRITICAL: ${ok.length} criativos criados na DV360 mas falha ao inserir no banco após ${creativesInsert.attempts} tentativas: ${creativesInsert.error}`);
+        ok.forEach((r) => zombies.push({ name: r.name, creativeId: r.creativeId! }));
+      }
+      await retryDbWrite(
+        () => sb.from('creative_batches').update({total_creatives:ok.length}).eq('id',batchId),
+        { context: 'creative_batches.update (dv360)', maxRetries: 1 },
+      );
+    } else if (ok.length>0 && !batchId) {
+      console.error(`[dv360-asset] CRITICAL: ${ok.length} criativos criados na DV360 mas batchId é null — ${batchInsert.error}`);
+      ok.forEach((r) => zombies.push({ name: r.name, creativeId: r.creativeId! }));
     }
     const sc=ok.length, st=sc===results.length?'success':sc>0?'partial':'error';
     await sb.from('activation_log').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,
@@ -304,10 +328,11 @@ Deno.serve(async(req)=>{
       request_payload:{advertiserId:advId,type:'asset_upload',creativesCount:creatives.length,batchId},
       response_summary:{total:results.length,success:sc,failed:results.length-sc,batchId,
         creativeIds:results.filter(r=>r.success).map(r=>r.creativeId),
-        errors:results.filter(r=>!r.success).map(r=>({name:r.name,error:r.error,step:r.step}))},
+        errors:results.filter(r=>!r.success).map(r=>({name:r.name,error:r.error,step:r.step})),
+        zombies: zombies.length > 0 ? zombies : undefined},
       error_message:st==='error'?results[0]?.error:null});
     const clean = results.map(({_input,...rest})=>rest);
-    return new Response(JSON.stringify({status:st,total:results.length,success:sc,failed:results.length-sc,batchId,results:clean}),{status:200,headers:{...CORS,'Content-Type':'application/json'}});
+    return new Response(JSON.stringify({status:st,total:results.length,success:sc,failed:results.length-sc,batchId,results:clean,zombies:zombies.length>0?zombies:undefined}),{status:200,headers:{...CORS,'Content-Type':'application/json'}});
   } catch(err) {
     return new Response(JSON.stringify({error:err instanceof Error?err.message:String(err)}),{status:500,headers:{...CORS,'Content-Type':'application/json'}});
   }

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as base64Encode } from "https://deno.land/std@0.208.0/encoding/base64.ts";
 import { streamingMultipartUpload, getStorageSignedUrl } from "../_shared/streaming-upload.ts";
+import { retryDbWrite } from "../_shared/db-retry.ts";
 
 const XANDR_API = "https://api.appnexus.com";
 const MEMBER_ID = 14843;
@@ -274,13 +275,22 @@ Deno.serve(async(req)=>{
     const normUrl = (u: string|null) => { if (!u) return null; const t = u.trim(); if (!t) return null; if (!/^https?:\/\//i.test(t)) return 'https://' + t; return t; };
     const safeBrandUrl = normUrl(brandUrl);
     if (!creatives.length) return new Response(JSON.stringify({error:'No creatives'}),{status:400,headers:{...CORS,'Content-Type':'application/json'}});
-    const {data:bd} = await sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,total_creatives:0,dsps_activated:['xandr']}).select('id').single();
-    const batchId = bd?.id||null;
+    // Cria o batch com retry — se falhar aqui, ainda dá pra ativar (batchId
+    // null), mas logamos pra investigação posterior.
+    const batchInsert = await retryDbWrite<{id:string}[]>(
+      () => sb.from('creative_batches').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,source_type:'assets',campaign_name:campaignName||'Asset Upload',advertiser_name:advertiserName||null,total_creatives:0,dsps_activated:['xandr']}).select('id').single(),
+      { context: 'creative_batches.insert (xandr)' },
+    );
+    const batchId = (batchInsert.data as unknown as {id:string})?.id || null;
+    if (!batchId) console.error(`[xandr-asset] batch insert failed after retries: ${batchInsert.error}`);
     const t0 = Date.now();
     const token = await getXandrToken();
     const results: Result[] = [];
     for (const c of creatives) results.push(await processCreative(token,advertiserId,c,safeBrandUrl,languageId,brandId,sla,sb));
     const ok = results.filter(r=>r.success&&r._input);
+    // Lista de creativeIds que ficaram zumbi (sucesso na DSP, falha no nosso banco).
+    // Retornamos isso pro frontend pra possibilitar reconciliação manual.
+    const zombies: Array<{name:string; creativeId:number}> = [];
     if (ok.length>0 && batchId) {
       const rows = ok.map(r=>{
         const i=r._input!;
@@ -296,8 +306,28 @@ Deno.serve(async(req)=>{
           dsp_config:JSON.stringify({member_id:MEMBER_ID,advertiser_id:advertiserId,language_id:languageId,brand_id:brandId,brand_url:safeBrandUrl,sla,storage_path:i.storagePath||null}),
           status:'active', audit_status:'pending', thumbnail_url:i.thumbnailUrl||null, last_synced_at:new Date().toISOString()};
       });
-      await sb.from('creatives').insert(rows);
-      await sb.from('creative_batches').update({total_creatives:ok.length}).eq('id',batchId);
+      // Insert dos creatives com retry. Se falhar todas as tentativas, marca
+      // todos os criativos como zumbis no response — eles existem na Xandr
+      // (já foram POSTados) mas não estão no nosso banco.
+      const creativesInsert = await retryDbWrite(
+        () => sb.from('creatives').insert(rows),
+        { context: 'creatives.insert (xandr)' },
+      );
+      if (creativesInsert.error) {
+        console.error(`[xandr-asset] CRITICAL: ${ok.length} criativos criados na Xandr DSP mas falha ao inserir no banco após ${creativesInsert.attempts} tentativas: ${creativesInsert.error}`);
+        ok.forEach((r) => zombies.push({ name: r.name, creativeId: r.creativeId! }));
+      }
+      // Update do total — não-crítico, falha aqui só deixa total_creatives=0
+      // no batch (cosmético, não compromete dados de criativos).
+      await retryDbWrite(
+        () => sb.from('creative_batches').update({total_creatives:ok.length}).eq('id',batchId),
+        { context: 'creative_batches.update (xandr)', maxRetries: 1 },
+      );
+    } else if (ok.length>0 && !batchId) {
+      // Caso especial: criativos foram criados na DSP mas batchId é null
+      // (insert do batch falhou). Todos viram zumbis.
+      console.error(`[xandr-asset] CRITICAL: ${ok.length} criativos criados na Xandr DSP mas batchId é null — ${batchInsert.error}`);
+      ok.forEach((r) => zombies.push({ name: r.name, creativeId: r.creativeId! }));
     }
     const sc=ok.length, st=sc===results.length?'success':sc>0?'partial':'error';
     await sb.from('activation_log').insert({user_email:user.email,user_name:user.user_metadata?.full_name||user.email,
@@ -307,10 +337,11 @@ Deno.serve(async(req)=>{
       request_payload:{advertiserId,type:'asset_upload',creativesCount:creatives.length,batchId},
       response_summary:{total:results.length,success:sc,failed:results.length-sc,batchId,
         creativeIds:results.filter(r=>r.success).map(r=>r.creativeId),
-        errors:results.filter(r=>!r.success).map(r=>({name:r.name,error:r.error,step:r.step}))},
+        errors:results.filter(r=>!r.success).map(r=>({name:r.name,error:r.error,step:r.step})),
+        zombies: zombies.length > 0 ? zombies : undefined},
       error_message:st==='error'?results[0]?.error:null});
     const clean = results.map(({_input,...rest})=>rest);
-    return new Response(JSON.stringify({status:st,total:results.length,success:sc,failed:results.length-sc,batchId,results:clean}),{status:200,headers:{...CORS,'Content-Type':'application/json'}});
+    return new Response(JSON.stringify({status:st,total:results.length,success:sc,failed:results.length-sc,batchId,results:clean,zombies:zombies.length>0?zombies:undefined}),{status:200,headers:{...CORS,'Content-Type':'application/json'}});
   } catch(err) {
     return new Response(JSON.stringify({error:err instanceof Error?err.message:String(err)}),{status:500,headers:{...CORS,'Content-Type':'application/json'}});
   }
