@@ -12,7 +12,7 @@ import { PreviewThumb, CreativePreviewModal } from '@/components/shared/Creative
 import { parseCM360 } from '@/parsers/cm360';
 import { parseGenericTags } from '@/parsers/generic';
 import { analyzeTracker } from '@/parsers/tracker';
-import { normalizeUrl } from '@/lib/utils';
+import { normalizeUrl, isValidUrl } from '@/lib/utils';
 import { requireCdnLib } from '@/lib/cdn-loader';
 import type { Placement, Tracker } from '@/types';
 import { DSP_SHORT_LABELS } from '@/types';
@@ -448,10 +448,11 @@ export function StepTags() {
                     </td>
                     <td>
                       <input
-                        className={`${styles.cellInput} ${styles.mono}`}
+                        className={`${styles.cellInput} ${styles.mono} ${p.clickUrl && !isValidUrl(p.clickUrl) ? styles.invalid : ''}`}
                         value={p.clickUrl}
                         onChange={(e) => updatePlacement(i, 'clickUrl', e.target.value)}
                         placeholder={p.type === 'video' ? 'Opcional p/ VAST' : 'https://...'}
+                        title={p.clickUrl && !isValidUrl(p.clickUrl) ? 'URL inválida — verifique o formato (ex: https://exemplo.com)' : undefined}
                       />
                     </td>
                     <td className={styles.trackerCell}>
