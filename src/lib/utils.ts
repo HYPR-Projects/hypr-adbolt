@@ -20,6 +20,39 @@ export function normalizeUrl(v: string): string {
 }
 
 /**
+ * Validate that a string is a plausible URL.
+ *
+ * Strategy:
+ *  1) Normalize (so "site.com" → "https://site.com").
+ *  2) Parse with the URL constructor — guarantees scheme + valid structure.
+ *  3) Require http/https scheme.
+ *  4) Require a hostname with at least one dot and a TLD-like segment
+ *     (>= 2 alpha chars) — blocks values like "abc", "localhost", "test text".
+ *
+ * Used to gate creative activation: DSPs (DV360 in particular) reject creatives
+ * with invalid exit-event URLs (CREATIVE_EXIT_EVENT_CLICK_TAG_INVALID_URL), and
+ * the rejection happens server-side after the create call. Catching it client-side
+ * avoids partial activations like the one observed on May 21 2026.
+ */
+export function isValidUrl(v: string): boolean {
+  const s = (v || '').trim();
+  if (!s) return false;
+  const normalized = normalizeUrl(s);
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  const host = parsed.hostname;
+  if (!host || !host.includes('.')) return false;
+  // Require a TLD segment with at least 2 alpha chars (rejects "site.1", "x.a")
+  if (!/\.[a-zA-Z]{2,}$/.test(host)) return false;
+  return true;
+}
+
+/**
  * Format bytes into human-readable string (B, KB, MB).
  * Ported from legacy: function formatBytes(b)
  */
