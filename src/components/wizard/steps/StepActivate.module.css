@@ -43,3 +43,23 @@
 
 /* Keyframes (local to CSS module to avoid scoping issues) */
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Invalid landing pages pre-flight warning */
+.invalidWarning {
+  background: var(--error-dim);
+  border: var(--surface-border) solid var(--error);
+  color: var(--error);
+  border-radius: var(--surface-radius-xs);
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  margin-bottom: 12px;
+  text-align: left;
+  line-height: 1.45;
+}
+.invalidList {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text-sec);
+  word-break: break-all;
+}
