@@ -16,7 +16,7 @@ import { activateXandrAssets } from '@/services/activation/xandr-assets';
 import { activateDV360Assets } from '@/services/activation/dv360-assets';
 import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { buildSurveyIframe } from '@/services/typeform';
-import { normalizeUrl } from '@/lib/utils';
+import { normalizeUrl, isValidUrl } from '@/lib/utils';
 import { filterApiCapable, hasApiCapableDsp } from '@/lib/dsp-config';
 import { getFreshToken } from '@/lib/auth-token';
 import { buildAggregatedResult } from '@/services/activation/aggregate';
@@ -121,6 +121,13 @@ export function StepActivate() {
         toast(`${missingLp.length} asset(s) sem landing page. Preencha antes de ativar.`, 'error');
         return;
       }
+      const invalidLp = store.assetEntries.filter((a) => !isValidUrl(a.landingPage));
+      if (invalidLp.length) {
+        const first = invalidLp.slice(0, 3).map((a) => a.name).join(', ');
+        const extra = invalidLp.length > 3 ? ` +${invalidLp.length - 3}` : '';
+        toast(`${invalidLp.length} asset(s) com landing page inválida: ${first}${extra}`, 'error');
+        return;
+      }
       // Bloqueio só de vídeos com duration ilegível — sem duration, o edge function
       // não consegue gerar VAST válido. Bitrate alto não bloqueia mais: o edge
       // function transcoda automaticamente via Cloudinary antes de enviar pra Xandr.
@@ -132,6 +139,23 @@ export function StepActivate() {
       // Upload cache is validated by file hash inside uploadAssetToStorage —
       // changed files (resize/compress) get re-uploaded automatically,
       // unchanged files reuse their existing storage path.
+    } else {
+      // Tag/survey mode: validate clickUrl when present (video tags allow empty)
+      const invalidClick = tagPlacements.filter((p) => p.clickUrl && !isValidUrl(p.clickUrl));
+      if (invalidClick.length) {
+        const first = invalidClick.slice(0, 3).map((p) => p.placementName).join(', ');
+        const extra = invalidClick.length > 3 ? ` +${invalidClick.length - 3}` : '';
+        toast(`${invalidClick.length} tag(s) com landing page inválida: ${first}${extra}`, 'error');
+        return;
+      }
+      // Display/native tags require a clickUrl
+      const missingClick = tagPlacements.filter((p) => p.type !== 'video' && !p.clickUrl.trim());
+      if (missingClick.length) {
+        const first = missingClick.slice(0, 3).map((p) => p.placementName).join(', ');
+        const extra = missingClick.length > 3 ? ` +${missingClick.length - 3}` : '';
+        toast(`${missingClick.length} tag(s) sem landing page: ${first}${extra}`, 'error');
+        return;
+      }
     }
 
     if (store.activationDone) {
@@ -486,6 +510,19 @@ export function StepActivate() {
     .join(' e ');
   const singleCard = [showTemplateCard, showActivateCard].filter(Boolean).length < 2;
 
+  // Pre-flight: landing page validation gates the Activate button.
+  // DSPs (DV360 in particular) reject creatives with invalid exit-event URLs
+  // server-side after the create call (CREATIVE_EXIT_EVENT_CLICK_TAG_INVALID_URL),
+  // resulting in partial activations. Catch invalid URLs client-side first.
+  const invalidLandingNames: string[] = isAssetMode
+    ? store.assetEntries.filter((a) => !isValidUrl(a.landingPage)).map((a) => a.name)
+    : tagPlacements
+        .filter((p) => (p.type !== 'video' && !p.clickUrl.trim()) || (p.clickUrl && !isValidUrl(p.clickUrl)))
+        .map((p) => p.placementName);
+  const hasInvalidLanding = invalidLandingNames.length > 0;
+  const invalidPreview = invalidLandingNames.slice(0, 3).join(', ');
+  const invalidExtra = invalidLandingNames.length > 3 ? ` +${invalidLandingNames.length - 3}` : '';
+
   return (
     <div>
       <SectionHeader title="Tudo pronto!" description="Escolha como deseja prosseguir com os criativos configurados." />
@@ -515,10 +552,17 @@ export function StepActivate() {
                 ? `Envia os criativos direto via API para ${apiDspLabels}`
                 : 'Envia os criativos direto via API'}
             </div>
+            {hasInvalidLanding && (
+              <div className={styles.invalidWarning}>
+                <strong>{invalidLandingNames.length}</strong> {invalidLandingNames.length === 1 ? 'criativo com' : 'criativos com'} landing page inválida — corrija na etapa anterior antes de ativar.
+                <div className={styles.invalidList}>{invalidPreview}{invalidExtra}</div>
+              </div>
+            )}
             <button
               className={`${styles.btn} ${styles.btnPrimary}`}
               onClick={handleActivate}
-              disabled={!store.hasContent() || !store.hasDsp() || store.activating}
+              disabled={!store.hasContent() || !store.hasDsp() || store.activating || hasInvalidLanding}
+              title={hasInvalidLanding ? 'Há landing pages inválidas. Volte para corrigir.' : undefined}
             >
               {store.activating ? 'Ativando...' : store.activationDone ? '✓ Ativado' : 'Ativar Agora'}
             </button>
