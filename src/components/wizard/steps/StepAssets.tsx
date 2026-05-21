@@ -16,7 +16,7 @@ import {
 import { analyzeVideo } from '@/lib/video-analysis';
 import { extractZipToFiles, processHTML5Zip } from '@/lib/html5-zip';
 import { analyzeTracker } from '@/parsers/tracker';
-import { normalizeUrl, formatBytes } from '@/lib/utils';
+import { normalizeUrl, formatBytes, isValidUrl } from '@/lib/utils';
 import { ASSET_DSP_LIMITS, DSP_SHORT_LABELS, STORAGE_UPLOAD_LIMIT } from '@/types';
 import type { AssetEntry } from '@/types';
 import styles from './StepAssets.module.css';
@@ -536,7 +536,7 @@ export function StepAssets() {
                       </td>
                       <td>
                         <input
-                          className={`${styles.cellInput} ${styles.mono}`}
+                          className={`${styles.cellInput} ${styles.mono} ${a.landingPage && !isValidUrl(a.landingPage) ? styles.invalid : ''}`}
                           value={a.landingPage}
                           onChange={(e) => updateAsset(a.id, { landingPage: e.target.value })}
                           onFocus={(e) => (e.target as HTMLInputElement).dataset.prev = a.landingPage}
@@ -550,6 +550,7 @@ export function StepAssets() {
                             }
                           }}
                           placeholder="https://..."
+                          title={a.landingPage && !isValidUrl(a.landingPage) ? 'URL inválida — verifique o formato (ex: https://exemplo.com)' : undefined}
                         />
                       </td>
                       <td className={styles.trackerCell}>
