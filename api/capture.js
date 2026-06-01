@@ -274,12 +274,12 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
     // capture whatever rendered.
     t('goto');
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 90_000 : NAV_TIMEOUT });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 60_000 : NAV_TIMEOUT });
     } catch (e) { /* continue with whatever loaded */ }
-    await page.waitForNetworkIdle({ idleTime: 700, timeout: 8_000 }).catch(() => {});
+    await page.waitForNetworkIdle({ idleTime: 600, timeout: 5_000 }).catch(() => {});
 
     t('consent');
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       let clicked = false;
       try { clicked = await page.evaluate(dismissConsentInPage); } catch { clicked = false; }
       if (!clicked) {
@@ -293,13 +293,15 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
         }
       }
       if (clicked) { consentHandled = true; break; }
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
     }
 
     t('scroll');
     await page.evaluate(autoScrollInPage).catch(() => {});
-    await page.waitForNetworkIdle({ idleTime: 600, timeout: 4_000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 1000));
+    // Give ad slots (GPT) time to render after the scroll triggers them, then a
+    // short settle. networkidle is unreliable on ad pages, so use a fixed wait.
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 3_000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500));
 
     t('analyze');
     const analysis = await page.evaluate(analyzePageForAds, {
