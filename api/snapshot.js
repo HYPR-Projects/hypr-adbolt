@@ -170,6 +170,33 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
+// 1x1 transparent PNG — placeholder baked into a slot in interactive mode so
+// the slot is sized/marked; the live <iframe> replaces it after serialization.
+const TRANSPARENT_PX =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function escAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// Build the live <iframe> that replaces the baked screenshot in interactive
+// mode. Returns null for kinds that can't run live (display, video, CM360 tags
+// which only render on whitelisted domains).
+function buildLiveEmbed(kind, src) {
+  const style = 'width:100%;height:100%;border:0;display:block;background:#fff';
+  const sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms';
+  if (kind === 'html5') {
+    if (!/^https?:/i.test(src || '')) return null;
+    return `<iframe data-adbolt-live="1" src="${escAttr(src)}" sandbox="${sandbox}" scrolling="no" style="${style}"></iframe>`;
+  }
+  if (kind === 'tag' || kind === 'survey') {
+    if (/data-dcm-placement=/.test(src || '')) return null; // CM360 won't run off-whitelist
+    const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;overflow:hidden;background:#fff}</style></head><body>${src || ''}</body></html>`;
+    return `<iframe data-adbolt-live="1" srcdoc="${escAttr(doc)}" sandbox="${sandbox}" scrolling="no" style="${style}"></iframe>`;
+  }
+  return null;
+}
+
 // Fetch a source only if it is an image; returns a data URI or null.
 async function tryImageDataUri(src) {
   try {
@@ -244,7 +271,7 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 }
 
 // ---------------------------------------------------------------------------
-async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, proxies }) {
+async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, interactive, proxies }) {
   const started = Date.now();
   const { browser, page, engine, cleanup } = await acquireBrowser({ proxies });
   let step = 'setup';
@@ -261,7 +288,12 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, proxi
     try { await page.exposeFunction('__adboltFetch', nodeFetchResource); } catch (e) { /* already bound / unsupported */ }
 
     step = 'creative';
-    creativeDataUri = await renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
+    // Interactive: replace the baked screenshot with a live <iframe> after
+    // serialization. Bake a transparent placeholder now so the slot is sized.
+    const liveEmbed = interactive ? buildLiveEmbed(creativeKind || 'display', creativeUrl) : null;
+    creativeDataUri = liveEmbed
+      ? TRANSPARENT_PX
+      : await renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
 
     // Block login/consent SDKs at the network layer (cleaner than removing later).
     try {
@@ -317,7 +349,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, proxi
 
     step = 'serialize';
     await page.evaluate(SINGLEFILE_BUNDLE);
-    const html = await page.evaluate(async () => {
+    const html = await page.evaluate(async (noCsp) => {
       // Fetch every resource through Node (window.__adboltFetch) so cross-origin
       // publisher assets aren't blocked by CORS / the page CSP. Falls back to the
       // page's own fetch if the bridge is unavailable.
@@ -350,14 +382,21 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, proxi
         removeAlternativeMedias: true,
         removeAlternativeImages: true,
         saveOriginalURLs: false,
-        insertMetaCSP: true,
+        // In interactive mode the injected live <iframe> must run, so we don't
+        // insert SingleFile's restrictive CSP meta.
+        insertMetaCSP: !noCsp,
       });
       return data.content;
-    });
+    }, !!liveEmbed);
+
+    // Interactive: swap the baked placeholder <img> for the live <iframe>.
+    const finalHtml = liveEmbed
+      ? html.replace(/<img\b[^>]*\bdata-adbolt-creative="1"[^>]*>/gi, liveEmbed)
+      : html;
 
     const title = await page.title().catch(() => '');
     return {
-      html,
+      html: finalHtml,
       slots: bake,
       meta: { engine, consentHandled, durationMs: Date.now() - started, title },
     };
@@ -404,6 +443,7 @@ export default async function handler(req, res) {
         creativeUrl: String(body.creativeUrl),
         creativeSize: body.creativeSize,
         creativeKind: body.creativeKind || 'display',
+        interactive: !!body.interactive,
         proxies: body.proxies,
       });
       lastErr = null;

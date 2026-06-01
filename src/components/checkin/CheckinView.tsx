@@ -77,6 +77,7 @@ export function CheckinView() {
 
   const [pageUrl, setPageUrl] = useState('');
   const [useProxy, setUseProxy] = useState(false);
+  const [interactive, setInteractive] = useState(false);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('library');
   const [librarySearch, setLibrarySearch] = useState('');
 
@@ -288,7 +289,7 @@ export function CheckinView() {
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, proxies: useProxy }),
+        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, interactive, proxies: useProxy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -305,7 +306,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, interactive, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -340,6 +341,10 @@ export function CheckinView() {
             <label className={styles.proxyToggle}>
               <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
               Proxy residencial (sites que bloqueiam mais)
+            </label>
+            <label className={styles.proxyToggle}>
+              <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
+              Preview interativo (survey, HTML5 e tags respondem — não congela)
             </label>
           </div>
 
@@ -490,7 +495,7 @@ export function CheckinView() {
                   className={styles.frame}
                   src={frameUrl}
                   title="preview do anúncio"
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
                   referrerPolicy="no-referrer"
                   style={{
                     width: frameDims.w,
