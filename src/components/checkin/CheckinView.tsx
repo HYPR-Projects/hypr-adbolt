@@ -58,7 +58,7 @@ function classifyCreative(c: Creative): CreativeKind {
 // Phase status: which kinds the snapshot can bake today.
 // display + html5 are live; tag/video/survey land in later phases.
 const BAKEABLE_KINDS: Record<CreativeKind, boolean> = {
-  display: true, html5: true, tag: true, survey: true, video: false,
+  display: true, html5: true, tag: true, survey: true, video: true,
 };
 const KIND_LABEL: Record<CreativeKind, string> = {
   display: 'DISPLAY', html5: 'HTML5', video: 'VÍDEO', tag: 'TAG', survey: 'SURVEY',
@@ -203,6 +203,12 @@ export function CheckinView() {
       setCreativeBakeSrc(content);
       setLibraryStoragePath(null);
       if (!content) toast(`${KIND_LABEL[kind]} sem conteúdo de tag — não dá pra renderizar.`, 'error');
+    } else if (kind === 'video') {
+      // Poster + play overlay. Prefer the generated thumbnail (reliable);
+      // fall back to the mp4 storage path (signed at generate time).
+      const poster = (c.thumbnail_url as string) || null;
+      setCreativeBakeSrc(poster);
+      setLibraryStoragePath(poster ? null : ((cfg && (cfg as Record<string, unknown>).storage_path as string) || null));
     } else {
       // display: full-res asset (signed URL) resolved at generate time.
       setCreativeBakeSrc(null);
@@ -214,11 +220,20 @@ export function CheckinView() {
 
   const resolveCreativeUrl = useCallback(async (): Promise<string> => {
     if (!creativeSrc && !creativeBakeSrc) throw new Error('selecione um criativo');
-    // Non-display (html5 / tag / survey): the snapshot renders the creative
-    // headless. Pass its source (hosted URL or tag content).
-    if (creativeKind !== 'display') {
+    // html5 / tag / survey: the snapshot renders the creative headless.
+    if (creativeKind === 'html5' || creativeKind === 'tag' || creativeKind === 'survey') {
       if (!creativeBakeSrc) throw new Error('criativo sem fonte para preview');
       return creativeBakeSrc;
+    }
+    // video: poster (thumbnail) if available, else the signed mp4.
+    if (creativeKind === 'video') {
+      if (creativeBakeSrc) return creativeBakeSrc;
+      if (libraryStoragePath) {
+        const { data, error } = await supabase.storage.from('asset-uploads').createSignedUrl(libraryStoragePath, 600);
+        if (!error && data?.signedUrl) return data.signedUrl;
+      }
+      if (creativeSrc) return creativeSrc;
+      throw new Error('vídeo sem poster ou arquivo para preview');
     }
     if (creativeIsBlob) {
       if (!creativeFile) throw new Error('arquivo do criativo indisponível');

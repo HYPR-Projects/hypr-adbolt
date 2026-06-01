@@ -170,11 +170,27 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
+// Fetch a source only if it is an image; returns a data URI or null.
+async function tryImageDataUri(src) {
+  try {
+    const r = await fetch(src, { redirect: 'follow' });
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!buf.length || buf.length > 12 * 1024 * 1024) return null;
+    const mime = ct.startsWith('image/') && !ct.includes('octet') ? ct.split(';')[0] : sniffImageMime(buf, '');
+    if (!mime.startsWith('image/')) return null;
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Render a creative to a self-contained image data URI. Display creatives are
 // fetched directly; HTML5, 3P tags and surveys are rendered in a headless page
-// and screenshotted, so the static snapshot can show any creative type as an
-// image baked into the slot. The bake engine stays image-only — no regression.
+// and screenshotted; video bakes a poster + play overlay. The bake engine stays
+// image-only — no regression.
 async function renderCreativeToImage(browser, { kind, src, size }) {
   if (kind === 'display' || !kind) return creativeToDataUri(src);
 
@@ -194,6 +210,22 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
   const p = await browser.newPage();
   try {
     await p.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
+
+    if (kind === 'video') {
+      // Static snapshot can't play video (and headless Chromium lacks H.264),
+      // so compose the poster (thumbnail) + a play button. No poster → a neutral
+      // dark VÍDEO card. Honest representation; live playback is the Live View.
+      const poster = await tryImageDataUri(src);
+      const u = Math.min(w, h);
+      const bg = poster
+        ? `background:#000 center/contain no-repeat url('${poster}');`
+        : 'background:#15202b;';
+      const label = poster ? '' : '<div class="lbl">VÍDEO</div>';
+      const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:${w}px;height:${h}px;overflow:hidden}.s{position:relative;width:${w}px;height:${h}px;${bg}display:flex;align-items:center;justify-content:center}.lbl{position:absolute;top:8px;left:10px;font:700 11px system-ui;letter-spacing:.08em;color:#8BA3AF}.c{width:${u * 0.26}px;height:${u * 0.26}px;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}.t{width:0;height:0;border-style:solid;border-width:${u * 0.07}px 0 ${u * 0.07}px ${u * 0.11}px;border-color:transparent transparent transparent #fff;margin-left:${u * 0.03}px}</style></head><body><div class="s">${label}<div class="c"><div class="t"></div></div></div></body></html>`;
+      await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 15_000 }).catch(() => {});
+      return await shotToDataUri(p, w, h);
+    }
+
     if (kind === 'html5') {
       try { await p.goto(src, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
       return await shotToDataUri(p, w, h);
