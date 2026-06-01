@@ -42,7 +42,7 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
     expect(slot.querySelector('img[data-adbolt-creative]')).toBeTruthy();
   });
 
-  it('skips slots not booked for the creative size', () => {
+  it('approximates an unmatched slot at its own booked size (no longer skipped)', () => {
     makeSlot('leader_1', 728, 90);
     // @ts-expect-error test stub
     window.googletag = {
@@ -54,7 +54,37 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
       }),
     };
     const r = bakeCreativeInPage(CREATIVE, '300x250');
-    expect(r.filled).toBe(0);
+    expect(r.filled).toBe(1);
+    expect(r.approx).toBe(1);
+    expect(r.exact).toBe(0);
+    const slot = document.getElementById('leader_1')!;
+    expect(slot.getAttribute('data-adbolt-mode')).toBe('approx');
+    // Reserved at the slot's own booked size, not the creative size.
+    expect(slot.style.width).toBe('728px');
+    expect(slot.style.height).toBe('90px');
+    expect(slot.querySelector('img[data-adbolt-creative]')).toBeTruthy();
+  });
+
+  it('prefers exact match when a slot is booked for multiple sizes incl. the creative', () => {
+    makeSlot('billboard_1', 0, 0);
+    // @ts-expect-error test stub
+    window.googletag = {
+      pubads: () => ({
+        getSlots: () => [{
+          getSlotElementId: () => 'billboard_1',
+          getSizes: () => [
+            { getWidth: () => 970, getHeight: () => 250 },
+            { getWidth: () => 300, getHeight: () => 250 },
+          ],
+        }],
+      }),
+    };
+    const r = bakeCreativeInPage(CREATIVE, '300x250');
+    expect(r.exact).toBe(1);
+    const slot = document.getElementById('billboard_1')!;
+    expect(slot.getAttribute('data-adbolt-mode')).toBe('exact');
+    expect(slot.style.width).toBe('300px');
+    expect(slot.style.height).toBe('250px');
   });
 });
 

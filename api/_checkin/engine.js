@@ -37,20 +37,35 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
     return dw <= Math.max(20, target.w * 0.1) && dh <= Math.max(20, target.h * 0.1);
   }
 
-  function fill(el) {
+  // Booked sizes worth reserving a box for. Drops 1x1 trackers and out-of-page,
+  // and full-page takeovers / skins that would wreck the layout if reserved.
+  function usableSizes(arr) {
+    return (arr || []).filter((s) => s && s.w >= 50 && s.w <= 1800 && s.h >= 20 && s.h <= 1200);
+  }
+  function largestSize(arr) {
+    return arr.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+  }
+
+  // box: the reserved slot size {w,h}. mode: 'exact' (creative size matched a
+  // booked size) or 'approx' (slot reserved at its own booked size, creative
+  // letterboxed inside — exactly how a real GAM slot shows an undersized ad).
+  function fill(el, box, mode) {
     if (!el || el.getAttribute(MARK)) return false;
     el.setAttribute(MARK, '1');
+    el.setAttribute('data-adbolt-mode', mode || 'exact');
     el.innerHTML = '';
     el.style.position = 'relative';
     el.style.overflow = 'hidden';
     el.style.margin = '0 auto';
     el.style.display = 'block';
-    if (target) {
-      el.style.width = target.w + 'px';
-      el.style.minWidth = target.w + 'px';
-      el.style.maxWidth = target.w + 'px';
-      el.style.height = target.h + 'px';
-      el.style.minHeight = target.h + 'px';
+    el.style.background = '#fff';
+    const b = box || target;
+    if (b) {
+      el.style.width = b.w + 'px';
+      el.style.minWidth = b.w + 'px';
+      el.style.maxWidth = '100%';
+      el.style.height = b.h + 'px';
+      el.style.minHeight = b.h + 'px';
     }
     const img = document.createElement('img');
     img.src = creativeUrl;
@@ -59,25 +74,40 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
       'display:block;width:100%;height:100%;object-fit:contain;background:#fff;border:0;';
     el.appendChild(img);
     const r = el.getBoundingClientRect();
-    detail.push(Math.round(r.width) + 'x' + Math.round(r.height));
+    detail.push(Math.round(r.width) + 'x' + Math.round(r.height) + (mode === 'approx' ? '~' : ''));
     return true;
   }
 
   let n = 0;
+  const slots = [];
 
   // 1. googletag
   try {
     const gt = window.googletag;
     if (gt && typeof gt.pubads === 'function') {
       for (const slot of gt.pubads().getSlots()) {
-        const el = document.getElementById(slot.getSlotElementId());
-        if (!el) continue;
-        const sizes = (slot.getSizes && slot.getSizes() || [])
-          .map((s) => (s && s.getWidth ? { w: s.getWidth(), h: s.getHeight() } : null))
-          .filter(Boolean);
-        // If the creative size is known and this slot wasn't booked for it, skip.
-        if (target && sizes.length && !sizes.some((s) => s.w === target.w && s.h === target.h)) continue;
-        if (fill(el)) { n++; source = source || 'googletag'; }
+        const id = slot.getSlotElementId && slot.getSlotElementId();
+        const el = id ? document.getElementById(id) : null;
+        const booked = usableSizes(
+          (slot.getSizes && slot.getSizes() || [])
+            .map((s) => (s && s.getWidth ? { w: s.getWidth(), h: s.getHeight() } : null))
+            .filter(Boolean)
+        );
+        const bookedStr = booked.map((s) => s.w + 'x' + s.h).join(',');
+        if (!el) { slots.push({ id, booked: bookedStr, mode: 'no-element', filled: false }); continue; }
+        let mode, box;
+        if (target && booked.some((s) => s.w === target.w && s.h === target.h)) {
+          mode = 'exact'; box = target;              // creative size is booked here
+        } else if (booked.length) {
+          mode = 'approx'; box = largestSize(booked); // reserve the slot's real size
+        } else if (target) {
+          mode = 'approx'; box = target;              // no booked info — use creative size
+        } else {
+          slots.push({ id, booked: bookedStr, mode: 'no-size', filled: false }); continue;
+        }
+        const ok = fill(el, box, mode);
+        slots.push({ id, booked: bookedStr, mode, filled: ok });
+        if (ok) { n++; source = source || 'googletag'; }
       }
     }
   } catch (e) { /* ignore */ }
@@ -91,9 +121,15 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
           const el = document.getElementById(unit.code);
           if (!el) continue;
           const sizes = (unit.mediaTypes && unit.mediaTypes.banner && unit.mediaTypes.banner.sizes) || unit.sizes || [];
-          const flat = sizes.map((s) => (Array.isArray(s) ? { w: s[0], h: s[1] } : null)).filter(Boolean);
-          if (target && flat.length && !flat.some((s) => s.w === target.w && s.h === target.h)) continue;
-          if (fill(el)) { n++; source = source || 'prebid'; }
+          const flat = usableSizes(sizes.map((s) => (Array.isArray(s) ? { w: s[0], h: s[1] } : null)).filter(Boolean));
+          let mode, box;
+          if (target && flat.some((s) => s.w === target.w && s.h === target.h)) { mode = 'exact'; box = target; }
+          else if (flat.length) { mode = 'approx'; box = largestSize(flat); }
+          else if (target) { mode = 'approx'; box = target; }
+          else continue;
+          const ok = fill(el, box, mode);
+          slots.push({ id: unit.code, booked: flat.map((s) => s.w + 'x' + s.h).join(','), mode, filled: ok });
+          if (ok) { n++; source = source || 'prebid'; }
         }
       }
     } catch (e) { /* ignore */ }
@@ -135,7 +171,9 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
     }
   }
 
-  return { filled: n, detail, source };
+  const exact = slots.filter((s) => s.mode === 'exact' && s.filled).length;
+  const approx = slots.filter((s) => s.mode === 'approx' && s.filled).length;
+  return { filled: n, detail, source, slots, exact, approx };
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,14 @@
 export function bakeCreativeInPage(
   creativeUrl: string,
   sizeStr: string
-): { filled: number; detail: string[]; source: string | null };
+): {
+  filled: number;
+  detail: string[];
+  source: string | null;
+  slots: Array<{ id: string; booked: string; mode: string; filled: boolean }>;
+  exact: number;
+  approx: number;
+};
 
 export function cleanOverlaysInPage(): number;
 export function autoScrollInPage(): Promise<void>;

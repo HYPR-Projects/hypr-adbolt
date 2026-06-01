@@ -13,6 +13,9 @@ interface SlotsMeta {
   filled: number;
   detail: string[];
   source: string | null;
+  exact?: number;
+  approx?: number;
+  slots?: Array<{ id: string; booked: string; mode: string; filled: boolean }>;
 }
 interface SnapshotResult {
   shareId: string;
@@ -374,7 +377,9 @@ export function CheckinView() {
               <div className={styles.resultBar}>
                 <span className={`${styles.badge} ${result.slots.filled > 0 ? '' : styles.badgeWarn}`}>
                   {result.slots.filled > 0
-                    ? `${result.slots.filled} slot(s) · ${result.slots.source || ''}`
+                    ? `${result.slots.filled} slot(s) · ${result.slots.source || ''}${
+                        result.slots.approx ? ` · ${result.slots.exact ?? 0} exato(s), ${result.slots.approx} aprox.` : ''
+                      }`
                     : 'nenhum slot detectado'}
                 </span>
                 <span className={styles.metaText}>{result.meta.engine || ''} · {Math.round(result.meta.durationMs / 1000)}s</span>
