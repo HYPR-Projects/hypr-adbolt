@@ -141,27 +141,67 @@ async function nodeFetchResource(url) {
   }
 }
 
+// Resolve a CM360 placement to the real creative image URL via the ad server's
+// /ddm/adi endpoint (same approach as api/ad-proxy.js) — works regardless of the
+// tag's client-side render mode and without running dcmads.js.
+async function resolveCm360Image(placement, w, h) {
+  if (!/^[A-Za-z0-9._/-]+$/.test(placement)) return null;
+  const ord = String(Math.floor(Math.random() * 1e13));
+  const adUrl = `https://ad.doubleclick.net/ddm/adi/${placement};sz=${w}x${h};ord=${ord}?`;
+  try {
+    const r = await fetch(adUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
+      redirect: 'follow',
+    });
+    if (!r.ok) return null;
+    const html = await r.text();
+    const img = html.match(/https:\/\/s0\.2mdn\.net\/simgad\/\d+/);
+    const rich = html.match(/https:\/\/s0\.2mdn\.net\/creatives\/[A-Za-z0-9_\-/]+\.(?:png|jpg|jpeg|gif|webp)/i);
+    return img ? img[0] : (rich ? rich[0] : null);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Screenshot a headless page region into a PNG data URI.
+async function shotToDataUri(page, w, h) {
+  await new Promise((r) => setTimeout(r, 2200)); // let the creative settle to a frame
+  const buf = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } });
+  return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Render a creative to a self-contained image data URI. Display creatives are
-// fetched directly; HTML5 (and later tag/video) are rendered in a headless page
+// fetched directly; HTML5, 3P tags and surveys are rendered in a headless page
 // and screenshotted, so the static snapshot can show any creative type as an
 // image baked into the slot. The bake engine stays image-only — no regression.
 async function renderCreativeToImage(browser, { kind, src, size }) {
-  if (kind !== 'html5') return creativeToDataUri(src); // display / upload
+  if (kind === 'display' || !kind) return creativeToDataUri(src);
 
   const m = /^(\d+)\s*[x×]\s*(\d+)$/.exec((size || '').trim());
-  const w = m ? +m[1] : 970;
+  const w = m ? +m[1] : 300;
   const h = m ? +m[2] : 250;
+
+  // CM360 tag → resolve the real creative image (no headless render needed).
+  if (kind === 'tag' || kind === 'survey') {
+    const pm = /data-dcm-placement=['"]([^'"]+)['"]/.exec(src || '');
+    if (pm) {
+      const img = await resolveCm360Image(pm[1], w, h);
+      if (img) return creativeToDataUri(img);
+    }
+  }
+
   const p = await browser.newPage();
   try {
     await p.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
-    try {
-      await p.goto(src, { waitUntil: 'networkidle2', timeout: 30_000 });
-    } catch (e) { /* render whatever loaded */ }
-    // Let an animated HTML5 settle into a representative frame.
-    await new Promise((r) => setTimeout(r, 1800));
-    const buf = await p.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } });
-    return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
+    if (kind === 'html5') {
+      try { await p.goto(src, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
+      return await shotToDataUri(p, w, h);
+    }
+    // tag / survey: inject the tag content and let it render
+    const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${w}px;height:${h}px;overflow:hidden;background:#fff}</style></head><body>${src || ''}</body></html>`;
+    try { await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
+    return await shotToDataUri(p, w, h);
   } finally {
     await p.close().catch(() => {});
   }

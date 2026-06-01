@@ -58,7 +58,7 @@ function classifyCreative(c: Creative): CreativeKind {
 // Phase status: which kinds the snapshot can bake today.
 // display + html5 are live; tag/video/survey land in later phases.
 const BAKEABLE_KINDS: Record<CreativeKind, boolean> = {
-  display: true, html5: true, video: false, tag: false, survey: false,
+  display: true, html5: true, tag: true, survey: true, video: false,
 };
 const KIND_LABEL: Record<CreativeKind, string> = {
   display: 'DISPLAY', html5: 'HTML5', video: 'VÍDEO', tag: 'TAG', survey: 'SURVEY',
@@ -195,6 +195,14 @@ export function CheckinView() {
       setCreativeBakeSrc(url);
       setLibraryStoragePath(null);
       if (!url) toast('HTML5 sem URL de preview hospedada — não dá pra renderizar.', 'error');
+    } else if (kind === 'tag' || kind === 'survey') {
+      // The bake source is the tag content itself (js_tag, non-http). The
+      // snapshot resolves CM360 placements via ad-proxy or renders the tag
+      // headless and screenshots a frame.
+      const content = (c.js_tag && !c.js_tag.startsWith('http')) ? c.js_tag : null;
+      setCreativeBakeSrc(content);
+      setLibraryStoragePath(null);
+      if (!content) toast(`${KIND_LABEL[kind]} sem conteúdo de tag — não dá pra renderizar.`, 'error');
     } else {
       // display: full-res asset (signed URL) resolved at generate time.
       setCreativeBakeSrc(null);
@@ -206,9 +214,10 @@ export function CheckinView() {
 
   const resolveCreativeUrl = useCallback(async (): Promise<string> => {
     if (!creativeSrc && !creativeBakeSrc) throw new Error('selecione um criativo');
-    // HTML5: the snapshot renders the hosted creative headless — pass its URL.
-    if (creativeKind === 'html5') {
-      if (!creativeBakeSrc) throw new Error('HTML5 sem URL de preview');
+    // Non-display (html5 / tag / survey): the snapshot renders the creative
+    // headless. Pass its source (hosted URL or tag content).
+    if (creativeKind !== 'display') {
+      if (!creativeBakeSrc) throw new Error('criativo sem fonte para preview');
       return creativeBakeSrc;
     }
     if (creativeIsBlob) {
