@@ -299,3 +299,29 @@
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+.shareRow {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  align-items: center;
+}
+.shareInput {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+}
+.shareOpen {
+  font-size: var(--fs-sm);
+  color: var(--brand);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+}

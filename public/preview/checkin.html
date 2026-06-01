@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AdBolt — Preview do anúncio</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #f4f4f5; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #222; }
+    body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+    header {
+      width: 100%; background: #fff; border-bottom: 1px solid #e4e4e7;
+      padding: 14px 20px; display: flex; align-items: center; gap: 12px;
+      position: sticky; top: 0; z-index: 5;
+    }
+    .logo { display: flex; align-items: center; gap: 7px; font-weight: 650; color: #18181b; font-size: 15px; }
+    .logo svg { color: #3397B9; }
+    .meta { font-size: 12px; color: #71717a; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .meta .dims { font-family: ui-monospace, Menlo, monospace; background: #e9eef1; color: #3397B9; padding: 2px 8px; border-radius: 4px; }
+    .meta a { color: #71717a; }
+    .stage-wrap { width: 100%; max-width: 1200px; padding: 20px; }
+    .stage { position: relative; background: #fff; border: 1px solid #e4e4e7; border-radius: 6px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06); line-height: 0; }
+    .stage img.bg { width: 100%; height: auto; display: block; }
+    .creative { position: absolute; box-shadow: 0 0 0 1px rgba(0,0,0,0.12); }
+    .creative img { width: 100%; height: 100%; display: block; }
+    #error { max-width: 420px; margin: 60px auto; padding: 16px; background: #fff0f0; border: 1px solid #ffd0d0; border-radius: 6px; color: #a01010; font-size: 13px; display: none; }
+    #error.on { display: block; }
+    .loading { margin: 60px auto; color: #71717a; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      HYPR AdBolt
+    </span>
+    <span class="meta" id="meta"></span>
+  </header>
+
+  <div class="loading" id="loading">Carregando preview…</div>
+  <div id="error">Preview não encontrado ou expirado.</div>
+
+  <div class="stage-wrap" id="stageWrap" style="display:none">
+    <div class="stage" id="stage">
+      <img class="bg" id="bg" alt="página" />
+      <div class="creative" id="creative"><img id="creativeImg" alt="anúncio" /></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://adfnabuwzmojxbhcpdpe.supabase.co';
+    const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZm5hYnV3em1vanhiaGNwZHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MTcxODcsImV4cCI6MjA5MTA5MzE4N30.sU9EZAnQ2mClIsMwfccR5__nbTYnfzkt3IvP-llxpno';
+
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    const $ = (s) => document.getElementById(s);
+    function fail(msg) {
+      $('loading').style.display = 'none';
+      const e = $('error'); e.textContent = msg || 'Preview não encontrado ou expirado.'; e.classList.add('on');
+    }
+
+    function layout(c) {
+      const pageW = c.page_width;
+      const bg = $('bg');
+      const place = () => {
+        const scale = bg.clientWidth / pageW;
+        const box = typeof c.box === 'string' ? JSON.parse(c.box) : c.box;
+        const cr = $('creative');
+        cr.style.left = (box.x * scale) + 'px';
+        cr.style.top = (box.y * scale) + 'px';
+        cr.style.width = (box.w * scale) + 'px';
+        cr.style.height = (box.h * scale) + 'px';
+      };
+      bg.onload = place;
+      window.addEventListener('resize', place);
+      bg.src = c.screenshot_url;
+      $('creativeImg').src = c.creative_url;
+      if (bg.complete) place();
+    }
+
+    async function load() {
+      if (!id) return fail('Link inválido.');
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/checkins?id=eq.${encodeURIComponent(id)}&select=*`, {
+          headers: { apikey: ANON, Authorization: 'Bearer ' + ANON },
+        });
+        const rows = await res.json();
+        if (!Array.isArray(rows) || rows.length === 0) return fail();
+        const c = rows[0];
+
+        let host = c.page_url;
+        try { host = new URL(c.page_url).hostname.replace(/^www\./, ''); } catch (e) {}
+        $('meta').innerHTML =
+          `<a href="${c.page_url}" target="_blank" rel="noopener">${host}</a>` +
+          `<span>·</span><span class="dims">${c.creative_size || ''}</span>`;
+        document.title = `Preview — ${host}`;
+
+        $('loading').style.display = 'none';
+        $('stageWrap').style.display = 'block';
+        layout(c);
+      } catch (err) {
+        fail('Erro ao carregar: ' + (err && err.message || err));
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

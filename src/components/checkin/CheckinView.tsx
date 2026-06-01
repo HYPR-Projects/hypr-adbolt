@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFreshToken } from '@/lib/auth-token';
 import { useUIStore } from '@/stores/ui';
 import { useDashboardStore } from '@/stores/dashboard';
+import { supabase } from '@/services/supabase';
 import type { Creative } from '@/types';
 import styles from './CheckinView.module.css';
 
@@ -64,6 +65,7 @@ export function CheckinView() {
 
   const [creativeSrc, setCreativeSrc] = useState<string | null>(null);
   const [creativeIsBlob, setCreativeIsBlob] = useState(false);
+  const [creativeFile, setCreativeFile] = useState<File | null>(null);
   const [creativeNatural, setCreativeNatural] = useState<{ w: number; h: number } | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
@@ -139,6 +141,7 @@ export function CheckinView() {
       };
       img.src = url;
       setCreative(url, true, null, '');
+      setCreativeFile(file);
     },
     [setCreative],
   );
@@ -147,6 +150,7 @@ export function CheckinView() {
     (c: Creative) => {
       const natural = parseDimensions(c.dimensions);
       setCreative(c.thumbnail_url as string, false, natural, c.dimensions || '');
+      setCreativeFile(null);
       if (!natural) {
         // Fall back to the image's intrinsic size if dimensions are missing.
         const img = new Image();
@@ -264,6 +268,8 @@ export function CheckinView() {
 
   // --- Export PNG ------------------------------------------------------------
   const [exporting, setExporting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
   const onExport = useCallback(async () => {
     if (!result || !box || !creativeSrc) {
       toast('Selecione um criativo e posicione a peça antes de exportar.', 'error');
@@ -307,11 +313,67 @@ export function CheckinView() {
     }
   }, [result, box, creativeSrc, creativeSize, toast]);
 
+  // --- Share (hosted public link) -------------------------------------------
+  const onShare = useCallback(async () => {
+    if (!result || !box || !creativeSrc) {
+      toast('Selecione um criativo e posicione a peça antes de compartilhar.', 'error');
+      return;
+    }
+    setSharing(true);
+    try {
+      // The hosted preview needs a public creative URL. Library creatives are
+      // already public; uploaded files must be pushed to storage first.
+      let creativeUrl = creativeSrc;
+      if (creativeIsBlob) {
+        if (!creativeFile) throw new Error('arquivo do criativo indisponível');
+        const ext = (creativeFile.name.split('.').pop() || 'png').toLowerCase();
+        const path = `creatives/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('checkins')
+          .upload(path, creativeFile, { contentType: creativeFile.type || 'image/png', upsert: false });
+        if (upErr) throw new Error(upErr.message);
+        creativeUrl = supabase.storage.from('checkins').getPublicUrl(path).data.publicUrl;
+      }
+
+      const { data, error } = await supabase
+        .from('checkins')
+        .insert({
+          page_url: result.url,
+          page_title: result.meta.title,
+          screenshot_url: result.screenshotUrl,
+          page_width: result.pageWidth,
+          page_height: result.pageHeight,
+          device_scale_factor: result.deviceScaleFactor,
+          creative_url: creativeUrl,
+          creative_size: creativeSize || null,
+          box,
+        })
+        .select('id')
+        .single();
+      if (error) throw new Error(error.message);
+
+      const link = `${window.location.origin}/preview/checkin.html?id=${data.id}`;
+      setShareUrl(link);
+      try {
+        await navigator.clipboard.writeText(link);
+        toast('Link copiado para a área de transferência.', 'success');
+      } catch {
+        toast('Link gerado.', 'success');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast(`Não foi possível gerar o link (${msg}).`, 'error');
+    } finally {
+      setSharing(false);
+    }
+  }, [result, box, creativeSrc, creativeIsBlob, creativeFile, creativeSize, toast]);
+
   const reset = () => {
     setResult(null);
     setBox(null);
     setStatus('idle');
     setErrorMsg('');
+    setShareUrl('');
   };
 
   const sc = (v: number) => v * displayScale;
@@ -427,10 +489,20 @@ export function CheckinView() {
             </label>
             <div className={styles.spacer} />
             <button className={styles.ghost} onClick={reset}>Novo checkin</button>
+            <button className={styles.ghost} onClick={onShare} disabled={sharing || !box || !creativeSrc}>
+              {sharing ? 'Gerando…' : 'Compartilhar link'}
+            </button>
             <button className={styles.primarySm} onClick={onExport} disabled={exporting || !box || !creativeSrc}>
               {exporting ? 'Exportando…' : 'Exportar PNG'}
             </button>
           </div>
+
+          {shareUrl && (
+            <div className={styles.shareRow}>
+              <input className={styles.shareInput} readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
+              <a className={styles.shareOpen} href={shareUrl} target="_blank" rel="noopener noreferrer">Abrir</a>
+            </div>
+          )}
 
           <div
             className={styles.stage}
