@@ -120,6 +120,27 @@ async function creativeToDataUri(url) {
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
+// Fetch a page resource (image/css/font) in Node — no CORS, not subject to the
+// publisher's CSP. SingleFile runs inside the page and its in-page fetch of
+// cross-origin assets (publisher CDN images, fonts) is blocked, leaving the
+// page's own images blank. Exposed to the page as window.__adboltFetch so
+// SingleFile can inline everything through Node instead.
+async function nodeFetchResource(url) {
+  try {
+    if (!/^https?:/i.test(url)) return { status: 0, base64: '', headers: {} };
+    const r = await fetch(url, { redirect: 'follow' });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 8 * 1024 * 1024) return { status: 0, base64: '', headers: {} }; // skip huge assets
+    return {
+      status: r.status,
+      base64: buf.toString('base64'),
+      headers: { 'content-type': r.headers.get('content-type') || '' },
+    };
+  } catch (e) {
+    return { status: 0, base64: '', headers: {} };
+  }
+}
+
 // ---------------------------------------------------------------------------
 async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
   const started = Date.now();
@@ -132,6 +153,9 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
     );
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' });
     try { await page.emulateTimezone('America/Sao_Paulo'); } catch (e) { /* ignore */ }
+
+    // Bridge SingleFile's asset fetching through Node (bypasses publisher CSP/CORS).
+    try { await page.exposeFunction('__adboltFetch', nodeFetchResource); } catch (e) { /* already bound / unsupported */ }
 
     // Block login/consent SDKs at the network layer (cleaner than removing later).
     try {
@@ -188,7 +212,25 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
     step = 'serialize';
     await page.evaluate(SINGLEFILE_BUNDLE);
     const html = await page.evaluate(async () => {
-      window.singlefile.init({ fetch: (u, o) => fetch(u, o) });
+      // Fetch every resource through Node (window.__adboltFetch) so cross-origin
+      // publisher assets aren't blocked by CORS / the page CSP. Falls back to the
+      // page's own fetch if the bridge is unavailable.
+      const bridged = async (url) => {
+        try {
+          if (typeof window.__adboltFetch === 'function') {
+            const r = await window.__adboltFetch(typeof url === 'string' ? url : String(url));
+            if (r && r.base64) {
+              const bin = atob(r.base64);
+              const arr = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+              return new Response(arr, { status: r.status || 200, headers: r.headers || {} });
+            }
+            if (r && r.status && !r.base64) return new Response('', { status: r.status });
+          }
+        } catch (e) { /* fall through */ }
+        return fetch(url);
+      };
+      window.singlefile.init({ fetch: bridged });
       const data = await window.singlefile.getPageData({
         removeUnusedStyles: true,
         removeUnusedFonts: true,
@@ -203,8 +245,6 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
         removeAlternativeImages: true,
         saveOriginalURLs: false,
         insertMetaCSP: true,
-        // SingleFile bridges cross-origin asset fetches through the host page's
-        // fetch (no node fetch bridge here); same-origin CDN assets inline fine.
       });
       return data.content;
     });

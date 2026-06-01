@@ -42,7 +42,7 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
     expect(slot.querySelector('img[data-adbolt-creative]')).toBeTruthy();
   });
 
-  it('approximates an unmatched slot at its own booked size (no longer skipped)', () => {
+  it('skips a slot not booked for the creative size (incompatible)', () => {
     makeSlot('leader_1', 728, 90);
     // @ts-expect-error test stub
     window.googletag = {
@@ -54,18 +54,27 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
       }),
     };
     const r = bakeCreativeInPage(CREATIVE, '300x250');
-    expect(r.filled).toBe(1);
-    expect(r.approx).toBe(1);
-    expect(r.exact).toBe(0);
-    const slot = document.getElementById('leader_1')!;
-    expect(slot.getAttribute('data-adbolt-mode')).toBe('approx');
-    // Reserved at the slot's own booked size, not the creative size.
-    expect(slot.style.width).toBe('728px');
-    expect(slot.style.height).toBe('90px');
-    expect(slot.querySelector('img[data-adbolt-creative]')).toBeTruthy();
+    expect(r.filled).toBe(0);
+    expect(document.getElementById('leader_1')!.getAttribute('data-adbolt')).toBeNull();
   });
 
-  it('prefers exact match when a slot is booked for multiple sizes incl. the creative', () => {
+  it('skips out-of-page / interstitial slots that have no booked sizes', () => {
+    makeSlot('dfp-interstitial', 0, 0);
+    // @ts-expect-error test stub
+    window.googletag = {
+      pubads: () => ({
+        getSlots: () => [{
+          getSlotElementId: () => 'dfp-interstitial',
+          getSizes: () => [],
+        }],
+      }),
+    };
+    const r = bakeCreativeInPage(CREATIVE, '970x250');
+    expect(r.filled).toBe(0);
+    expect(document.getElementById('dfp-interstitial')!.getAttribute('data-adbolt')).toBeNull();
+  });
+
+  it('fills a multi-size slot when its booked sizes include the creative', () => {
     makeSlot('billboard_1', 0, 0);
     // @ts-expect-error test stub
     window.googletag = {
@@ -87,7 +96,7 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
     expect(slot.style.height).toBe('250px');
   });
 
-  it('skips micro insert slots (booked too small for a display ad)', () => {
+  it('fills only the compatible billboard, skipping incompatible inserts', () => {
     makeSlot('banner_insert__001', 90, 32);
     makeSlot('banner_home1', 0, 0);
     // @ts-expect-error test stub
@@ -99,8 +108,7 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
         ],
       }),
     };
-    const r = bakeCreativeInPage(CREATIVE, '300x250');
-    // Only the billboard slot is filled (approx); the 90x32 insert is dropped.
+    const r = bakeCreativeInPage(CREATIVE, '970x250');
     expect(r.filled).toBe(1);
     expect(document.getElementById('banner_home1')!.getAttribute('data-adbolt')).toBe('1');
     expect(document.getElementById('banner_insert__001')!.getAttribute('data-adbolt')).toBeNull();

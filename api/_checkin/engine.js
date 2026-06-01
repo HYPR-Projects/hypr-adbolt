@@ -42,24 +42,24 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
   function usableSizes(arr) {
     return (arr || []).filter((s) => s && s.w >= 50 && s.w <= 1800 && s.h >= 20 && s.h <= 1200);
   }
-  function largestSize(arr) {
-    return arr.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
-  }
-  // A real display placement, not a micro text/native marker (globo's
-  // banner_insert__* are 90x32, banner_extra_fluid 80x35 — never a billboard).
-  function isDisplaySize(s) {
-    return s && s.w >= 120 && s.h >= 50;
-  }
 
   // Publishers collapse empty ad wrappers (display:none / height:0 / hidden)
   // until their ad script fills them — which we block. A slot can match and be
-  // filled yet render 0x0 because an ancestor is hidden. Walk up and clear the
-  // hiding styles so the baked creative actually shows (the globo header
-  // billboard, banner_home1, was exactly this case).
+  // filled yet render 0x0 because an ancestor is hidden (globo's header
+  // billboard banner_home1 was exactly this). Walk up and clear the hiding
+  // styles — but ONLY on tight ad wrappers, so we never force-reveal an entire
+  // hidden page section (e.g. a mobile-only nav) that happens to contain a slot.
+  function isAdWrapper(node) {
+    if (node.childElementCount <= 3) return true; // tight container around the slot
+    const idc = ((node.id || '') + ' ' + (node.className || '')).toLowerCase();
+    return /\b(ad|ads|adv|dfp|gpt|banner|slot|publicidade|anuncio|advert|google)\b/.test(idc) ||
+      /(ad|dfp|gpt|banner|slot|publicidade|anuncio)/.test(idc);
+  }
   function reveal(el) {
     let node = el;
     let hops = 0;
     while (node && node !== document.body && node !== document.documentElement && hops < 10) {
+      if (node !== el && !isAdWrapper(node)) break; // stop at the first real layout section
       let cs;
       try { cs = getComputedStyle(node); } catch (e) { break; }
       if (cs.display === 'none') node.style.setProperty('display', 'block', 'important');
@@ -111,11 +111,17 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
 
   let n = 0;
   const slots = [];
+  let hadRegistry = false;
 
-  // 1. googletag
+  // 1. googletag — fill only slots whose booked sizes INCLUDE the creative size
+  // (i.e. this creative would actually serve there). Slots with no booked sizes
+  // are out-of-page / interstitial / anchor formats (dfp-interstitial,
+  // dfp-pulse) — never in-flow placements, so we skip them rather than inject a
+  // phantom banner.
   try {
     const gt = window.googletag;
     if (gt && typeof gt.pubads === 'function') {
+      hadRegistry = true;
       for (const slot of gt.pubads().getSlots()) {
         const id = slot.getSlotElementId && slot.getSlotElementId();
         const el = id ? document.getElementById(id) : null;
@@ -126,54 +132,44 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
         );
         const bookedStr = booked.map((s) => s.w + 'x' + s.h).join(',');
         if (!el) { slots.push({ id, booked: bookedStr, mode: 'no-element', filled: false }); continue; }
-        let mode, box;
-        if (target && booked.some((s) => s.w === target.w && s.h === target.h)) {
-          mode = 'exact'; box = target;              // creative size is booked here
-        } else if (booked.length) {
-          const big = largestSize(booked);
-          if (!isDisplaySize(big)) { slots.push({ id, booked: bookedStr, mode: 'too-small', filled: false }); continue; }
-          mode = 'approx'; box = big;                 // reserve the slot's real size
-        } else if (target) {
-          mode = 'approx'; box = target;              // no booked info — use creative size
-        } else {
-          slots.push({ id, booked: bookedStr, mode: 'no-size', filled: false }); continue;
+        if (!booked.length) { slots.push({ id, booked: '', mode: 'out-of-page', filled: false }); continue; }
+        if (!target || !booked.some((s) => s.w === target.w && s.h === target.h)) {
+          slots.push({ id, booked: bookedStr, mode: 'incompatible', filled: false }); continue;
         }
-        const ok = fill(el, box, mode);
-        slots.push({ id, booked: bookedStr, mode, filled: ok });
+        const ok = fill(el, target, 'exact');
+        slots.push({ id, booked: bookedStr, mode: 'exact', filled: ok });
         if (ok) { n++; source = source || 'googletag'; }
       }
     }
   } catch (e) { /* ignore */ }
 
-  // 2. Prebid ad units (resolve their div by adUnitCode → element id)
+  // 2. Prebid ad units — same compatible-only rule
   if (!n) {
     try {
       const pb = window.pbjs;
       if (pb && typeof pb.getAdUnits === 'function') {
+        hadRegistry = true;
         for (const unit of pb.getAdUnits()) {
           const el = document.getElementById(unit.code);
           if (!el) continue;
           const sizes = (unit.mediaTypes && unit.mediaTypes.banner && unit.mediaTypes.banner.sizes) || unit.sizes || [];
           const flat = usableSizes(sizes.map((s) => (Array.isArray(s) ? { w: s[0], h: s[1] } : null)).filter(Boolean));
-          let mode, box;
-          if (target && flat.some((s) => s.w === target.w && s.h === target.h)) { mode = 'exact'; box = target; }
-          else if (flat.length) {
-            const big = largestSize(flat);
-            if (!isDisplaySize(big)) continue;
-            mode = 'approx'; box = big;
+          if (!flat.length || !target || !flat.some((s) => s.w === target.w && s.h === target.h)) {
+            slots.push({ id: unit.code, booked: flat.map((s) => s.w + 'x' + s.h).join(','), mode: 'incompatible', filled: false });
+            continue;
           }
-          else if (target) { mode = 'approx'; box = target; }
-          else continue;
-          const ok = fill(el, box, mode);
-          slots.push({ id: unit.code, booked: flat.map((s) => s.w + 'x' + s.h).join(','), mode, filled: ok });
+          const ok = fill(el, target, 'exact');
+          slots.push({ id: unit.code, booked: flat.map((s) => s.w + 'x' + s.h).join(','), mode: 'exact', filled: ok });
           if (ok) { n++; source = source || 'prebid'; }
         }
       }
     } catch (e) { /* ignore */ }
   }
 
-  // 3. DOM id/class patterns
-  if (!n) {
+  // 3. DOM id/class patterns — ONLY when no ad registry exists (no GAM/Prebid).
+  // On a GAM page that simply has no slot for this size, falling through here
+  // would blindly fill div-gpt-ad containers and recreate phantom ads.
+  if (!n && !hadRegistry) {
     const sel = [
       'div[id^="div-gpt-ad"]', 'div[id*="div-gpt-ad"]', 'div[id*="google_ads_div"]',
       '[class*="ad-slot"]', '[class*="ad_slot"]', '[class*="adslot"]', '[class*="ad-unit"]',
@@ -187,8 +183,8 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
     });
   }
 
-  // 4. Size heuristic — innermost matching box
-  if (!n && target) {
+  // 4. Size heuristic — innermost matching box (only when no ad registry)
+  if (!n && !hadRegistry && target) {
     const matches = [];
     const all = document.querySelectorAll('div, ins, aside, section, a, span');
     for (let i = 0; i < all.length && i < 6000; i++) {
