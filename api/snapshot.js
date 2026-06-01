@@ -210,24 +210,30 @@ function buildHydratorScript(origin) {
     var kind=slot.getAttribute('data-adbolt-live-kind');
     var b64=slot.getAttribute('data-adbolt-live-src');
     if(!kind||!b64)return;
+    var raw=dec(b64);if(!raw)return;
     var r=slot.getBoundingClientRect();
     var w=Math.round(r.width)||300,h=Math.round(r.height)||250;
-    var url;
-    if(kind==='html5'){var u=dec(b64);if(!u||!/^https?:/i.test(u))return;url=u;}
-    else{var id='al'+i;url=ORIGIN+'/preview/render-tag.html#tag='+encodeURIComponent(b64)+'&w='+w+'&h='+h+'&id='+id;}
+    // If the creative is already a direct iframe embed (Typeform and most modern
+    // surveys/3P), or an html5 hosted URL, frame that URL straight — no
+    // render-tag wrapper, no document.write nesting. The extra layers were what
+    // left the live frame blank-but-click-eating over the frozen image. Only
+    // real script-loader tags (dcmads, etc.) still go through render-tag.html.
+    var direct=null;
+    if(kind==='html5'){var u=raw.trim();if(/^https?:/i.test(u))direct=u;}
+    else{var im=raw.match(/<iframe[^>]*\\ssrc=["']([^"']+)["']/i);if(im&&/^https?:\\/\\//i.test(im[1]))direct=im[1];}
+    var url,watch=false;
+    if(direct){url=direct;}
+    else{url=ORIGIN+'/preview/render-tag.html#tag='+encodeURIComponent(b64)+'&w='+w+'&h='+h+'&id=al'+i;watch=true;}
     var f=document.createElement('iframe');
     f.setAttribute('data-adbolt-live','1');
     f.setAttribute('scrolling','no');
+    f.setAttribute('allow','fullscreen');
     f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms');
     f.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent;z-index:2';
     f.src=url;
     if(getComputedStyle(slot).position==='static')slot.style.position='relative';
     slot.appendChild(f);
-    if(kind!=='html5'){
-      var id2='al'+i;
-      reg[id2]={frame:f,settled:false};
-      reg[id2].to=setTimeout(function(){var e=reg[id2];if(e&&!e.settled){e.settled=true;try{e.frame.remove();}catch(x){}}},5000);
-    }
+    if(watch){var id2='al'+i;reg[id2]={frame:f,settled:false};reg[id2].to=setTimeout(function(){var e=reg[id2];if(e&&!e.settled){e.settled=true;try{e.frame.remove();}catch(x){}}},5000);}
   });
   window.addEventListener('message',function(ev){
     var d=ev&&ev.data;if(!d||d.source!=='adbolt-render-tag')return;
