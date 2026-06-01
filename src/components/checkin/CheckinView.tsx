@@ -92,6 +92,10 @@ export function CheckinView() {
   // exists, so the share preview can mount a live <video controls> on top of
   // the frozen poster. Null for VAST-only / non-asset video → stays frozen.
   const [videoLivePath, setVideoLivePath] = useState<string | null>(null);
+  // video: the VAST tag (when the creative is VAST, not an mp4 asset). The
+  // snapshot resolves its MP4 MediaFile server-side so the share preview can
+  // play it in a plain <video> without firing the VAST's tracking beacons.
+  const [videoVastTag, setVideoVastTag] = useState<string | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -179,6 +183,7 @@ export function CheckinView() {
     setCreativeBakeSrc(null);
     setLibraryStoragePath(null);
     setVideoLivePath(null);
+    setVideoVastTag(null);
   }, [creativeSrc, creativeIsBlob]);
 
   const onPickLibrary = useCallback((c: Creative) => {
@@ -196,6 +201,7 @@ export function CheckinView() {
     const cfg = typeof c.dsp_config === 'string' ? safeJson(c.dsp_config) : (c.dsp_config || {});
     const storagePath = (cfg && (cfg as Record<string, unknown>).storage_path as string) || null;
     setVideoLivePath(null);
+    setVideoVastTag(null);
 
     if (kind === 'html5') {
       // Hosted preview URL lives in js_tag (http). The snapshot renders it
@@ -229,6 +235,7 @@ export function CheckinView() {
         setLibraryStoragePath(storagePath);
       }
       setVideoLivePath(storagePath);
+      setVideoVastTag(c.vast_tag || null);
     } else {
       // display: full-res asset (signed URL) resolved at generate time.
       setCreativeBakeSrc(null);
@@ -310,7 +317,12 @@ export function CheckinView() {
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, liveUrl, freeze, proxies: useProxy }),
+        body: JSON.stringify({
+          url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind,
+          liveUrl,
+          vastTag: (!freeze && creativeKind === 'video' && !liveUrl && videoVastTag) ? videoVastTag : undefined,
+          freeze, proxies: useProxy,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -327,7 +339,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, videoLivePath, creativeKind, creativeSize, useProxy, freeze, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, videoLivePath, videoVastTag, creativeKind, creativeSize, useProxy, freeze, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;
