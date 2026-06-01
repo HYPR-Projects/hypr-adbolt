@@ -259,13 +259,14 @@ export function CheckinView() {
   }, [creativeSrc, creativeIsBlob, creativeFile, libraryStoragePath, creativeKind, creativeBakeSrc]);
 
   // --- Generate --------------------------------------------------------------
-  const canGenerate = !!pageUrl.trim() && (!!creativeSrc || !!creativeBakeSrc) && status !== 'running';
+  const hasCreative = !!creativeSrc || !!creativeBakeSrc || !!libraryStoragePath;
+  const canGenerate = !!pageUrl.trim() && hasCreative && status !== 'running';
 
   const generate = useCallback(async () => {
     let normalized = pageUrl.trim();
     if (!normalized) { toast('Informe a URL da página.', 'error'); return; }
     if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
-    if (!creativeSrc && !creativeBakeSrc) { toast('Selecione um criativo.', 'error'); return; }
+    if (!creativeSrc && !creativeBakeSrc && !libraryStoragePath) { toast('Selecione um criativo.', 'error'); return; }
 
     setStatus('running');
     setErrorMsg('');
@@ -294,7 +295,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeBakeSrc, creativeKind, creativeSize, useProxy, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -397,7 +398,7 @@ export function CheckinView() {
               </>
             )}
 
-            {(creativeSrc || creativeBakeSrc) && (
+            {(creativeSrc || creativeBakeSrc || libraryStoragePath) && (
               <div className={styles.selected}>
                 {creativeSrc
                   ? <img src={creativeSrc} alt="criativo selecionado" />
