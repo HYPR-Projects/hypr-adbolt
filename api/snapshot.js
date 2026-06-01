@@ -1,0 +1,259 @@
+// AdBolt check-in snapshot: load a publisher page, bake the creative into real
+// ad slots, then serialize the whole page into ONE self-contained HTML file
+// (every asset inlined) via SingleFile. The result is a permanent, scrollable,
+// layout-accurate preview with the ad in context — served read-only at
+// /preview/snapshot.html?id=<id> and shareable with clients.
+//
+// Replaces the old live-stream + draggable-overlay flow as the visualization.
+//
+// Runtime: Node (Chromium can't run on edge). Auth: Supabase user JWT (Bearer).
+
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
+import { createClient } from '@supabase/supabase-js';
+import { script as SINGLEFILE_BUNDLE } from 'single-file-cli/lib/single-file-bundle.js';
+import {
+  bakeCreativeInPage,
+  cleanOverlaysInPage,
+  autoScrollInPage,
+  dismissConsentInPage,
+} from './_checkin/engine.js';
+
+export const config = { maxDuration: 180 };
+
+const SUPABASE_URL =
+  process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://adfnabuwzmojxbhcpdpe.supabase.co';
+const SUPABASE_ANON_KEY =
+  process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZm5hYnV3em1vanhiaGNwZHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MTcxODcsImV4cCI6MjA5MTA5MzE4N30.sU9EZAnQ2mClIsMwfccR5__nbTYnfzkt3IvP-llxpno';
+
+const NAV_TIMEOUT = 45_000;
+const BROWSERBASE_API_KEY = process.env.BROWSERBASE_API_KEY || '';
+const BROWSERBASE_PROJECT_ID =
+  process.env.BROWSERBASE_PROJECT_ID || '3798efe6-2de2-4c29-81cc-4bb9d4af54bc';
+
+// Hosts that inject login/consent overlays we never want in a deliverable.
+const BLOCK_URL_RX = /accounts\.google\.com\/gsi|gsi\/client|onetag\.|cmp\.|cookielaw\.org\/consent|onetrust\.com\/.*banner/i;
+
+// ---------------------------------------------------------------------------
+function isBlockedHost(hostname) {
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '0.0.0.0' || h === '::1' || h === '[::1]') return true;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+  return false;
+}
+
+async function launchEmbedded() {
+  chromium.setGraphicsMode = false;
+  return puppeteer.launch({
+    args: [...chromium.args, '--disable-blink-features=AutomationControlled'],
+    executablePath: await chromium.executablePath(),
+    headless: true,
+    defaultViewport: { width: 1440, height: 900, deviceScaleFactor: 1 },
+  });
+}
+
+async function createBrowserbaseSession(proxies) {
+  const res = await fetch('https://api.browserbase.com/v1/sessions', {
+    method: 'POST',
+    headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId: BROWSERBASE_PROJECT_ID,
+      proxies: !!proxies,
+      browserSettings: { viewport: { width: 1440, height: 900 } },
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`browserbase session ${res.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+async function acquireBrowser({ proxies }) {
+  if (BROWSERBASE_API_KEY) {
+    const session = await createBrowserbaseSession(proxies);
+    const browser = await puppeteer.connect({ browserWSEndpoint: session.connectUrl, defaultViewport: null });
+    const page = (await browser.pages())[0] || (await browser.newPage());
+    return { browser, page, engine: 'browserbase', cleanup: () => browser.close().catch(() => {}) };
+  }
+  const browser = await launchEmbedded();
+  const page = await browser.newPage();
+  return { browser, page, engine: 'embedded', cleanup: () => browser.close().catch(() => {}) };
+}
+
+// ---------------------------------------------------------------------------
+async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
+  const started = Date.now();
+  const { page, engine, cleanup } = await acquireBrowser({ proxies });
+  let step = 'setup';
+  let consentHandled = false;
+  try {
+    await page.setUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' });
+    try { await page.emulateTimezone('America/Sao_Paulo'); } catch (e) { /* ignore */ }
+
+    // Block login/consent SDKs at the network layer (cleaner than removing later).
+    try {
+      await page.setRequestInterception(true);
+      page.on('request', (r) => {
+        try { if (BLOCK_URL_RX.test(r.url())) return r.abort(); return r.continue(); }
+        catch (e) { try { r.continue(); } catch (_) { /* ignore */ } }
+      });
+    } catch (e) { /* interception unsupported on some remote endpoints — non-fatal */ }
+
+    step = 'goto';
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 60_000 : NAV_TIMEOUT });
+    } catch (e) { /* capture whatever rendered */ }
+    await page.waitForNetworkIdle({ idleTime: 600, timeout: 6_000 }).catch(() => {});
+
+    step = 'consent';
+    for (let i = 0; i < 3; i++) {
+      let clicked = false;
+      try { clicked = await page.evaluate(dismissConsentInPage); } catch { clicked = false; }
+      if (clicked) { consentHandled = true; break; }
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    step = 'scroll';
+    await page.evaluate(autoScrollInPage).catch(() => {});
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 3_000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 2500));
+
+    step = 'clean';
+    await page.evaluate(cleanOverlaysInPage).catch(() => {});
+
+    step = 'bake';
+    const bake = await page.evaluate(bakeCreativeInPage, creativeUrl, creativeSize || '');
+
+    step = 'serialize';
+    await page.evaluate(SINGLEFILE_BUNDLE);
+    const html = await page.evaluate(async () => {
+      window.singlefile.init({ fetch: (u, o) => fetch(u, o) });
+      const data = await window.singlefile.getPageData({
+        removeUnusedStyles: true,
+        removeUnusedFonts: true,
+        removeHiddenElements: false,
+        removeScripts: true,
+        blockScripts: true,
+        blockVideos: true,
+        blockAudios: true,
+        compressHTML: true,
+        removeAlternativeFonts: true,
+        removeAlternativeMedias: true,
+        removeAlternativeImages: true,
+        saveOriginalURLs: false,
+        insertMetaCSP: true,
+        // SingleFile bridges cross-origin asset fetches through the host page's
+        // fetch (no node fetch bridge here); same-origin CDN assets inline fine.
+      });
+      return data.content;
+    });
+
+    const title = await page.title().catch(() => '');
+    return {
+      html,
+      slots: bake,
+      meta: { engine, consentHandled, durationMs: Date.now() - started, title },
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`[${engine}:${step} @${Date.now() - started}ms] ${msg}`);
+  } finally {
+    await cleanup();
+  }
+}
+
+// ---------------------------------------------------------------------------
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ error: 'method_not_allowed' });
+  }
+
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) return res.status(401).json({ error: 'unauthorized' });
+
+  const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { data: userData, error: userErr } = await anon.auth.getUser(token);
+  if (userErr || !userData?.user) return res.status(401).json({ error: 'invalid_token' });
+  const userId = userData.user.id;
+
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  let normalized = String(body.url || '').trim();
+  if (!normalized) return res.status(400).json({ error: 'missing_url' });
+  if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
+  let parsed;
+  try { parsed = new URL(normalized); } catch { return res.status(400).json({ error: 'invalid_url' }); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return res.status(400).json({ error: 'url_must_be_http' });
+  if (isBlockedHost(parsed.hostname)) return res.status(400).json({ error: 'blocked_host' });
+  if (!body.creativeUrl) return res.status(400).json({ error: 'missing_creative' });
+
+  let result, lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      result = await runSnapshot({
+        url: parsed.toString(),
+        creativeUrl: String(body.creativeUrl),
+        creativeSize: body.creativeSize,
+        proxies: body.proxies,
+      });
+      lastErr = null;
+      break;
+    } catch (err) { lastErr = err; }
+  }
+  if (!result) {
+    return res.status(502).json({ error: 'snapshot_failed', message: String(lastErr && lastErr.message || lastErr) });
+  }
+
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  // Upload the self-contained HTML to storage.
+  const htmlPath = `${userId}/snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`;
+  const { error: upErr } = await userClient.storage
+    .from('checkins')
+    .upload(htmlPath, Buffer.from(result.html, 'utf8'), { contentType: 'text/html; charset=utf-8', upsert: false });
+  if (upErr) return res.status(500).json({ error: 'upload_failed', message: String(upErr.message || upErr) });
+  const snapshotUrl = userClient.storage.from('checkins').getPublicUrl(htmlPath).data.publicUrl;
+
+  // Persist a shareable check-in row.
+  const { data, error } = await userClient
+    .from('checkins')
+    .insert({
+      kind: 'snapshot',
+      page_url: parsed.toString(),
+      page_title: result.meta.title || null,
+      screenshot_url: snapshotUrl,   // kept non-null for legacy schema; same URL
+      snapshot_url: snapshotUrl,
+      page_width: 1440,
+      page_height: 900,
+      device_scale_factor: 1,
+      creative_url: String(body.creativeUrl),
+      creative_size: body.creativeSize || null,
+      slots_meta: result.slots,
+      box: null,
+    })
+    .select('id')
+    .single();
+  if (error) return res.status(500).json({ error: 'persist_failed', message: String(error.message || error) });
+
+  return res.status(200).json({
+    shareId: data.id,
+    snapshotUrl,
+    slots: result.slots,
+    meta: result.meta,
+  });
+}

@@ -3,6 +3,10 @@
     "api/capture.js": {
       "memory": 3009,
       "maxDuration": 180
+    },
+    "api/snapshot.js": {
+      "memory": 3009,
+      "maxDuration": 180
     }
   },
   "rewrites": [
