@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFreshToken } from '@/lib/auth-token';
 import { useUIStore } from '@/stores/ui';
 import { useDashboardStore } from '@/stores/dashboard';
@@ -35,6 +35,15 @@ function parseDimensions(dim: string | null): { w: number; h: number } | null {
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
+function safeJson(s: string): Record<string, unknown> {
+  try { return JSON.parse(s || '{}'); } catch { return {}; }
+}
+
+// Width the snapshot was captured at (desktop). The in-app preview iframe renders
+// at this virtual width and is scaled down to fit the panel, so the layout is
+// faithful and never horizontally cropped.
+const DESKTOP_W = 1280;
+
 export function CheckinView() {
   const toast = useUIStore((s) => s.toast);
   const creatives = useDashboardStore((s) => s.creatives);
@@ -50,6 +59,7 @@ export function CheckinView() {
   const [creativeIsBlob, setCreativeIsBlob] = useState(false);
   const [creativeFile, setCreativeFile] = useState<File | null>(null);
   const [selectedCreativeId, setSelectedCreativeId] = useState<string | null>(null);
+  const [libraryStoragePath, setLibraryStoragePath] = useState<string | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -58,6 +68,26 @@ export function CheckinView() {
   const [result, setResult] = useState<SnapshotResult | null>(null);
   const [shareUrl, setShareUrl] = useState('');
   const [frameUrl, setFrameUrl] = useState('');
+  const frameWrapRef = useRef<HTMLDivElement | null>(null);
+  const [frameDims, setFrameDims] = useState<{ scale: number; w: number; h: number }>({ scale: 1, w: DESKTOP_W, h: 800 });
+
+  // Scale the desktop-width snapshot to fit the result panel (no horizontal crop).
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const el = frameWrapRef.current;
+    if (!el) return;
+    const apply = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      const scale = w / DESKTOP_W;
+      setFrameDims({ scale, w: DESKTOP_W, h: Math.round(h / scale) });
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [status, frameUrl]);
 
   // Supabase serves public HTML as text/plain (nosniff), so the iframe can't load
   // the storage URL directly — fetch the HTML and render it via a blob URL, which
@@ -116,26 +146,42 @@ export function CheckinView() {
 
   const onPickLibrary = useCallback((c: Creative) => {
     if (creativeSrc && creativeIsBlob && creativeSrc.startsWith('blob:')) URL.revokeObjectURL(creativeSrc);
-    setCreativeSrc(c.thumbnail_url as string);
+    setCreativeSrc(c.thumbnail_url as string); // thumbnail only for the chip/grid
     setCreativeIsBlob(false);
     setCreativeFile(null);
     setSelectedCreativeId(c.id);
+    // Full-res asset lives in the private asset-uploads bucket, referenced by
+    // dsp_config.storage_path. Resolved to a signed URL at generate time so the
+    // bake uses the real creative, not the 96px grid thumbnail.
+    const cfg = typeof c.dsp_config === 'string' ? safeJson(c.dsp_config) : (c.dsp_config || {});
+    setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
     const natural = parseDimensions(c.dimensions);
     setCreativeSize(c.dimensions || (natural ? `${natural.w}x${natural.h}` : ''));
   }, [creativeSrc, creativeIsBlob]);
 
   const resolveCreativeUrl = useCallback(async (): Promise<string> => {
     if (!creativeSrc) throw new Error('selecione um criativo');
-    if (!creativeIsBlob) return creativeSrc;
-    if (!creativeFile) throw new Error('arquivo do criativo indisponível');
-    const ext = (creativeFile.name.split('.').pop() || 'png').toLowerCase();
-    const path = `creatives/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-    const { error } = await supabase.storage
-      .from('checkins')
-      .upload(path, creativeFile, { contentType: creativeFile.type || 'image/png' });
-    if (error) throw new Error(error.message);
-    return supabase.storage.from('checkins').getPublicUrl(path).data.publicUrl;
-  }, [creativeSrc, creativeIsBlob, creativeFile]);
+    if (creativeIsBlob) {
+      if (!creativeFile) throw new Error('arquivo do criativo indisponível');
+      const ext = (creativeFile.name.split('.').pop() || 'png').toLowerCase();
+      const path = `creatives/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+      const { error } = await supabase.storage
+        .from('checkins')
+        .upload(path, creativeFile, { contentType: creativeFile.type || 'image/png' });
+      if (error) throw new Error(error.message);
+      return supabase.storage.from('checkins').getPublicUrl(path).data.publicUrl;
+    }
+    // Library: prefer the full-res asset (signed URL) over the 96px thumbnail.
+    // The snapshot inlines the image as a data URI, so a short-lived signed URL
+    // is fine — it only needs to resolve during generation.
+    if (libraryStoragePath) {
+      const { data, error } = await supabase.storage
+        .from('asset-uploads')
+        .createSignedUrl(libraryStoragePath, 600);
+      if (!error && data?.signedUrl) return data.signedUrl;
+    }
+    return creativeSrc; // fallback to thumbnail (e.g. tag creatives without an asset)
+  }, [creativeSrc, creativeIsBlob, creativeFile, libraryStoragePath]);
 
   // --- Generate --------------------------------------------------------------
   const canGenerate = !!pageUrl.trim() && !!creativeSrc && status !== 'running';
@@ -342,8 +388,20 @@ export function CheckinView() {
                 <a className={styles.shareOpen} href={shareUrl} target="_blank" rel="noopener noreferrer">Abrir</a>
               </div>
 
-              <div className={styles.frameWrap}>
-                <iframe className={styles.frame} src={frameUrl} title="preview do anúncio" sandbox="allow-same-origin" referrerPolicy="no-referrer" />
+              <div className={styles.frameWrap} ref={frameWrapRef}>
+                <iframe
+                  className={styles.frame}
+                  src={frameUrl}
+                  title="preview do anúncio"
+                  sandbox="allow-same-origin"
+                  referrerPolicy="no-referrer"
+                  style={{
+                    width: frameDims.w,
+                    height: frameDims.h,
+                    transform: `scale(${frameDims.scale})`,
+                    transformOrigin: 'top left',
+                  }}
+                />
               </div>
             </div>
           )}
