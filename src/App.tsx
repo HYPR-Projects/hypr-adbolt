@@ -21,6 +21,9 @@ const Dashboard = lazy(() =>
 const Settings = lazy(() =>
   import('@/components/settings/Settings').then((m) => ({ default: m.Settings })),
 );
+const CheckinView = lazy(() =>
+  import('@/components/checkin/CheckinView').then((m) => ({ default: m.CheckinView })),
+);
 const AmazonCallback = lazy(() =>
   import('@/components/settings/AmazonCallback').then((m) => ({ default: m.AmazonCallback })),
 );
@@ -84,6 +87,7 @@ export function App() {
                 {currentView === 'wizard' && <WizardShell />}
                 {currentView === 'dashboard' && <Dashboard />}
                 {currentView === 'settings' && <Settings />}
+                {currentView === 'checkin' && <CheckinView />}
               </>
             )}
           </Suspense>

@@ -1,0 +1,225 @@
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-4) var(--sp-10);
+}
+
+.head {
+  margin-bottom: var(--sp-5);
+}
+.title {
+  font-size: var(--fs-2xl);
+  font-weight: 650;
+  color: var(--text);
+  margin: 0 0 var(--sp-1);
+}
+.sub {
+  font-size: var(--fs-sm);
+  color: var(--text-sec);
+  margin: 0;
+  max-width: 60ch;
+}
+
+.form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.row {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-end;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  flex: 1;
+}
+.fieldSm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 140px;
+}
+.label {
+  font-size: var(--fs-xs);
+  color: var(--text-sec);
+  font-weight: 550;
+}
+.input,
+.fileInput {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--input-py) var(--input-px);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-family: inherit;
+  width: 100%;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--border-active);
+}
+.fileInput {
+  padding: 6px 8px;
+}
+
+.primary,
+.primarySm {
+  background: var(--brand);
+  color: var(--text-on-accent, #fff);
+  border: none;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  font-family: inherit;
+}
+.primary {
+  padding: 11px 16px;
+  align-self: flex-start;
+}
+.primarySm {
+  padding: 7px 14px;
+}
+.primary:disabled,
+.primarySm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text-sec);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 14px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.progress {
+  font-size: var(--fs-sm);
+  color: var(--text-sec);
+  margin: 0;
+}
+.error {
+  font-size: var(--fs-sm);
+  color: var(--error);
+  margin: 0;
+  word-break: break-word;
+}
+
+.workspace {
+  margin-top: var(--sp-5);
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.metaText {
+  font-size: var(--fs-xs);
+  color: var(--text-tri);
+  font-family: var(--mono);
+}
+.toggle {
+  font-size: var(--fs-xs);
+  color: var(--text-sec);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.spacer {
+  flex: 1;
+}
+
+.stage {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--bg-base);
+  line-height: 0;
+  touch-action: none;
+}
+.bg {
+  width: 100%;
+  height: auto;
+  display: block;
+  user-select: none;
+}
+
+.slot {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  background: rgba(0, 0, 0, 0.02);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--dur-f, 0.12s);
+}
+.slot:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.slotRec {
+  border-color: var(--brand);
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--brand-ring, rgba(255, 90, 0, 0.3));
+}
+.slotTag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 0 0 var(--r-xs) 0;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.slotRec .slotTag {
+  background: var(--brand);
+}
+
+.creative {
+  position: absolute;
+  cursor: move;
+  z-index: 10;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.creative img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+.resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  background: var(--brand);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: nwse-resize;
+  z-index: 11;
+}
+
+.hint {
+  font-size: var(--fs-sm);
+  color: var(--text-tri);
+  margin: var(--sp-3) 0 0;
+}
