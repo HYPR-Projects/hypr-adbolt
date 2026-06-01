@@ -260,6 +260,8 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
   // export, so the ad stays sharp regardless.
   const dsf = deviceScaleFactor || (engine === 'browserbase' ? 1 : 2);
   let consentHandled = false;
+  let step = 'setup';
+  const t = (s) => { step = s; };
   try {
     await page.setViewport({ width: width || 1440, height: height || 900, deviceScaleFactor: dsf });
     await page.setUserAgent(
@@ -270,11 +272,13 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
 
     // Non-fatal navigation: heavy pages (esp. via proxy) may not settle; we still
     // capture whatever rendered.
+    t('goto');
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 90_000 : NAV_TIMEOUT });
     } catch (e) { /* continue with whatever loaded */ }
     await page.waitForNetworkIdle({ idleTime: 700, timeout: 8_000 }).catch(() => {});
 
+    t('consent');
     for (let i = 0; i < 4; i++) {
       let clicked = false;
       try { clicked = await page.evaluate(dismissConsentInPage); } catch { clicked = false; }
@@ -292,24 +296,29 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
       await new Promise((r) => setTimeout(r, 600));
     }
 
+    t('scroll');
     await page.evaluate(autoScrollInPage).catch(() => {});
     await page.waitForNetworkIdle({ idleTime: 600, timeout: 4_000 }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1000));
 
+    t('analyze');
     const analysis = await page.evaluate(analyzePageForAds, {
       creativeSize: creativeSize || null,
       hideAds: keepAds ? false : true,
     });
 
-    // Cap the captured height: browser canvas max dimension is ~16384px, and
-    // we keep file size sane. capHeight(8000) * dsf(2) = 16000 < 16384.
-    const CAP_HEIGHT = 8000;
+    // Remote headless instances (Browserbase) can OOM when rendering a very tall
+    // off-screen clip of an ad-heavy page, which closes the target. Keep the
+    // captured region modest there; embedded Chromium can take more.
+    const CAP_HEIGHT = engine === 'browserbase' ? 4000 : 8000;
     const captureHeight = Math.min(analysis.pageHeight, CAP_HEIGHT);
-    const shot = await page.screenshot({
-      type: 'jpeg',
-      quality: 85,
-      clip: { x: 0, y: 0, width: analysis.pageWidth, height: captureHeight },
-    });
+
+    t('screenshot');
+    // Screenshot just the captured region by sizing the viewport to it (a normal
+    // viewport capture is lighter on the renderer than a tall off-screen clip).
+    await page.setViewport({ width: analysis.pageWidth, height: captureHeight, deviceScaleFactor: dsf });
+    await new Promise((r) => setTimeout(r, 250));
+    const shot = await page.screenshot({ type: 'jpeg', quality: 82, captureBeyondViewport: false });
     const title = await page.title().catch(() => '');
 
     const slots = analysis.slots.filter((s) => s.y < captureHeight);
@@ -326,6 +335,9 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
       deviceScaleFactor: dsf,
       meta: { consentHandled, durationMs: Date.now() - started, title, engine },
     };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`[${engine}:${step} @${Date.now() - started}ms] ${msg}`);
   } finally {
     await cleanup();
   }
@@ -376,19 +388,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'blocked_host' });
   }
 
-  let result;
-  try {
-    result = await runCapture({
-      url: parsed.toString(),
-      width: body.width,
-      height: body.height,
-      deviceScaleFactor: body.deviceScaleFactor,
-      creativeSize: body.creativeSize,
-      keepAds: body.keepAds,
-      proxies: body.proxies,
-    });
-  } catch (err) {
-    return res.status(502).json({ error: 'capture_failed', message: String(err && err.message || err) });
+  let result, lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      result = await runCapture({
+        url: parsed.toString(),
+        width: body.width,
+        height: body.height,
+        deviceScaleFactor: body.deviceScaleFactor,
+        creativeSize: body.creativeSize,
+        keepAds: body.keepAds,
+        proxies: body.proxies,
+      });
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (!result) {
+    return res.status(502).json({ error: 'capture_failed', message: String(lastErr && lastErr.message || lastErr) });
   }
 
   // Upload the screenshot to Storage (response body limit is ~4.5MB, so no base64).
