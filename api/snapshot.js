@@ -89,6 +89,38 @@ async function acquireBrowser({ proxies }) {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch the creative server-side (no CORS) and turn it into a self-contained
+// data: URI. Baking the creative as a URL fails on strict publishers: SingleFile
+// runs inside the publisher page and its cross-origin fetch of our signed
+// asset-uploads URL is blocked by CORS / the page CSP, leaving the slot blank.
+// A data: URI renders everywhere and needs no fetch.
+function sniffImageMime(buf, fallback) {
+  if (buf.length >= 4) {
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf.length >= 12 &&
+        buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  }
+  const head = buf.slice(0, 256).toString('utf8').trim().toLowerCase();
+  if (head.includes('<svg')) return 'image/svg+xml';
+  return fallback || 'image/png';
+}
+
+async function creativeToDataUri(url) {
+  const r = await fetch(url, { redirect: 'follow' });
+  if (!r.ok) throw new Error(`creative fetch ${r.status}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (!buf.length) throw new Error('creative empty');
+  if (buf.length > 12 * 1024 * 1024) throw new Error('creative too large (>12MB)');
+  const hdr = (r.headers.get('content-type') || '').toLowerCase();
+  const mime = hdr.startsWith('image/') && !hdr.includes('octet')
+    ? hdr.split(';')[0]
+    : sniffImageMime(buf, 'image/png');
+  return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
+// ---------------------------------------------------------------------------
 async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
   const started = Date.now();
   const { page, engine, cleanup } = await acquireBrowser({ proxies });
@@ -217,12 +249,20 @@ export default async function handler(req, res) {
   if (isBlockedHost(parsed.hostname)) return res.status(400).json({ error: 'blocked_host' });
   if (!body.creativeUrl) return res.status(400).json({ error: 'missing_creative' });
 
+  // Inline the creative as a data: URI up front (see creativeToDataUri).
+  let creativeData;
+  try {
+    creativeData = await creativeToDataUri(String(body.creativeUrl));
+  } catch (e) {
+    return res.status(400).json({ error: 'creative_fetch_failed', message: String((e && e.message) || e) });
+  }
+
   let result, lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       result = await runSnapshot({
         url: parsed.toString(),
-        creativeUrl: String(body.creativeUrl),
+        creativeUrl: creativeData,
         creativeSize: body.creativeSize,
         proxies: body.proxies,
       });
