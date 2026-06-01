@@ -291,9 +291,13 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     // Interactive: replace the baked screenshot with a live <iframe> after
     // serialization. Bake a transparent placeholder now so the slot is sized.
     const liveEmbed = interactive ? buildLiveEmbed(creativeKind || 'display', creativeUrl) : null;
-    creativeDataUri = liveEmbed
-      ? TRANSPARENT_PX
-      : await renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
+    // Kick off the creative render but DON'T await it yet — it's independent of
+    // the publisher page, so it runs in parallel with goto + scroll and its time
+    // is hidden behind the page load. Awaited just before bake.
+    const creativePromise = liveEmbed
+      ? Promise.resolve(TRANSPARENT_PX)
+      : renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
+    creativePromise.catch(() => {}); // avoid an unhandled-rejection warning before the await
 
     // Block login/consent SDKs at the network layer (cleaner than removing later).
     try {
@@ -327,6 +331,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     await page.evaluate(cleanOverlaysInPage).catch(() => {});
 
     step = 'bake';
+    creativeDataUri = await creativePromise; // overlap with page load is done here
     const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '');
 
     // Trim the page below a height cap before serialize. Inlining every asset of
