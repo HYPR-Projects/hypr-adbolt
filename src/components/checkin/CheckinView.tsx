@@ -68,6 +68,7 @@ export function CheckinView() {
   const [creativeSrc, setCreativeSrc] = useState<string | null>(null);
   const [creativeIsBlob, setCreativeIsBlob] = useState(false);
   const [creativeFile, setCreativeFile] = useState<File | null>(null);
+  const [selectedCreativeId, setSelectedCreativeId] = useState<string | null>(null);
   const [creativeNatural, setCreativeNatural] = useState<{ w: number; h: number } | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
@@ -144,6 +145,7 @@ export function CheckinView() {
       img.src = url;
       setCreative(url, true, null, '');
       setCreativeFile(file);
+      setSelectedCreativeId(null);
     },
     [setCreative],
   );
@@ -153,6 +155,7 @@ export function CheckinView() {
       const natural = parseDimensions(c.dimensions);
       setCreative(c.thumbnail_url as string, false, natural, c.dimensions || '');
       setCreativeFile(null);
+      setSelectedCreativeId(c.id);
       if (!natural) {
         // Fall back to the image's intrinsic size if dimensions are missing.
         const img = new Image();
@@ -562,7 +565,7 @@ export function CheckinView() {
                   {libraryItems.slice(0, 60).map((c) => (
                     <button
                       key={c.id}
-                      className={`${styles.card} ${creativeSrc === c.thumbnail_url ? styles.cardActive : ''}`}
+                      className={`${styles.card} ${selectedCreativeId === c.id ? styles.cardActive : ''}`}
                       onClick={() => onPickLibrary(c)}
                       title={`${c.name} · ${c.dimensions || ''}`}
                     >
