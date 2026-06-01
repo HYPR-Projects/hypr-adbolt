@@ -21,6 +21,8 @@ interface CaptureResult {
   screenshotUrl: string;
   pageWidth: number;
   pageHeight: number;
+  fullPageHeight?: number;
+  truncated?: boolean;
   deviceScaleFactor: number;
   slots: Slot[];
   meta: { consentHandled: boolean; durationMs: number; title: string };
@@ -181,7 +183,10 @@ export function CheckinView() {
         body: JSON.stringify({ url: normalized, creativeSize: creativeSize || undefined }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        const m = data?.message ?? data?.error;
+        throw new Error(typeof m === 'string' ? m : m ? JSON.stringify(m) : `HTTP ${res.status}`);
+      }
 
       const r = data as CaptureResult;
       setResult(r);
@@ -414,6 +419,7 @@ export function CheckinView() {
             <span className={styles.metaText}>
               {result.slots.length} slots · {Math.round(result.meta.durationMs / 1000)}s
               {result.meta.consentHandled ? ' · consent ok' : ''}
+              {result.truncated ? ' · página cortada em 8000px' : ''}
             </span>
             <label className={styles.toggle}>
               <input type="checkbox" checked={showSlots} onChange={(e) => setShowSlots(e.target.checked)} />

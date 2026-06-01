@@ -231,12 +231,16 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
     await page.waitForNetworkIdle({ idleTime: 700, timeout: 8_000 }).catch(() => {});
 
     for (let i = 0; i < 4; i++) {
-      let clicked = await page.evaluate(dismissConsentInPage).catch(() => false);
+      let clicked = false;
+      try { clicked = await page.evaluate(dismissConsentInPage); } catch { clicked = false; }
       if (!clicked) {
-        for (const frame of page.frames()) {
-          if (frame === page.mainFrame()) continue;
-          const fc = await frame.evaluate(dismissConsentInPage).catch(() => false);
-          if (fc) { clicked = true; break; }
+        let frames = [];
+        try { frames = page.frames(); } catch { frames = []; }
+        for (const frame of frames) {
+          try {
+            if (frame === page.mainFrame() || frame.isDetached()) continue;
+            if (await frame.evaluate(dismissConsentInPage)) { clicked = true; break; }
+          } catch { /* detached or cross-origin frame — skip */ }
         }
       }
       if (clicked) { consentHandled = true; break; }
@@ -252,14 +256,29 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
       hideAds: keepAds ? false : true,
     });
 
-    const shot = await page.screenshot({ fullPage: true, type: 'png' });
+    // Cap the captured height: browser canvas max dimension is ~16384px, and
+    // we keep file size sane. capHeight(8000) * dsf(2) = 16000 < 16384.
+    const CAP_HEIGHT = 8000;
+    const captureHeight = Math.min(analysis.pageHeight, CAP_HEIGHT);
+    const shot = await page.screenshot({
+      type: 'jpeg',
+      quality: 85,
+      clip: { x: 0, y: 0, width: analysis.pageWidth, height: captureHeight },
+    });
     const title = await page.title().catch(() => '');
+
+    // Only keep slots that fall inside the captured region.
+    const slots = analysis.slots.filter((s) => s.y < captureHeight);
 
     return {
       buffer: Buffer.from(shot),
-      slots: analysis.slots,
+      mime: 'image/jpeg',
+      ext: 'jpg',
+      slots,
       pageWidth: analysis.pageWidth,
-      pageHeight: analysis.pageHeight,
+      pageHeight: captureHeight,
+      fullPageHeight: analysis.pageHeight,
+      truncated: analysis.pageHeight > CAP_HEIGHT,
       deviceScaleFactor: dsf,
       meta: { consentHandled, durationMs: Date.now() - started, title },
     };
@@ -332,12 +351,12 @@ export default async function handler(req, res) {
     auth: { persistSession: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
-  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.png`;
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${result.ext}`;
   const { error: upErr } = await userClient.storage
     .from('checkins')
-    .upload(path, result.buffer, { contentType: 'image/png', upsert: false });
+    .upload(path, result.buffer, { contentType: result.mime, upsert: false });
   if (upErr) {
-    return res.status(500).json({ error: 'upload_failed', message: upErr.message });
+    return res.status(500).json({ error: 'upload_failed', message: String(upErr.message || upErr) });
   }
   const { data: pub } = userClient.storage.from('checkins').getPublicUrl(path);
 
@@ -347,6 +366,8 @@ export default async function handler(req, res) {
     storagePath: path,
     pageWidth: result.pageWidth,
     pageHeight: result.pageHeight,
+    fullPageHeight: result.fullPageHeight,
+    truncated: result.truncated,
     deviceScaleFactor: result.deviceScaleFactor,
     slots: result.slots,
     meta: result.meta,
