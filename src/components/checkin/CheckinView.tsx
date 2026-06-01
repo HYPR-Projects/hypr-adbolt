@@ -204,11 +204,21 @@ export function CheckinView() {
       setLibraryStoragePath(null);
       if (!content) toast(`${KIND_LABEL[kind]} sem conteúdo de tag — não dá pra renderizar.`, 'error');
     } else if (kind === 'video') {
-      // Poster + play overlay. Prefer the generated thumbnail (reliable);
-      // fall back to the mp4 storage path (signed at generate time).
+      // Poster + play overlay. Prefer the generated thumbnail; fall back to the
+      // VAST tag, then the mp4 storage path. Without a real frame source the
+      // snapshot bakes a neutral VÍDEO card (headless Chromium can't decode the
+      // video, and VAST has no still by default).
       const poster = (c.thumbnail_url as string) || null;
-      setCreativeBakeSrc(poster);
-      setLibraryStoragePath(poster ? null : ((cfg && (cfg as Record<string, unknown>).storage_path as string) || null));
+      if (poster) {
+        setCreativeBakeSrc(poster);
+        setLibraryStoragePath(null);
+      } else if (c.vast_tag) {
+        setCreativeBakeSrc(c.vast_tag);
+        setLibraryStoragePath(null);
+      } else {
+        setCreativeBakeSrc(null);
+        setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
+      }
     } else {
       // display: full-res asset (signed URL) resolved at generate time.
       setCreativeBakeSrc(null);
