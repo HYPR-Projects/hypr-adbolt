@@ -42,6 +42,28 @@ function safeJson(s: string): Record<string, unknown> {
   try { return JSON.parse(s || '{}'); } catch { return {}; }
 }
 
+type CreativeKind = 'display' | 'video' | 'html5' | 'tag' | 'survey';
+
+// Classify a raw Creative the same way the dashboard preview does, so the
+// checkin library shows the whole base with correct type badges.
+function classifyCreative(c: Creative): CreativeKind {
+  const isZip = !!(c.asset_filename?.toLowerCase().endsWith('.zip') || c.asset_mime_type?.includes('zip'));
+  if (c.creative_type === 'html5' || isZip) return 'html5';
+  if (c.creative_type === 'video' || c.asset_mime_type?.startsWith('video') || c.vast_tag) return 'video';
+  const tag = c.js_tag || '';
+  if (tag && !tag.startsWith('http')) return tag.includes('form.typeform.com') ? 'survey' : 'tag';
+  return 'display';
+}
+
+// Phase status: which kinds the snapshot can bake today.
+// display + html5 are live; tag/video/survey land in later phases.
+const BAKEABLE_KINDS: Record<CreativeKind, boolean> = {
+  display: true, html5: true, video: false, tag: false, survey: false,
+};
+const KIND_LABEL: Record<CreativeKind, string> = {
+  display: 'DISPLAY', html5: 'HTML5', video: 'VÍDEO', tag: 'TAG', survey: 'SURVEY',
+};
+
 // Width the snapshot was captured at (desktop). The in-app preview iframe renders
 // at this virtual width and is scaled down to fit the panel, so the layout is
 // faithful and never horizontally cropped.
@@ -63,6 +85,8 @@ export function CheckinView() {
   const [creativeFile, setCreativeFile] = useState<File | null>(null);
   const [selectedCreativeId, setSelectedCreativeId] = useState<string | null>(null);
   const [libraryStoragePath, setLibraryStoragePath] = useState<string | null>(null);
+  const [creativeKind, setCreativeKind] = useState<CreativeKind>('display');
+  const [creativeBakeSrc, setCreativeBakeSrc] = useState<string | null>(null); // html5: hosted url to render
   const [creativeSize, setCreativeSize] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -116,11 +140,12 @@ export function CheckinView() {
 
   const libraryItems = useMemo(() => {
     const q = librarySearch.toLowerCase().trim();
-    return creatives.filter((c) => {
-      if (c.creative_type !== 'display' || !c.thumbnail_url) return false;
-      if (!q) return true;
-      return c.name.toLowerCase().includes(q) || (c.dimensions || '').toLowerCase().includes(q);
-    });
+    return creatives
+      .map((c) => ({ c, kind: classifyCreative(c) }))
+      .filter(({ c }) => {
+        if (!q) return true;
+        return c.name.toLowerCase().includes(q) || (c.dimensions || '').toLowerCase().includes(q);
+      });
   }, [creatives, librarySearch]);
 
   useEffect(() => {
@@ -145,25 +170,47 @@ export function CheckinView() {
     setCreativeIsBlob(true);
     setCreativeFile(file);
     setSelectedCreativeId(null);
+    setCreativeKind('display');
+    setCreativeBakeSrc(null);
   }, [creativeSrc, creativeIsBlob]);
 
   const onPickLibrary = useCallback((c: Creative) => {
+    const kind = classifyCreative(c);
+    if (!BAKEABLE_KINDS[kind]) {
+      toast(`${KIND_LABEL[kind]}: preview ainda não suportado (chega numa próxima fase).`, 'error');
+      return;
+    }
     if (creativeSrc && creativeIsBlob && creativeSrc.startsWith('blob:')) URL.revokeObjectURL(creativeSrc);
-    setCreativeSrc(c.thumbnail_url as string); // thumbnail only for the chip/grid
     setCreativeIsBlob(false);
     setCreativeFile(null);
     setSelectedCreativeId(c.id);
-    // Full-res asset lives in the private asset-uploads bucket, referenced by
-    // dsp_config.storage_path. Resolved to a signed URL at generate time so the
-    // bake uses the real creative, not the 96px grid thumbnail.
+    setCreativeKind(kind);
+    setCreativeSrc((c.thumbnail_url as string) || null); // thumbnail for the chip/grid
     const cfg = typeof c.dsp_config === 'string' ? safeJson(c.dsp_config) : (c.dsp_config || {});
-    setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
+
+    if (kind === 'html5') {
+      // Hosted preview URL lives in js_tag (http). The snapshot renders it
+      // headless and bakes a frame — no static asset to resolve.
+      const url = (c.js_tag && c.js_tag.startsWith('http')) ? c.js_tag : null;
+      setCreativeBakeSrc(url);
+      setLibraryStoragePath(null);
+      if (!url) toast('HTML5 sem URL de preview hospedada — não dá pra renderizar.', 'error');
+    } else {
+      // display: full-res asset (signed URL) resolved at generate time.
+      setCreativeBakeSrc(null);
+      setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
+    }
     const natural = parseDimensions(c.dimensions);
     setCreativeSize(c.dimensions || (natural ? `${natural.w}x${natural.h}` : ''));
-  }, [creativeSrc, creativeIsBlob]);
+  }, [creativeSrc, creativeIsBlob, toast]);
 
   const resolveCreativeUrl = useCallback(async (): Promise<string> => {
-    if (!creativeSrc) throw new Error('selecione um criativo');
+    if (!creativeSrc && !creativeBakeSrc) throw new Error('selecione um criativo');
+    // HTML5: the snapshot renders the hosted creative headless — pass its URL.
+    if (creativeKind === 'html5') {
+      if (!creativeBakeSrc) throw new Error('HTML5 sem URL de preview');
+      return creativeBakeSrc;
+    }
     if (creativeIsBlob) {
       if (!creativeFile) throw new Error('arquivo do criativo indisponível');
       const ext = (creativeFile.name.split('.').pop() || 'png').toLowerCase();
@@ -183,17 +230,18 @@ export function CheckinView() {
         .createSignedUrl(libraryStoragePath, 600);
       if (!error && data?.signedUrl) return data.signedUrl;
     }
+    if (!creativeSrc) throw new Error('criativo sem fonte para preview');
     return creativeSrc; // fallback to thumbnail (e.g. tag creatives without an asset)
-  }, [creativeSrc, creativeIsBlob, creativeFile, libraryStoragePath]);
+  }, [creativeSrc, creativeIsBlob, creativeFile, libraryStoragePath, creativeKind, creativeBakeSrc]);
 
   // --- Generate --------------------------------------------------------------
-  const canGenerate = !!pageUrl.trim() && !!creativeSrc && status !== 'running';
+  const canGenerate = !!pageUrl.trim() && (!!creativeSrc || !!creativeBakeSrc) && status !== 'running';
 
   const generate = useCallback(async () => {
     let normalized = pageUrl.trim();
     if (!normalized) { toast('Informe a URL da página.', 'error'); return; }
     if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
-    if (!creativeSrc) { toast('Selecione um criativo.', 'error'); return; }
+    if (!creativeSrc && !creativeBakeSrc) { toast('Selecione um criativo.', 'error'); return; }
 
     setStatus('running');
     setErrorMsg('');
@@ -205,7 +253,7 @@ export function CheckinView() {
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, proxies: useProxy }),
+        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, proxies: useProxy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -222,7 +270,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeSize, useProxy, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, creativeKind, creativeSize, useProxy, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -299,30 +347,39 @@ export function CheckinView() {
                 {dashLoading ? (
                   <p className={styles.hint}>Carregando criativos…</p>
                 ) : libraryItems.length === 0 ? (
-                  <p className={styles.hint}>Nenhum criativo de display com preview encontrado.</p>
+                  <p className={styles.hint}>Nenhum criativo encontrado.</p>
                 ) : (
                   <div className={styles.grid}>
-                    {libraryItems.slice(0, 80).map((c) => (
-                      <button
-                        key={c.id}
-                        className={`${styles.card} ${selectedCreativeId === c.id ? styles.cardActive : ''}`}
-                        onClick={() => onPickLibrary(c)}
-                        title={`${c.name} · ${c.dimensions || ''}`}
-                      >
-                        <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
-                        <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
-                      </button>
-                    ))}
+                    {libraryItems.slice(0, 120).map(({ c, kind }) => {
+                      const bakeable = BAKEABLE_KINDS[kind];
+                      return (
+                        <button
+                          key={c.id}
+                          className={`${styles.card} ${selectedCreativeId === c.id ? styles.cardActive : ''}`}
+                          onClick={() => onPickLibrary(c)}
+                          title={`${c.name} · ${c.dimensions || ''} · ${KIND_LABEL[kind]}${bakeable ? '' : ' (em breve)'}`}
+                          style={{ position: 'relative', opacity: bakeable ? 1 : 0.45 }}
+                        >
+                          {c.thumbnail_url
+                            ? <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
+                            : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '16/9', fontSize: 11, color: 'var(--ts, #8BA3AF)' }}>{KIND_LABEL[kind]}</span>}
+                          <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, fontWeight: 700, letterSpacing: '.04em', padding: '2px 6px', borderRadius: 4, background: 'rgba(0,0,0,.6)', color: '#fff' }}>{KIND_LABEL[kind]}{bakeable ? '' : ' · em breve'}</span>
+                          <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </>
             )}
 
-            {creativeSrc && (
+            {(creativeSrc || creativeBakeSrc) && (
               <div className={styles.selected}>
-                <img src={creativeSrc} alt="criativo selecionado" />
+                {creativeSrc
+                  ? <img src={creativeSrc} alt="criativo selecionado" />
+                  : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 48, fontSize: 11, fontWeight: 700 }}>{KIND_LABEL[creativeKind]}</span>}
                 <div className={styles.selectedMeta}>
-                  <span className={styles.selectedDim}>{creativeSize || 'tamanho não detectado'}</span>
+                  <span className={styles.selectedDim}>{creativeSize || 'tamanho não detectado'}{creativeKind !== 'display' ? ` · ${KIND_LABEL[creativeKind]}` : ''}</span>
                   <span className={styles.selectedLabel}>criativo selecionado</span>
                 </div>
               </div>

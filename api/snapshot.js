@@ -142,11 +142,38 @@ async function nodeFetchResource(url) {
 }
 
 // ---------------------------------------------------------------------------
-async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
+// Render a creative to a self-contained image data URI. Display creatives are
+// fetched directly; HTML5 (and later tag/video) are rendered in a headless page
+// and screenshotted, so the static snapshot can show any creative type as an
+// image baked into the slot. The bake engine stays image-only — no regression.
+async function renderCreativeToImage(browser, { kind, src, size }) {
+  if (kind !== 'html5') return creativeToDataUri(src); // display / upload
+
+  const m = /^(\d+)\s*[x×]\s*(\d+)$/.exec((size || '').trim());
+  const w = m ? +m[1] : 970;
+  const h = m ? +m[2] : 250;
+  const p = await browser.newPage();
+  try {
+    await p.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
+    try {
+      await p.goto(src, { waitUntil: 'networkidle2', timeout: 30_000 });
+    } catch (e) { /* render whatever loaded */ }
+    // Let an animated HTML5 settle into a representative frame.
+    await new Promise((r) => setTimeout(r, 1800));
+    const buf = await p.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } });
+    return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
+  } finally {
+    await p.close().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
+async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, proxies }) {
   const started = Date.now();
-  const { page, engine, cleanup } = await acquireBrowser({ proxies });
+  const { browser, page, engine, cleanup } = await acquireBrowser({ proxies });
   let step = 'setup';
   let consentHandled = false;
+  let creativeDataUri = null;
   try {
     await page.setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
@@ -156,6 +183,9 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
 
     // Bridge SingleFile's asset fetching through Node (bypasses publisher CSP/CORS).
     try { await page.exposeFunction('__adboltFetch', nodeFetchResource); } catch (e) { /* already bound / unsupported */ }
+
+    step = 'creative';
+    creativeDataUri = await renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
 
     // Block login/consent SDKs at the network layer (cleaner than removing later).
     try {
@@ -189,7 +219,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
     await page.evaluate(cleanOverlaysInPage).catch(() => {});
 
     step = 'bake';
-    const bake = await page.evaluate(bakeCreativeInPage, creativeUrl, creativeSize || '');
+    const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '');
 
     // Trim the page below a height cap before serialize. Inlining every asset of
     // a full publisher homepage is memory- and time-heavy and can OOM the
@@ -289,21 +319,14 @@ export default async function handler(req, res) {
   if (isBlockedHost(parsed.hostname)) return res.status(400).json({ error: 'blocked_host' });
   if (!body.creativeUrl) return res.status(400).json({ error: 'missing_creative' });
 
-  // Inline the creative as a data: URI up front (see creativeToDataUri).
-  let creativeData;
-  try {
-    creativeData = await creativeToDataUri(String(body.creativeUrl));
-  } catch (e) {
-    return res.status(400).json({ error: 'creative_fetch_failed', message: String((e && e.message) || e) });
-  }
-
   let result, lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       result = await runSnapshot({
         url: parsed.toString(),
-        creativeUrl: creativeData,
+        creativeUrl: String(body.creativeUrl),
         creativeSize: body.creativeSize,
+        creativeKind: body.creativeKind || 'display',
         proxies: body.proxies,
       });
       lastErr = null;
