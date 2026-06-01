@@ -61,6 +61,7 @@ export function CheckinView() {
 
   const [pageUrl, setPageUrl] = useState('');
   const [useProxy, setUseProxy] = useState(false);
+  const [mode, setMode] = useState<'screenshot' | 'live'>('screenshot');
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('upload');
   const [librarySearch, setLibrarySearch] = useState('');
 
@@ -379,6 +380,100 @@ export function CheckinView() {
 
   const sc = (v: number) => v * displayScale;
 
+  // --- Live mode -------------------------------------------------------------
+  const [liveStatus, setLiveStatus] = useState<'idle' | 'starting' | 'running' | 'error'>('idle');
+  const [liveUrl, setLiveUrl] = useState('');
+  const [liveSession, setLiveSession] = useState('');
+  const [liveError, setLiveError] = useState('');
+  const [liveShot, setLiveShot] = useState('');
+  const [liveBusy, setLiveBusy] = useState(false);
+
+  const resolveCreativeUrl = useCallback(async (): Promise<string | null> => {
+    if (!creativeSrc) return null;
+    if (!creativeIsBlob) return creativeSrc; // library: already public
+    if (!creativeFile) return null;
+    const ext = (creativeFile.name.split('.').pop() || 'png').toLowerCase();
+    const path = `creatives/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+    const { error } = await supabase.storage
+      .from('checkins')
+      .upload(path, creativeFile, { contentType: creativeFile.type || 'image/png' });
+    if (error) throw new Error(error.message);
+    return supabase.storage.from('checkins').getPublicUrl(path).data.publicUrl;
+  }, [creativeSrc, creativeIsBlob, creativeFile]);
+
+  const startLive = useCallback(async () => {
+    let normalized = pageUrl.trim();
+    if (!normalized) { toast('Informe a URL da página.', 'error'); return; }
+    if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
+    if (!creativeSrc) { toast('Selecione um criativo.', 'error'); return; }
+
+    setLiveStatus('starting');
+    setLiveError('');
+    setLiveShot('');
+    try {
+      const creativeUrl = await resolveCreativeUrl();
+      if (!creativeUrl) throw new Error('criativo indisponível');
+      const token = await getFreshToken();
+      const res = await fetch('/api/checkin-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'start', url: normalized, creativeUrl, creativeSize: creativeSize || undefined, proxies: useProxy }),
+      });
+      const data = await res.json();
+      if (!res.ok) { const m = data?.message ?? data?.error; throw new Error(typeof m === 'string' ? m : `HTTP ${res.status}`); }
+      setLiveSession(data.sessionId);
+      setLiveUrl(data.liveViewUrl);
+      setLiveStatus('running');
+    } catch (err) {
+      setLiveStatus('error');
+      setLiveError(err instanceof Error ? err.message : String(err));
+    }
+  }, [pageUrl, creativeSrc, creativeSize, useProxy, resolveCreativeUrl, toast]);
+
+  const liveScreenshot = useCallback(async () => {
+    if (!liveSession) return;
+    setLiveBusy(true);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch('/api/checkin-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'screenshot', sessionId: liveSession }),
+      });
+      const data = await res.json();
+      if (!res.ok) { const m = data?.message ?? data?.error; throw new Error(typeof m === 'string' ? m : `HTTP ${res.status}`); }
+      setLiveShot(data.screenshotUrl);
+      // Trigger a download of the captured frame.
+      const a = document.createElement('a');
+      a.href = data.screenshotUrl;
+      a.download = `checkin-live-${creativeSize || 'peca'}.jpg`;
+      a.target = '_blank';
+      a.click();
+      toast('PNG do estado atual gerado.', 'success');
+    } catch (err) {
+      toast(`Não foi possível gerar (${err instanceof Error ? err.message : String(err)}).`, 'error');
+    } finally {
+      setLiveBusy(false);
+    }
+  }, [liveSession, creativeSize, toast]);
+
+  const stopLive = useCallback(async () => {
+    const sid = liveSession;
+    setLiveStatus('idle');
+    setLiveUrl('');
+    setLiveSession('');
+    setLiveShot('');
+    if (!sid) return;
+    try {
+      const token = await getFreshToken();
+      await fetch('/api/checkin-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'stop', sessionId: sid }),
+      });
+    } catch { /* best effort */ }
+  }, [liveSession]);
+
   return (
     <main className={styles.wrap}>
       <header className={styles.head}>
@@ -387,6 +482,15 @@ export function CheckinView() {
           Capture a página de um publisher, identifique os espaços de mídia e sobreponha o criativo para simular o anúncio.
         </p>
       </header>
+
+      <div className={styles.modeTabs}>
+        <button className={`${styles.modeTab} ${mode === 'screenshot' ? styles.modeTabActive : ''}`} onClick={() => setMode('screenshot')}>
+          Screenshot
+        </button>
+        <button className={`${styles.modeTab} ${mode === 'live' ? styles.modeTabActive : ''}`} onClick={() => setMode('live')}>
+          Ao vivo
+        </button>
+      </div>
 
       <section className={styles.form}>
         <div className={styles.field}>
@@ -472,15 +576,48 @@ export function CheckinView() {
           )}
         </div>
 
-        <button className={styles.primary} onClick={onCapture} disabled={status === 'capturing'}>
-          {status === 'capturing' ? 'Capturando…' : 'Capturar página'}
-        </button>
+        {mode === 'screenshot' ? (
+          <button className={styles.primary} onClick={onCapture} disabled={status === 'capturing'}>
+            {status === 'capturing' ? 'Capturando…' : 'Capturar página'}
+          </button>
+        ) : (
+          <button className={styles.primary} onClick={startLive} disabled={liveStatus === 'starting' || liveStatus === 'running'}>
+            {liveStatus === 'starting' ? 'Iniciando sessão…' : liveStatus === 'running' ? 'Sessão ativa' : 'Iniciar ao vivo'}
+          </button>
+        )}
 
-        {status === 'capturing' && <p className={styles.progress}>{CAPTURE_MESSAGES[progressIdx]}</p>}
-        {status === 'error' && <p className={styles.error}>Falhou: {errorMsg}</p>}
+        {mode === 'screenshot' && status === 'capturing' && <p className={styles.progress}>{CAPTURE_MESSAGES[progressIdx]}</p>}
+        {mode === 'screenshot' && status === 'error' && <p className={styles.error}>Falhou: {errorMsg}</p>}
+        {mode === 'live' && liveStatus === 'starting' && <p className={styles.progress}>Abrindo o site ao vivo e injetando o criativo nos slots…</p>}
+        {mode === 'live' && liveStatus === 'error' && <p className={styles.error}>Falhou: {liveError}</p>}
       </section>
 
-      {result && (
+      {mode === 'live' && liveStatus === 'running' && (
+        <section className={styles.workspace}>
+          <div className={styles.toolbar}>
+            <span className={styles.metaText}>sessão ao vivo · navegue dentro do site · o anúncio é servido nos slots do tamanho da peça</span>
+            <div className={styles.spacer} />
+            <button className={styles.ghost} onClick={stopLive}>Encerrar sessão</button>
+            <button className={styles.primarySm} onClick={liveScreenshot} disabled={liveBusy}>
+              {liveBusy ? 'Gerando…' : 'Gerar PNG do estado atual'}
+            </button>
+          </div>
+          <div className={styles.liveFrameWrap}>
+            <iframe
+              className={styles.liveFrame}
+              src={liveUrl}
+              title="site ao vivo"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+          <p className={styles.hint}>
+            A sessão expira em alguns minutos. Navegue pela página (o criativo se mantém nos slots ao trocar de página) e clique em "Gerar PNG" para baixar o frame atual.
+          </p>
+        </section>
+      )}
+
+      {mode === 'screenshot' && result && (
         <section className={styles.workspace}>
           <div className={styles.toolbar}>
             <span className={styles.metaText}>
