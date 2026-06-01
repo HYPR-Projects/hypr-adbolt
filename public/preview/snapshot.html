@@ -80,7 +80,15 @@
           var frame = $('frame');
           frame.onload = function () { $('state').className = 'hide'; frame.style.display = 'block'; };
           frame.onerror = function () { fail('Erro ao carregar o snapshot.'); };
-          frame.src = url;
+          // Supabase serves public HTML as text/plain (nosniff); fetch it and
+          // render through a blob URL so the browser parses it as HTML.
+          fetch(url)
+            .then(function (rr) { return rr.text(); })
+            .then(function (html) {
+              var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+              frame.src = blobUrl;
+            })
+            .catch(function () { frame.src = url; });
         })
         .catch(function (err) { fail('Erro ao carregar: ' + (err && err.message || err)); });
     })();

@@ -57,6 +57,29 @@ export function CheckinView() {
   const [stepIdx, setStepIdx] = useState(0);
   const [result, setResult] = useState<SnapshotResult | null>(null);
   const [shareUrl, setShareUrl] = useState('');
+  const [frameUrl, setFrameUrl] = useState('');
+
+  // Supabase serves public HTML as text/plain (nosniff), so the iframe can't load
+  // the storage URL directly — fetch the HTML and render it via a blob URL, which
+  // carries the text/html type.
+  useEffect(() => {
+    if (status !== 'ready' || !result?.snapshotUrl) return;
+    let revoked = false;
+    let url = '';
+    (async () => {
+      try {
+        const r = await fetch(result.snapshotUrl);
+        const html = await r.text();
+        if (revoked) return;
+        url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+        setFrameUrl(url);
+      } catch {
+        // fall back to the raw URL (will show source, but better than blank)
+        setFrameUrl(result.snapshotUrl);
+      }
+    })();
+    return () => { revoked = true; if (url) URL.revokeObjectURL(url); };
+  }, [status, result]);
 
   const libraryItems = useMemo(() => {
     const q = librarySearch.toLowerCase().trim();
@@ -158,7 +181,7 @@ export function CheckinView() {
     catch { toast('Não foi possível copiar.', 'error'); }
   }, [shareUrl, toast]);
 
-  const reset = () => { setStatus('idle'); setResult(null); setShareUrl(''); setErrorMsg(''); };
+  const reset = () => { setStatus('idle'); setResult(null); setShareUrl(''); setErrorMsg(''); setFrameUrl(''); };
 
   return (
     <main className={styles.wrap}>
@@ -320,7 +343,7 @@ export function CheckinView() {
               </div>
 
               <div className={styles.frameWrap}>
-                <iframe className={styles.frame} src={result.snapshotUrl} title="preview do anúncio" sandbox="allow-same-origin" referrerPolicy="no-referrer" />
+                <iframe className={styles.frame} src={frameUrl} title="preview do anúncio" sandbox="allow-same-origin" referrerPolicy="no-referrer" />
               </div>
             </div>
           )}
