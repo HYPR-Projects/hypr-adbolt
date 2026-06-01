@@ -170,31 +170,73 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
-// 1x1 transparent PNG — placeholder baked into a slot in interactive mode so
-// the slot is sized/marked; the live <iframe> replaces it after serialization.
-const TRANSPARENT_PX =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+// Origin that serves /preview/render-tag.html and /api/ad-proxy. The live layer
+// MUST load from a real https origin: 3P ad loaders (dcmads.js, Sizmek, ...)
+// probe window.location.protocol and refuse to run on blob:/opaque origins,
+// which is why inlining the tag into the serialized (blob-served) page goes
+// blank. Pointing an <iframe> at this origin is the only reliable path.
+const PUBLIC_ORIGIN = process.env.PUBLIC_PREVIEW_ORIGIN || 'https://adbolt.hypr.mobi';
 
-function escAttr(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+// Kinds that get a live layer laid over the frozen image. display/video have no
+// meaningful "live" form, so they stay frozen and never carry live metadata.
+const LIVE_KINDS = new Set(['html5', 'tag', 'survey']);
+
+// Strip the publisher's own CSP <meta> tags from the serialized HTML. They
+// survive SingleFile and would block both the injected hydrator script and the
+// live <iframe> (frame-src/script-src). Safe to drop in a static deliverable.
+function stripCspMeta(html) {
+  return html.replace(
+    /<meta[^>]*http-equiv\s*=\s*['"]?content-security-policy(?:-report-only)?['"]?[^>]*>/gi,
+    ''
+  );
 }
 
-// Build the live <iframe> that replaces the baked screenshot in interactive
-// mode. Returns null for kinds that can't run live (display, video, CM360 tags
-// which only render on whitelisted domains).
-function buildLiveEmbed(kind, src) {
-  const style = 'width:100%;height:100%;border:0;display:block;background:#fff';
-  const sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms';
-  if (kind === 'html5') {
-    if (!/^https?:/i.test(src || '')) return null;
-    return `<iframe data-adbolt-live="1" src="${escAttr(src)}" sandbox="${sandbox}" scrolling="no" style="${style}"></iframe>`;
-  }
-  if (kind === 'tag' || kind === 'survey') {
-    if (/data-dcm-placement=/.test(src || '')) return null; // CM360 won't run off-whitelist
-    const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;overflow:hidden;background:#fff}</style></head><body>${src || ''}</body></html>`;
-    return `<iframe data-adbolt-live="1" srcdoc="${escAttr(doc)}" sandbox="${sandbox}" scrolling="no" style="${style}"></iframe>`;
-  }
-  return null;
+// The hydrator runs in the final (serialized) page. For each slot tagged with
+// data-adbolt-live-kind it lays a live <iframe> over the frozen <img>:
+//   • html5 → the hosted creative URL directly
+//   • tag/survey → /preview/render-tag.html (CM360 ad-proxy fast-path +
+//     document.write fallback, all at https so 3P loaders run)
+// The iframe is transparent and z-stacked above the image; if the renderer
+// posts an error, or never reports loaded within the timeout, the iframe is
+// removed and the frozen image shows through. Net result: live when it can,
+// frozen when it can't, never blank.
+function buildHydratorScript(origin) {
+  const body = `(function(){
+  var ORIGIN=${JSON.stringify(origin || PUBLIC_ORIGIN)};
+  function dec(b64){try{var s=atob(b64);var a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new TextDecoder('utf-8').decode(a);}catch(e){return null;}}
+  var slots=document.querySelectorAll('[data-adbolt-live-kind]');
+  var reg={};
+  Array.prototype.forEach.call(slots,function(slot,i){
+    var kind=slot.getAttribute('data-adbolt-live-kind');
+    var b64=slot.getAttribute('data-adbolt-live-src');
+    if(!kind||!b64)return;
+    var r=slot.getBoundingClientRect();
+    var w=Math.round(r.width)||300,h=Math.round(r.height)||250;
+    var url;
+    if(kind==='html5'){var u=dec(b64);if(!u||!/^https?:/i.test(u))return;url=u;}
+    else{var id='al'+i;url=ORIGIN+'/preview/render-tag.html#tag='+encodeURIComponent(b64)+'&w='+w+'&h='+h+'&id='+id;}
+    var f=document.createElement('iframe');
+    f.setAttribute('data-adbolt-live','1');
+    f.setAttribute('scrolling','no');
+    f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms');
+    f.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent;z-index:2';
+    f.src=url;
+    if(getComputedStyle(slot).position==='static')slot.style.position='relative';
+    slot.appendChild(f);
+    if(kind!=='html5'){
+      var id2='al'+i;
+      reg[id2]={frame:f,settled:false};
+      reg[id2].to=setTimeout(function(){var e=reg[id2];if(e&&!e.settled){e.settled=true;try{e.frame.remove();}catch(x){}}},5000);
+    }
+  });
+  window.addEventListener('message',function(ev){
+    var d=ev&&ev.data;if(!d||d.source!=='adbolt-render-tag')return;
+    var e=d.id&&reg[d.id];if(!e||e.settled)return;
+    if(d.type==='loaded'){e.settled=true;clearTimeout(e.to);}
+    else if(d.type==='error'){e.settled=true;clearTimeout(e.to);try{e.frame.remove();}catch(x){}}
+  });
+})();`;
+  return `<script>${body}</script>`;
 }
 
 // Fetch a source only if it is an image; returns a data URI or null.
@@ -271,7 +313,7 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 }
 
 // ---------------------------------------------------------------------------
-async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, interactive, proxies }) {
+async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freeze, proxies, publicOrigin }) {
   const started = Date.now();
   // Per-phase timing so we can see where the time actually goes (persisted into
   // slots_meta.phases). mark('label') records ms since the previous mark.
@@ -294,15 +336,20 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     try { await page.exposeFunction('__adboltFetch', nodeFetchResource); } catch (e) { /* already bound / unsupported */ }
 
     step = 'creative';
-    // Interactive: replace the baked screenshot with a live <iframe> after
-    // serialization. Bake a transparent placeholder now so the slot is sized.
-    const liveEmbed = interactive ? buildLiveEmbed(creativeKind || 'display', creativeUrl) : null;
-    // Kick off the creative render but DON'T await it yet — it's independent of
-    // the publisher page, so it runs in parallel with goto + scroll and its time
-    // is hidden behind the page load. Awaited just before bake.
-    const creativePromise = liveEmbed
-      ? Promise.resolve(TRANSPARENT_PX)
-      : renderCreativeToImage(browser, { kind: creativeKind || 'display', src: creativeUrl, size: creativeSize });
+    const kind = creativeKind || 'display';
+    // A live layer is attached automatically for html5/tag/survey unless the
+    // caller asked to freeze (static deliverable). display/video are always
+    // frozen — there's no meaningful live form. The frozen image is rendered
+    // either way, so a live layer that fails degrades to it instead of going
+    // blank. liveMeta carries the source the client-side hydrator needs.
+    const wantLive = !freeze && LIVE_KINDS.has(kind);
+    const liveMeta = wantLive
+      ? { kind, b64: Buffer.from(String(creativeUrl), 'utf8').toString('base64') }
+      : null;
+    // Kick off the frozen render now but DON'T await — it's independent of the
+    // publisher page, so it overlaps goto + scroll and its time is hidden behind
+    // the page load. Awaited just before bake.
+    const creativePromise = renderCreativeToImage(browser, { kind, src: creativeUrl, size: creativeSize });
     creativePromise.catch(() => {}); // avoid an unhandled-rejection warning before the await
 
     // Block login/consent SDKs at the network layer (cleaner than removing later).
@@ -349,7 +396,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
 
     step = 'bake';
     creativeDataUri = await creativePromise; // overlap with page load is done here
-    const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '', creativeKind || 'display');
+    const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '', kind, liveMeta);
     mark('bake');
 
     // Trim the page below a height cap before serialize. Inlining every asset of
@@ -368,6 +415,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
       return true;
     }, CAP_HEIGHT).catch(() => false);
     bake.trimmed = trimmed;
+    bake.live = !!liveMeta;
 
     step = 'serialize';
     await page.evaluate(SINGLEFILE_BUNDLE);
@@ -414,25 +462,32 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
         removeAlternativeMedias: true,
         removeAlternativeImages: true,
         saveOriginalURLs: false,
-        // In interactive mode the injected live <iframe> must run, so we don't
-        // insert SingleFile's restrictive CSP meta.
+        // With a live layer the injected hydrator + live <iframe> must run, so
+        // we skip SingleFile's restrictive CSP meta (and strip the publisher's
+        // own below).
         insertMetaCSP: !noCsp,
       });
       return data.content;
-    }, !!liveEmbed);
+    }, !!liveMeta);
     mark('serialize');
 
-    // Interactive: swap the baked placeholder <img> for the live <iframe>.
-    const finalHtml = liveEmbed
-      ? html.replace(/<img\b[^>]*\bdata-adbolt-creative="1"[^>]*>/gi, liveEmbed)
-      : html;
+    // Live mode: drop the publisher CSP so the hydrator + live iframes run, then
+    // inject the hydrator at end of body. Frozen mode ships the static HTML as-is.
+    let finalHtml = html;
+    if (liveMeta) {
+      finalHtml = stripCspMeta(html);
+      const hydrator = buildHydratorScript(publicOrigin);
+      finalHtml = /<\/body>/i.test(finalHtml)
+        ? finalHtml.replace(/<\/body>/i, `${hydrator}</body>`)
+        : finalHtml + hydrator;
+    }
 
     const title = await page.title().catch(() => '');
     bake.phases = phases;
     return {
       html: finalHtml,
       slots: bake,
-      meta: { engine, consentHandled, durationMs: Date.now() - started, title, phases },
+      meta: { engine, consentHandled, durationMs: Date.now() - started, title, phases, live: !!liveMeta },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -471,6 +526,12 @@ export default async function handler(req, res) {
 
   let result, lastErr, firstErr = null;
   let attempts = 0;
+  // Live iframes load render-tag.html from the same deployment that generated
+  // the snapshot, so a preview deploy references its own renderer (and the
+  // production custom domain stays stable for shared links).
+  const fwdProto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+  const fwdHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const publicOrigin = fwdHost ? `${fwdProto}://${fwdHost}` : PUBLIC_ORIGIN;
   for (let attempt = 0; attempt < 2; attempt++) {
     attempts++;
     try {
@@ -479,8 +540,9 @@ export default async function handler(req, res) {
         creativeUrl: String(body.creativeUrl),
         creativeSize: body.creativeSize,
         creativeKind: body.creativeKind || 'display',
-        interactive: !!body.interactive,
+        freeze: !!body.freeze,
         proxies: body.proxies,
+        publicOrigin,
       });
       lastErr = null;
       break;

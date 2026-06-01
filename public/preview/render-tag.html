@@ -30,8 +30,9 @@
   -->
   <script>
     (function () {
+      var MSG_ID = null;
       function post(type, payload) {
-        try { parent.postMessage({ source: 'adbolt-render-tag', type: type, payload: payload || {} }, '*'); } catch (e) {}
+        try { parent.postMessage({ source: 'adbolt-render-tag', type: type, id: MSG_ID, payload: payload || {} }, '*'); } catch (e) {}
       }
 
       function parseFragment() {
@@ -56,6 +57,7 @@
       }
 
       var params = parseFragment();
+      MSG_ID = params.id || null;
       if (!params.tag) { post('error', { reason: 'missing-tag' }); return; }
 
       var tagHtml = b64DecodeUtf8(params.tag);
@@ -69,13 +71,15 @@
       document.body.style.width = w + 'px';
       document.body.style.height = h + 'px';
 
-      // Fast path — CM360 iframe-rendering-mode tags. Parse the placement,
-      // build the /ddm/adi URL ourselves, and point an iframe straight at it.
+      // Fast path — any CM360 tag. We resolve the creative via our /api/ad-proxy
+      // (which hits /ddm/adi server-side) regardless of the tag's declared
+      // rendering-mode. dcmads.js no-ops on repeat calls and is unreliable
+      // off-whitelist, so routing every CM360 placement through the ad server
+      // ourselves (fresh ord per open) is the dependable path — same approach
+      // ThreePartyTagFrame uses.
       var placementMatch = tagHtml.match(/data-dcm-placement=['"]([^'"]+)['"]/);
-      var renderingModeMatch = tagHtml.match(/data-dcm-rendering-mode=['"]([^'"]+)['"]/);
-      var isCm360Iframe = placementMatch && renderingModeMatch && renderingModeMatch[1] === 'iframe';
 
-      if (isCm360Iframe) {
+      if (placementMatch) {
         // Go through our own /api/ad-proxy edge function so the iframe that
         // displays the creative loads from adbolt.hypr.mobi (same-origin),
         // not from ad.doubleclick.net. This removes Chrome's cross-origin
@@ -98,6 +102,7 @@
         adFrame.setAttribute('marginwidth', '0');
         adFrame.setAttribute('marginheight', '0');
         document.body.appendChild(adFrame);
+        post('loaded', { mode: 'cm360-iframe' });
         return;
       }
 
@@ -122,6 +127,7 @@
       doc.open();
       doc.write(wrapped);
       doc.close();
+      post('loaded', { mode: 'fallback' });
     })();
   </script>
 </body>
