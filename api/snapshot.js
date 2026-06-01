@@ -332,7 +332,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
 
     step = 'bake';
     creativeDataUri = await creativePromise; // overlap with page load is done here
-    const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '');
+    const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '', creativeKind || 'display');
 
     // Trim the page below a height cap before serialize. Inlining every asset of
     // a full publisher homepage is memory- and time-heavy and can OOM the

@@ -23,7 +23,7 @@
 // fighting it with an overlay. We force the slot to the creative's declared size
 // because empty GAM slots collapse to 0x0 in headless (no ad demand).
 // ---------------------------------------------------------------------------
-export function bakeCreativeInPage(creativeUrl, sizeStr) {
+export function bakeCreativeInPage(creativeUrl, sizeStr, kind) {
   const m = /^(\d+)\s*[x×]\s*(\d+)$/.exec((sizeStr || '').trim());
   const target = m ? { w: +m[1], h: +m[2] } : null;
   const MARK = 'data-adbolt';
@@ -112,6 +112,77 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
   let n = 0;
   const slots = [];
   let hadRegistry = false;
+
+  // 0. VIDEO — a video creative's pixel size (1280x720) is never a display slot
+  // size, and publishers serve video in players, not display slots. So instead
+  // of size matching, find video surfaces and bake the poster there:
+  //   a. real <video> players, b. known player containers, c. fallback: the
+  //   largest GAM display slot (simulating an outstream unit).
+  if (kind === 'video') {
+    const used = [];
+    function placeVideo(el) {
+      if (!el || el.getAttribute(MARK)) return false;
+      if (used.some((u) => u.contains(el) || el.contains(u))) return false;
+      reveal(el);
+      const r = el.getBoundingClientRect();
+      let bw = Math.round(r.width);
+      let bh = Math.round(r.height);
+      if (bw < 240 || bh < 120) {
+        const pw = (el.parentElement && el.parentElement.getBoundingClientRect().width) || 640;
+        bw = Math.min(Math.max(Math.round(pw), 320), 1280);
+        bh = Math.round((bw * 9) / 16);
+      }
+      if (fill(el, { w: bw, h: bh }, 'video')) {
+        used.push(el);
+        slots.push({ id: el.id || '(video)', booked: bw + 'x' + bh, mode: 'video', filled: true });
+        return true;
+      }
+      return false;
+    }
+
+    document.querySelectorAll('video').forEach((v) => {
+      if (n >= 2) return;
+      const host = v.closest('div,section,figure,aside') || v.parentElement || v;
+      if (placeVideo(host)) { n++; source = source || 'video'; }
+    });
+    if (!n) {
+      document.querySelectorAll('[class*="player"],[class*="video-js"],[class*="jwplayer"],[class*="vjs"],[id*="player"],[class*="video-player"]')
+        .forEach((el) => {
+          if (n >= 2) return;
+          const r = el.getBoundingClientRect();
+          if (r.width >= 280 && r.height >= 140 && r.width / r.height < 4) {
+            if (placeVideo(el)) { n++; source = source || 'video'; }
+          }
+        });
+    }
+    if (!n) {
+      try {
+        const gt = window.googletag;
+        if (gt && typeof gt.pubads === 'function') {
+          let best = null;
+          let bestArea = 0;
+          for (const slot of gt.pubads().getSlots()) {
+            const id = slot.getSlotElementId && slot.getSlotElementId();
+            const el = id ? document.getElementById(id) : null;
+            if (!el) continue;
+            const booked = usableSizes((slot.getSizes && slot.getSizes() || [])
+              .map((s) => (s && s.getWidth ? { w: s.getWidth(), h: s.getHeight() } : null)).filter(Boolean));
+            if (!booked.length) continue;
+            const big = booked.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+            if (big.w * big.h > bestArea) { bestArea = big.w * big.h; best = { el, big }; }
+          }
+          if (best) {
+            reveal(best.el);
+            if (fill(best.el, best.big, 'video')) {
+              n++; source = 'video-outstream';
+              slots.push({ id: best.el.id || '(outstream)', booked: best.big.w + 'x' + best.big.h, mode: 'video-outstream', filled: true });
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return { filled: n, detail, source, slots, exact: 0, approx: 0 };
+  }
 
   // 1. googletag — fill only slots whose booked sizes INCLUDE the creative size
   // (i.e. this creative would actually serve there). Slots with no booked sizes

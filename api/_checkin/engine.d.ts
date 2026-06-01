@@ -3,7 +3,8 @@
 // rely on.
 export function bakeCreativeInPage(
   creativeUrl: string,
-  sizeStr: string
+  sizeStr: string,
+  kind?: string
 ): {
   filled: number;
   detail: string[];

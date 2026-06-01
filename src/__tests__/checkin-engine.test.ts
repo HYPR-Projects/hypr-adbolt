@@ -115,6 +115,46 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
   });
 });
 
+describe('bakeCreativeInPage — video', () => {
+  it('places the poster into a real <video> player container', () => {
+    const wrap = document.createElement('div');
+    const v = document.createElement('video');
+    Object.defineProperty(v, 'getBoundingClientRect', {
+      value: () => ({ width: 640, height: 360, top: 50, left: 0, right: 640, bottom: 410 }),
+      configurable: true,
+    });
+    Object.defineProperty(wrap, 'getBoundingClientRect', {
+      value: () => ({ width: 640, height: 360, top: 50, left: 0, right: 640, bottom: 410 }),
+      configurable: true,
+    });
+    wrap.appendChild(v);
+    document.body.appendChild(wrap);
+    const r = bakeCreativeInPage(CREATIVE, '1280x720', 'video');
+    expect(r.filled).toBeGreaterThanOrEqual(1);
+    expect(r.source).toBe('video');
+    expect(wrap.getAttribute('data-adbolt')).toBe('1');
+  });
+
+  it('falls back to the largest GAM display slot (outstream) when no player exists', () => {
+    makeSlot('billboard_x', 0, 0);
+    // @ts-expect-error test stub
+    window.googletag = {
+      pubads: () => ({
+        getSlots: () => [{
+          getSlotElementId: () => 'billboard_x',
+          getSizes: () => [{ getWidth: () => 970, getHeight: () => 250 }, { getWidth: () => 300, getHeight: () => 250 }],
+        }],
+      }),
+    };
+    const r = bakeCreativeInPage(CREATIVE, '1280x720', 'video');
+    expect(r.filled).toBe(1);
+    expect(r.source).toBe('video-outstream');
+    const slot = document.getElementById('billboard_x')!;
+    expect(slot.getAttribute('data-adbolt')).toBe('1');
+    expect(slot.style.width).toBe('970px'); // largest booked size
+  });
+});
+
 describe('bakeCreativeInPage — prebid fallback', () => {
   it('uses pbjs ad units when googletag is absent', () => {
     makeSlot('div-rail', 0, 0);
