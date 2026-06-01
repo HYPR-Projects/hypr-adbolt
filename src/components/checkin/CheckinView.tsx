@@ -26,7 +26,7 @@ interface CaptureResult {
   truncated?: boolean;
   deviceScaleFactor: number;
   slots: Slot[];
-  meta: { consentHandled: boolean; durationMs: number; title: string };
+  meta: { consentHandled: boolean; durationMs: number; title: string; engine?: string };
 }
 
 interface Box {
@@ -60,6 +60,7 @@ export function CheckinView() {
   const dashLoading = useDashboardStore((s) => s.isLoading);
 
   const [pageUrl, setPageUrl] = useState('');
+  const [useProxy, setUseProxy] = useState(false);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('upload');
   const [librarySearch, setLibrarySearch] = useState('');
 
@@ -184,7 +185,7 @@ export function CheckinView() {
       const res = await fetch('/api/capture', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeSize: creativeSize || undefined }),
+        body: JSON.stringify({ url: normalized, creativeSize: creativeSize || undefined, proxies: useProxy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -211,7 +212,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSize, creativeNatural, toast]);
+  }, [pageUrl, creativeSize, creativeNatural, useProxy, toast]);
 
   // --- Snap to a detected slot ----------------------------------------------
   const snapTo = useCallback(
@@ -398,6 +399,10 @@ export function CheckinView() {
             onChange={(e) => setPageUrl(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && status !== 'capturing' && onCapture()}
           />
+          <label className={styles.proxyToggle}>
+            <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
+            Usar proxy residencial (sites que bloqueiam mais, consome banda paga)
+          </label>
         </div>
 
         <div className={styles.field}>
@@ -480,6 +485,7 @@ export function CheckinView() {
           <div className={styles.toolbar}>
             <span className={styles.metaText}>
               {result.slots.length} slots · {Math.round(result.meta.durationMs / 1000)}s
+              {result.meta.engine ? ` · ${result.meta.engine}` : ''}
               {result.meta.consentHandled ? ' · consent ok' : ''}
               {result.truncated ? ' · página cortada em 8000px' : ''}
             </span>

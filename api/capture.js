@@ -25,6 +25,12 @@ const SUPABASE_ANON_KEY =
 
 const NAV_TIMEOUT = 45_000;
 
+// Browserbase: when the API key is set, captures run on a stealth remote browser
+// (unblocks bot-protected publishers like globo). Falls back to embedded Chromium.
+const BROWSERBASE_API_KEY = process.env.BROWSERBASE_API_KEY || '';
+const BROWSERBASE_PROJECT_ID =
+  process.env.BROWSERBASE_PROJECT_ID || '3798efe6-2de2-4c29-81cc-4bb9d4af54bc';
+
 // ---------------------------------------------------------------------------
 // SSRF guard: only public http(s) hosts.
 // ---------------------------------------------------------------------------
@@ -213,13 +219,45 @@ async function launchBrowser() {
   });
 }
 
-async function runCapture({ url, width, height, deviceScaleFactor, creativeSize, keepAds }) {
+async function createBrowserbaseSession(proxies) {
+  const res = await fetch('https://api.browserbase.com/v1/sessions', {
+    method: 'POST',
+    headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      projectId: BROWSERBASE_PROJECT_ID,
+      proxies: !!proxies,
+      browserSettings: { viewport: { width: 1440, height: 900 } },
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`browserbase session ${res.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+// Returns { browser, page, engine, cleanup }. Uses Browserbase (stealth) when the
+// API key is configured, otherwise the embedded Chromium.
+async function acquireBrowser({ proxies }) {
+  if (BROWSERBASE_API_KEY) {
+    const session = await createBrowserbaseSession(proxies);
+    const browser = await puppeteer.connect({ browserWSEndpoint: session.connectUrl });
+    const pages = await browser.pages();
+    const page = pages[0] || (await browser.newPage());
+    return {
+      browser, page, engine: 'browserbase',
+      cleanup: () => browser.close().catch(() => {}),
+    };
+  }
+  const browser = await launchBrowser();
+  const page = await browser.newPage();
+  return { browser, page, engine: 'embedded', cleanup: () => browser.close().catch(() => {}) };
+}
+
+async function runCapture({ url, width, height, deviceScaleFactor, creativeSize, keepAds, proxies }) {
   const started = Date.now();
   const dsf = deviceScaleFactor || 2;
-  const browser = await launchBrowser();
+  const { page, engine, cleanup } = await acquireBrowser({ proxies });
   let consentHandled = false;
   try {
-    const page = await browser.newPage();
     await page.setViewport({ width: width || 1440, height: height || 900, deviceScaleFactor: dsf });
     await page.setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
@@ -227,7 +265,11 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' });
     try { await page.emulateTimezone('America/Sao_Paulo'); } catch (e) { /* ignore */ }
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    // Non-fatal navigation: heavy pages (esp. via proxy) may not settle; we still
+    // capture whatever rendered.
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 90_000 : NAV_TIMEOUT });
+    } catch (e) { /* continue with whatever loaded */ }
     await page.waitForNetworkIdle({ idleTime: 700, timeout: 8_000 }).catch(() => {});
 
     for (let i = 0; i < 4; i++) {
@@ -267,7 +309,6 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
     });
     const title = await page.title().catch(() => '');
 
-    // Only keep slots that fall inside the captured region.
     const slots = analysis.slots.filter((s) => s.y < captureHeight);
 
     return {
@@ -280,10 +321,10 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
       fullPageHeight: analysis.pageHeight,
       truncated: analysis.pageHeight > CAP_HEIGHT,
       deviceScaleFactor: dsf,
-      meta: { consentHandled, durationMs: Date.now() - started, title },
+      meta: { consentHandled, durationMs: Date.now() - started, title, engine },
     };
   } finally {
-    await browser.close().catch(() => {});
+    await cleanup();
   }
 }
 
@@ -341,6 +382,7 @@ export default async function handler(req, res) {
       deviceScaleFactor: body.deviceScaleFactor,
       creativeSize: body.creativeSize,
       keepAds: body.keepAds,
+      proxies: body.proxies,
     });
   } catch (err) {
     return res.status(502).json({ error: 'capture_failed', message: String(err && err.message || err) });

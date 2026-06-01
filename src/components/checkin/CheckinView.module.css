@@ -325,3 +325,13 @@
   border-radius: var(--r-sm);
   white-space: nowrap;
 }
+
+.proxyToggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-xs);
+  color: var(--text-sec);
+  margin-top: var(--sp-2);
+  cursor: pointer;
+}
