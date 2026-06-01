@@ -366,7 +366,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 60_000 : NAV_TIMEOUT });
     } catch (e) { /* capture whatever rendered */ }
-    await page.waitForNetworkIdle({ idleTime: 600, timeout: 6_000 }).catch(() => {});
+    await page.waitForNetworkIdle({ idleTime: 600, timeout: 3_500 }).catch(() => {});
     mark('nav');
 
     step = 'consent';
@@ -380,13 +380,13 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
 
     // Height cap reused by both scroll and trim. No point lazy-loading (and
     // waiting on) content below the line we'll delete before serialize.
-    const CAP_HEIGHT = engine === 'browserbase' ? 6000 : 9000;
+    const CAP_HEIGHT = engine === 'browserbase' ? 4500 : 9000;
 
     step = 'scroll';
     // Cap the scroll a bit past the trim line so near-the-cut lazy images load
     // but we don't crawl a 20k px homepage we're about to throw away.
     await page.evaluate(autoScrollInPage, CAP_HEIGHT + 1200).catch(() => {});
-    await page.waitForNetworkIdle({ idleTime: 500, timeout: 3_000 }).catch(() => {});
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 2_000 }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1000));
     mark('scroll');
 
