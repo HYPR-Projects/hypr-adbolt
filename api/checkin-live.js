@@ -168,7 +168,7 @@ async function bbCreateSession(proxies) {
       projectId: BB_PROJECT_ID,
       keepAlive: true,
       proxies: !!proxies,
-      browserSettings: { viewport: { width: 1440, height: 900 } },
+      browserSettings: { viewport: { width: 1920, height: 1080 } },
     }),
   });
   const text = await res.text();
@@ -231,10 +231,9 @@ export default async function handler(req, res) {
       if (!body.creativeUrl) return res.status(400).json({ error: 'missing_creative' });
 
       const session = await bbCreateSession(body.proxies);
-      const browser = await puppeteer.connect({ browserWSEndpoint: session.connectUrl });
+      const browser = await puppeteer.connect({ browserWSEndpoint: session.connectUrl, defaultViewport: null });
       try {
         const page = (await browser.pages())[0] || (await browser.newPage());
-        await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
         // Inject the creative on every navigation (survives clicking around).
         await page.evaluateOnNewDocument(buildInjector(body.creativeUrl, body.creativeSize));
         try {
@@ -263,7 +262,7 @@ export default async function handler(req, res) {
     if (action === 'screenshot') {
       if (!body.sessionId) return res.status(400).json({ error: 'missing_session' });
       const connectUrl = await bbConnectUrl(body.sessionId);
-      const browser = await puppeteer.connect({ browserWSEndpoint: connectUrl });
+      const browser = await puppeteer.connect({ browserWSEndpoint: connectUrl, defaultViewport: null });
       let buffer;
       let pageUrl = '';
       let title = '';
