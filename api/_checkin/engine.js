@@ -23,10 +23,14 @@
 // fighting it with an overlay. We force the slot to the creative's declared size
 // because empty GAM slots collapse to 0x0 in headless (no ad demand).
 // ---------------------------------------------------------------------------
-export function bakeCreativeInPage(creativeUrl, sizeStr) {
+export function bakeCreativeInPage(creativeUrl, sizeStr, liveMeta) {
   const m = /^(\d+)\s*[x×]\s*(\d+)$/.exec((sizeStr || '').trim());
   const target = m ? { w: +m[1], h: +m[2] } : null;
   const MARK = 'data-adbolt';
+  // When present, the slot also gets a live layer (hydrated client-side after
+  // serialization). The baked <img> stays as the always-present backstop, so a
+  // live layer that fails to load degrades to the frozen image — never blank.
+  const LIVE = (liveMeta && liveMeta.kind && liveMeta.b64) ? liveMeta : null;
   const detail = [];
   let source = null;
 
@@ -103,6 +107,13 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
     img.style.cssText =
       'display:block;width:100%;height:100%;object-fit:contain;background:#fff;border:0;';
     el.appendChild(img);
+    // Tag the slot for the post-serialization hydrator. The frozen <img> above
+    // is the backstop; the hydrator lays a live <iframe> over it and removes it
+    // again if the live renderer errors out.
+    if (LIVE) {
+      el.setAttribute('data-adbolt-live-kind', LIVE.kind);
+      el.setAttribute('data-adbolt-live-src', LIVE.b64);
+    }
     reveal(el);
     const r = el.getBoundingClientRect();
     detail.push(Math.round(r.width) + 'x' + Math.round(r.height) + (mode === 'approx' ? '~' : ''));

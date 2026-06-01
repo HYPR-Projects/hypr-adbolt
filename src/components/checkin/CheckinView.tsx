@@ -77,7 +77,7 @@ export function CheckinView() {
 
   const [pageUrl, setPageUrl] = useState('');
   const [useProxy, setUseProxy] = useState(false);
-  const [interactive, setInteractive] = useState(false);
+  const [freeze, setFreeze] = useState(false);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('library');
   const [librarySearch, setLibrarySearch] = useState('');
 
@@ -289,7 +289,7 @@ export function CheckinView() {
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, interactive, proxies: useProxy }),
+        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, freeze, proxies: useProxy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -306,7 +306,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, interactive, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, freeze, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -343,8 +343,8 @@ export function CheckinView() {
               Proxy residencial (sites que bloqueiam mais)
             </label>
             <label className={styles.proxyToggle}>
-              <input type="checkbox" checked={interactive} onChange={(e) => setInteractive(e.target.checked)} />
-              Preview interativo (survey, HTML5 e tags respondem — não congela)
+              <input type="checkbox" checked={freeze} onChange={(e) => setFreeze(e.target.checked)} />
+              Congelar para compartilhar (imagem estática, sem depender do servidor)
             </label>
           </div>
 
@@ -443,7 +443,7 @@ export function CheckinView() {
                 </svg>
               </div>
               <p className={styles.emptyTitle}>O preview aparece aqui</p>
-              <p className={styles.emptyText}>Informe a URL, escolha um criativo e gere. O resultado é uma página congelada com o anúncio no slot real.</p>
+              <p className={styles.emptyText}>Informe a URL, escolha um criativo e gere. Tags, surveys e HTML5 rodam ao vivo no slot real; display e vídeo entram como imagem.</p>
             </div>
           )}
 
