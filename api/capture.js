@@ -12,7 +12,7 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { createClient } from '@supabase/supabase-js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 180 };
 
 const SUPABASE_URL =
   process.env.VITE_SUPABASE_URL ||
@@ -254,8 +254,11 @@ async function acquireBrowser({ proxies }) {
 
 async function runCapture({ url, width, height, deviceScaleFactor, creativeSize, keepAds, proxies }) {
   const started = Date.now();
-  const dsf = deviceScaleFactor || 2;
   const { page, engine, cleanup } = await acquireBrowser({ proxies });
+  // Remote CDP (Browserbase) chokes on huge screenshots from Vercel's region, so
+  // capture the background at 1x there. The creative is composited at full res on
+  // export, so the ad stays sharp regardless.
+  const dsf = deviceScaleFactor || (engine === 'browserbase' ? 1 : 2);
   let consentHandled = false;
   try {
     await page.setViewport({ width: width || 1440, height: height || 900, deviceScaleFactor: dsf });

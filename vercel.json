@@ -2,7 +2,7 @@
   "functions": {
     "api/capture.js": {
       "memory": 3009,
-      "maxDuration": 60
+      "maxDuration": 180
     }
   },
   "rewrites": [
