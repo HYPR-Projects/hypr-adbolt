@@ -349,22 +349,6 @@ async function runCapture({ url, width, height, deviceScaleFactor, creativeSize,
 export default async function handler(req, res) {
   // Self-test (no auth): confirms Chromium launches in this environment.
   if (req.method === 'GET') {
-    // Temporary gated diagnostic: runs a full capture from Vercel's environment.
-    if (req.query?.diag === 'hypr-diag-9f3') {
-      const url = (typeof req.query.url === 'string' && req.query.url) || 'https://www.cnnbrasil.com.br/';
-      const proxies = req.query.proxies === '1';
-      const bbKeyLen = BROWSERBASE_API_KEY.length;
-      try {
-        const r = await runCapture({ url, proxies });
-        return res.status(200).json({
-          ok: true, bbKeyLen, engine: r.meta.engine, durationMs: r.meta.durationMs,
-          slots: r.slots.length, pageHeight: r.pageHeight, bytes: r.buffer.length,
-          consent: r.meta.consentHandled, title: r.meta.title,
-        });
-      } catch (err) {
-        return res.status(200).json({ ok: false, bbKeyLen, error: String(err && err.message || err) });
-      }
-    }
     if (req.query?.selftest === '1') {
       try {
         const b = await launchBrowser();
