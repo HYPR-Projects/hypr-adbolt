@@ -498,7 +498,7 @@ export function CheckinView() {
                   className={styles.frame}
                   src={frameUrl}
                   title="preview do anúncio"
-                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-storage-access-by-user-activation"
                   referrerPolicy="no-referrer"
                   style={{
                     width: frameDims.w,

@@ -128,9 +128,16 @@ async function creativeToDataUri(url) {
 async function nodeFetchResource(url) {
   try {
     if (!/^https?:/i.test(url)) return { status: 0, base64: '', headers: {} };
-    const r = await fetch(url, { redirect: 'follow' });
+    // Bound every asset fetch: a single slow/hanging publisher resource (tracker,
+    // slow CDN) with no timeout was stalling the whole SingleFile serialize for
+    // tens of seconds. 4s is plenty for a real asset; anything slower is skipped.
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    let r;
+    try { r = await fetch(url, { redirect: 'follow', signal: ctrl.signal }); }
+    finally { clearTimeout(t); }
     const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length > 8 * 1024 * 1024) return { status: 0, base64: '', headers: {} }; // skip huge assets
+    if (buf.length > 3 * 1024 * 1024) return { status: 0, base64: '', headers: {} }; // skip huge assets
     return {
       status: r.status,
       base64: buf.toString('base64'),
@@ -221,6 +228,12 @@ function buildHydratorScript(origin) {
     var direct=null;
     if(kind==='html5'){var u=raw.trim();if(/^https?:/i.test(u))direct=u;}
     else{var im=raw.match(/<iframe[^>]*\\ssrc=["']([^"']+)["']/i);if(im&&/^https?:\\/\\//i.test(im[1]))direct=im[1];}
+    // Typeform's standalone /to/ URL stalls on its loading screen when framed
+    // without embed params (it waits for an embed handshake). Tell it it's an
+    // embed so it renders the interactive widget directly.
+    if(direct&&/(^|\\.)typeform\\.com\\//i.test(direct)&&!/[?&]typeform-embed=/.test(direct)){
+      direct+=(direct.indexOf('?')<0?'?':'&')+'typeform-embed=embed-widget';
+    }
     var url,watch=false;
     if(direct){url=direct;}
     else{url=ORIGIN+'/preview/render-tag.html#tag='+encodeURIComponent(b64)+'&w='+w+'&h='+h+'&id=al'+i;watch=true;}
@@ -228,7 +241,7 @@ function buildHydratorScript(origin) {
     f.setAttribute('data-adbolt-live','1');
     f.setAttribute('scrolling','no');
     f.setAttribute('allow','fullscreen');
-    f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms');
+    f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
     f.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent;z-index:2';
     f.src=url;
     if(getComputedStyle(slot).position==='static')slot.style.position='relative';
@@ -431,6 +444,12 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
       // reserved for cross-origin assets, which is the only case it's needed for
       // (publisher CDNs blocked by CORS / page CSP). Bridge is also the fallback
       // if a same-origin native fetch fails.
+      // Time-bound in-page fetches the same way the Node bridge is bounded — a
+      // hanging same-origin asset must not stall the serialize either.
+      const tfetch = (url) => {
+        try { return fetch(url, { signal: AbortSignal.timeout(4000) }); }
+        catch (e) { return fetch(url); }
+      };
       const bridge = async (url) => {
         try {
           if (typeof window.__adboltFetch === 'function') {
@@ -444,13 +463,13 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
             if (r && r.status && !r.base64) return new Response('', { status: r.status });
           }
         } catch (e) { /* fall through */ }
-        return fetch(url);
+        return tfetch(url);
       };
       const bridged = async (url) => {
         let sameOrigin = false;
         try { sameOrigin = new URL(url, location.href).origin === location.origin; } catch (e) { /* treat as cross-origin */ }
         if (sameOrigin) {
-          try { const res = await fetch(url); if (res && res.ok) return res; } catch (e) { /* fall back to bridge */ }
+          try { const res = await tfetch(url); if (res && res.ok) return res; } catch (e) { /* fall back to bridge */ }
         }
         return bridge(url);
       };
@@ -468,6 +487,10 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
         removeAlternativeMedias: true,
         removeAlternativeImages: true,
         saveOriginalURLs: false,
+        // Skip large embedded resources — they dominate inline time and rarely
+        // matter for an ad-in-context preview.
+        maxResourceSizeEnabled: true,
+        maxResourceSize: 2,
         // With a live layer the injected hydrator + live <iframe> must run, so
         // we skip SingleFile's restrictive CSP meta (and strip the publisher's
         // own below).
