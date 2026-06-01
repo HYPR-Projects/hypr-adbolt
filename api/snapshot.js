@@ -135,6 +135,24 @@ async function runSnapshot({ url, creativeUrl, creativeSize, proxies }) {
     step = 'bake';
     const bake = await page.evaluate(bakeCreativeInPage, creativeUrl, creativeSize || '');
 
+    // Trim the page below a height cap before serialize. Inlining every asset of
+    // a full publisher homepage is memory- and time-heavy and can OOM the
+    // function (HTTP 546); the ad + surrounding context lives within the cap.
+    // Runs AFTER bake so baked slots (data-adbolt) are preserved. Embedded
+    // Chromium gets more headroom than the remote (Browserbase) path.
+    const CAP_HEIGHT = engine === 'browserbase' ? 6000 : 9000;
+    const trimmed = await page.evaluate((cap) => {
+      if (document.documentElement.scrollHeight <= cap) return false;
+      for (const el of [...document.body.children]) {
+        if (el.getAttribute && el.getAttribute('data-adbolt')) continue;
+        if (el.querySelector && el.querySelector('[data-adbolt]')) continue;
+        const top = el.getBoundingClientRect().top + window.scrollY;
+        if (top > cap) { try { el.remove(); } catch (e) { /* ignore */ } }
+      }
+      return true;
+    }, CAP_HEIGHT).catch(() => false);
+    bake.trimmed = trimmed;
+
     step = 'serialize';
     await page.evaluate(SINGLEFILE_BUNDLE);
     const html = await page.evaluate(async () => {
@@ -225,7 +243,7 @@ export default async function handler(req, res) {
   const htmlPath = `${userId}/snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`;
   const { error: upErr } = await userClient.storage
     .from('checkins')
-    .upload(htmlPath, Buffer.from(result.html, 'utf8'), { contentType: 'text/html; charset=utf-8', upsert: false });
+    .upload(htmlPath, Buffer.from(result.html, 'utf8'), { contentType: 'text/html', upsert: false });
   if (upErr) return res.status(500).json({ error: 'upload_failed', message: String(upErr.message || upErr) });
   const snapshotUrl = userClient.storage.from('checkins').getPublicUrl(htmlPath).data.publicUrl;
 

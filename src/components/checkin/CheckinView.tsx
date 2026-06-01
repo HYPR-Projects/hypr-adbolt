@@ -21,12 +21,12 @@ interface SnapshotResult {
   meta: { engine?: string; durationMs: number; title: string };
 }
 
-const PROGRESS = [
-  'Abrindo a página do publisher…',
-  'Fechando avisos de cookies e login…',
-  'Disparando os anúncios lazy-load…',
-  'Encaixando o criativo nos slots reais…',
-  'Congelando a página (inline de tudo)…',
+const STEPS = [
+  'Abrindo a página',
+  'Limpando avisos',
+  'Disparando os anúncios',
+  'Encaixando o criativo',
+  'Congelando a página',
 ];
 
 function parseDimensions(dim: string | null): { w: number; h: number } | null {
@@ -43,7 +43,7 @@ export function CheckinView() {
 
   const [pageUrl, setPageUrl] = useState('');
   const [useProxy, setUseProxy] = useState(false);
-  const [creativeSource, setCreativeSource] = useState<CreativeSource>('upload');
+  const [creativeSource, setCreativeSource] = useState<CreativeSource>('library');
   const [librarySearch, setLibrarySearch] = useState('');
 
   const [creativeSrc, setCreativeSrc] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function CheckinView() {
 
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [progressIdx, setProgressIdx] = useState(0);
+  const [stepIdx, setStepIdx] = useState(0);
   const [result, setResult] = useState<SnapshotResult | null>(null);
   const [shareUrl, setShareUrl] = useState('');
 
@@ -73,8 +73,8 @@ export function CheckinView() {
 
   useEffect(() => {
     if (status !== 'running') return;
-    setProgressIdx(0);
-    const t = setInterval(() => setProgressIdx((i) => Math.min(i + 1, PROGRESS.length - 1)), 7000);
+    setStepIdx(0);
+    const t = setInterval(() => setStepIdx((i) => Math.min(i + 1, STEPS.length - 1)), 6000);
     return () => clearInterval(t);
   }, [status]);
 
@@ -101,7 +101,6 @@ export function CheckinView() {
     setCreativeSize(c.dimensions || (natural ? `${natural.w}x${natural.h}` : ''));
   }, [creativeSrc, creativeIsBlob]);
 
-  // Resolve a public URL for the creative (library already public; uploads go to storage).
   const resolveCreativeUrl = useCallback(async (): Promise<string> => {
     if (!creativeSrc) throw new Error('selecione um criativo');
     if (!creativeIsBlob) return creativeSrc;
@@ -115,7 +114,9 @@ export function CheckinView() {
     return supabase.storage.from('checkins').getPublicUrl(path).data.publicUrl;
   }, [creativeSrc, creativeIsBlob, creativeFile]);
 
-  // --- Generate snapshot -----------------------------------------------------
+  // --- Generate --------------------------------------------------------------
+  const canGenerate = !!pageUrl.trim() && !!creativeSrc && status !== 'running';
+
   const generate = useCallback(async () => {
     let normalized = pageUrl.trim();
     if (!normalized) { toast('Informe a URL da página.', 'error'); return; }
@@ -143,11 +144,8 @@ export function CheckinView() {
       setResult(r);
       setShareUrl(`${window.location.origin}/preview/snapshot.html?id=${r.shareId}`);
       setStatus('ready');
-      if (r.slots.filled === 0) {
-        toast('Snapshot gerado, mas nenhum slot foi detectado para este tamanho.', 'error');
-      } else {
-        toast(`Snapshot gerado · ${r.slots.filled} slot(s) preenchido(s).`, 'success');
-      }
+      if (r.slots.filled === 0) toast('Snapshot gerado, mas nenhum slot foi detectado para este tamanho.', 'error');
+      else toast(`Snapshot gerado · ${r.slots.filled} slot(s) preenchido(s).`, 'success');
     } catch (err) {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
@@ -160,150 +158,174 @@ export function CheckinView() {
     catch { toast('Não foi possível copiar.', 'error'); }
   }, [shareUrl, toast]);
 
-  const reset = () => {
-    setStatus('idle');
-    setResult(null);
-    setShareUrl('');
-    setErrorMsg('');
-  };
+  const reset = () => { setStatus('idle'); setResult(null); setShareUrl(''); setErrorMsg(''); };
 
   return (
     <main className={styles.wrap}>
       <header className={styles.head}>
         <h1 className={styles.title}>Checkin</h1>
         <p className={styles.sub}>
-          Gere um preview do criativo encaixado nos espaços de mídia reais da página do publisher.
-          O resultado é uma página congelada e navegável, com link para compartilhar.
+          Encaixe o criativo nos espaços de mídia reais da página e gere um preview navegável para compartilhar.
         </p>
       </header>
 
-      <section className={styles.form}>
-        <div className={styles.field}>
-          <label className={styles.label}>URL da página</label>
-          <input
-            className={styles.input}
-            type="text"
-            placeholder="cnnbrasil.com.br/esportes/automobilismo/"
-            value={pageUrl}
-            onChange={(e) => setPageUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && status !== 'running' && generate()}
-          />
-          <label className={styles.proxyToggle}>
-            <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
-            Usar proxy residencial (sites que bloqueiam mais, consome banda paga)
-          </label>
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label}>Criativo</label>
-          <div className={styles.tabs}>
-            <button className={`${styles.tab} ${creativeSource === 'upload' ? styles.tabActive : ''}`} onClick={() => setCreativeSource('upload')}>
-              Upload
-            </button>
-            <button className={`${styles.tab} ${creativeSource === 'library' ? styles.tabActive : ''}`} onClick={() => setCreativeSource('library')}>
-              Da biblioteca
-            </button>
+      <div className={styles.layout}>
+        {/* ── Config ─────────────────────────────────────────────── */}
+        <section className={styles.panel}>
+          <div className={styles.field}>
+            <label className={styles.label}>URL da página</label>
+            <input
+              className={styles.input}
+              type="text"
+              placeholder="cnnbrasil.com.br/esportes/"
+              value={pageUrl}
+              onChange={(e) => setPageUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && canGenerate && generate()}
+            />
+            <label className={styles.proxyToggle}>
+              <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
+              Proxy residencial (sites que bloqueiam mais)
+            </label>
           </div>
 
-          {creativeSource === 'upload' ? (
-            <div className={styles.row}>
-              <input
-                className={styles.fileInput}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                onChange={(e) => e.target.files?.[0] && onCreativeFile(e.target.files[0])}
-              />
-              <div className={styles.fieldSm}>
+          <div className={styles.field}>
+            <label className={styles.label}>Criativo</label>
+            <div className={styles.tabs}>
+              <button className={`${styles.tab} ${creativeSource === 'library' ? styles.tabActive : ''}`} onClick={() => setCreativeSource('library')}>
+                Da biblioteca
+              </button>
+              <button className={`${styles.tab} ${creativeSource === 'upload' ? styles.tabActive : ''}`} onClick={() => setCreativeSource('upload')}>
+                Upload
+              </button>
+            </div>
+
+            {creativeSource === 'upload' ? (
+              <div className={styles.uploadRow}>
                 <input
-                  className={styles.input}
+                  className={styles.fileInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  onChange={(e) => e.target.files?.[0] && onCreativeFile(e.target.files[0])}
+                />
+                <input
+                  className={styles.sizeInput}
                   type="text"
                   placeholder="300x250"
                   value={creativeSize}
                   onChange={(e) => setCreativeSize(e.target.value)}
                 />
               </div>
-            </div>
-          ) : (
-            <div className={styles.library}>
-              <input
-                className={styles.input}
-                type="text"
-                placeholder="Buscar por nome ou tamanho…"
-                value={librarySearch}
-                onChange={(e) => setLibrarySearch(e.target.value)}
-              />
-              {dashLoading ? (
-                <p className={styles.hint}>Carregando criativos…</p>
-              ) : libraryItems.length === 0 ? (
-                <p className={styles.hint}>Nenhum criativo de display com preview encontrado.</p>
-              ) : (
-                <div className={styles.grid}>
-                  {libraryItems.slice(0, 60).map((c) => (
-                    <button
-                      key={c.id}
-                      className={`${styles.card} ${selectedCreativeId === c.id ? styles.cardActive : ''}`}
-                      onClick={() => onPickLibrary(c)}
-                      title={`${c.name} · ${c.dimensions || ''}`}
-                    >
-                      <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
-                      <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
-                    </button>
-                  ))}
+            ) : (
+              <>
+                <input
+                  className={styles.input}
+                  type="text"
+                  placeholder="Buscar por nome ou tamanho…"
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                />
+                {dashLoading ? (
+                  <p className={styles.hint}>Carregando criativos…</p>
+                ) : libraryItems.length === 0 ? (
+                  <p className={styles.hint}>Nenhum criativo de display com preview encontrado.</p>
+                ) : (
+                  <div className={styles.grid}>
+                    {libraryItems.slice(0, 80).map((c) => (
+                      <button
+                        key={c.id}
+                        className={`${styles.card} ${selectedCreativeId === c.id ? styles.cardActive : ''}`}
+                        onClick={() => onPickLibrary(c)}
+                        title={`${c.name} · ${c.dimensions || ''}`}
+                      >
+                        <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
+                        <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {creativeSrc && (
+              <div className={styles.selected}>
+                <img src={creativeSrc} alt="criativo selecionado" />
+                <div className={styles.selectedMeta}>
+                  <span className={styles.selectedDim}>{creativeSize || 'tamanho não detectado'}</span>
+                  <span className={styles.selectedLabel}>criativo selecionado</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {creativeSrc && (
-            <div className={styles.creativePreview}>
-              <img src={creativeSrc} alt="criativo selecionado" />
-              <span>{creativeSize || 'tamanho não detectado'}</span>
-            </div>
-          )}
-        </div>
-
-        <button className={styles.primary} onClick={generate} disabled={status === 'running'}>
-          {status === 'running' ? 'Gerando snapshot…' : 'Gerar snapshot'}
-        </button>
-
-        {status === 'running' && <p className={styles.progress}>{PROGRESS[progressIdx]}</p>}
-        {status === 'error' && <p className={styles.error}>Falhou: {errorMsg}</p>}
-      </section>
-
-      {status === 'ready' && result && (
-        <section className={styles.workspace}>
-          <div className={styles.toolbar}>
-            <span className={styles.metaText}>
-              {result.slots.filled > 0
-                ? `${result.slots.filled} slot(s) preenchido(s)${result.slots.source ? ` · ${result.slots.source}` : ''}`
-                : 'nenhum slot detectado para este tamanho'}
-              {result.meta.engine ? ` · ${result.meta.engine}` : ''}
-              {` · ${Math.round(result.meta.durationMs / 1000)}s`}
-            </span>
-            <div className={styles.spacer} />
-            <button className={styles.ghost} onClick={reset}>Novo checkin</button>
-            <button className={styles.primarySm} onClick={copyLink}>Copiar link</button>
+              </div>
+            )}
           </div>
 
-          <div className={styles.shareRow}>
-            <input className={styles.shareInput} readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
-            <a className={styles.shareOpen} href={shareUrl} target="_blank" rel="noopener noreferrer">Abrir</a>
-          </div>
-
-          <div className={styles.snapshotFrameWrap}>
-            <iframe
-              className={styles.snapshotFrame}
-              src={result.snapshotUrl}
-              title="preview do anúncio"
-              sandbox="allow-same-origin"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <p className={styles.hint}>
-            Página congelada e self-contained: rola e mostra o anúncio em contexto. O link acima é permanente e abre sem login.
-          </p>
+          <button className={styles.primary} onClick={generate} disabled={!canGenerate}>
+            {status === 'running' ? 'Gerando…' : 'Gerar snapshot'}
+          </button>
         </section>
-      )}
+
+        {/* ── Result ─────────────────────────────────────────────── */}
+        <section className={styles.result}>
+          {status === 'idle' && (
+            <div className={styles.empty}>
+              <div className={styles.emptyIcon}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="4" width="18" height="14" rx="2" />
+                  <rect x="13" y="9" width="6" height="5" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+                  <line x1="3" y1="8" x2="21" y2="8" />
+                </svg>
+              </div>
+              <p className={styles.emptyTitle}>O preview aparece aqui</p>
+              <p className={styles.emptyText}>Informe a URL, escolha um criativo e gere. O resultado é uma página congelada com o anúncio no slot real.</p>
+            </div>
+          )}
+
+          {status === 'running' && (
+            <div className={styles.loading}>
+              <div className={styles.bar}><span /></div>
+              <ol className={styles.steps}>
+                {STEPS.map((s, i) => (
+                  <li key={s} className={i < stepIdx ? styles.stepDone : i === stepIdx ? styles.stepNow : styles.stepWait}>
+                    {s}
+                  </li>
+                ))}
+              </ol>
+              <p className={styles.loadingHint}>Páginas pesadas levam ~30–60s. Depois o link carrega instantâneo.</p>
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className={styles.empty}>
+              <p className={styles.errorTitle}>Não rolou dessa vez</p>
+              <p className={styles.errorText}>{errorMsg}</p>
+              <button className={styles.ghost} onClick={reset}>Tentar de novo</button>
+            </div>
+          )}
+
+          {status === 'ready' && result && (
+            <div className={styles.ready}>
+              <div className={styles.resultBar}>
+                <span className={`${styles.badge} ${result.slots.filled > 0 ? '' : styles.badgeWarn}`}>
+                  {result.slots.filled > 0
+                    ? `${result.slots.filled} slot(s) · ${result.slots.source || ''}`
+                    : 'nenhum slot detectado'}
+                </span>
+                <span className={styles.metaText}>{result.meta.engine || ''} · {Math.round(result.meta.durationMs / 1000)}s</span>
+                <div className={styles.spacer} />
+                <button className={styles.ghost} onClick={reset}>Novo</button>
+              </div>
+
+              <div className={styles.shareRow}>
+                <input className={styles.shareInput} readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
+                <button className={styles.copyBtn} onClick={copyLink}>Copiar</button>
+                <a className={styles.shareOpen} href={shareUrl} target="_blank" rel="noopener noreferrer">Abrir</a>
+              </div>
+
+              <div className={styles.frameWrap}>
+                <iframe className={styles.frame} src={result.snapshotUrl} title="preview do anúncio" sandbox="allow-same-origin" referrerPolicy="no-referrer" />
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   );
 }
