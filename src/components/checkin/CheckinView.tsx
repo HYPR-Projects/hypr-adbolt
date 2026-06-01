@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFreshToken } from '@/lib/auth-token';
 import { useUIStore } from '@/stores/ui';
+import { useDashboardStore } from '@/stores/dashboard';
+import type { Creative } from '@/types';
 import styles from './CheckinView.module.css';
 
 interface Slot {
@@ -32,6 +34,7 @@ interface Box {
 }
 
 type Status = 'idle' | 'capturing' | 'ready' | 'error';
+type CreativeSource = 'upload' | 'library';
 
 const CAPTURE_MESSAGES = [
   'Carregando a página…',
@@ -41,11 +44,24 @@ const CAPTURE_MESSAGES = [
   'Montando o screenshot…',
 ];
 
+function parseDimensions(dim: string | null): { w: number; h: number } | null {
+  if (!dim) return null;
+  const m = /(\d+)\s*[x×]\s*(\d+)/.exec(dim);
+  return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
+}
+
 export function CheckinView() {
   const toast = useUIStore((s) => s.toast);
+  const creatives = useDashboardStore((s) => s.creatives);
+  const loadCreatives = useDashboardStore((s) => s.loadCreatives);
+  const dashLoading = useDashboardStore((s) => s.isLoading);
 
   const [pageUrl, setPageUrl] = useState('');
-  const [creativeObjUrl, setCreativeObjUrl] = useState<string | null>(null);
+  const [creativeSource, setCreativeSource] = useState<CreativeSource>('upload');
+  const [librarySearch, setLibrarySearch] = useState('');
+
+  const [creativeSrc, setCreativeSrc] = useState<string | null>(null);
+  const [creativeIsBlob, setCreativeIsBlob] = useState(false);
   const [creativeNatural, setCreativeNatural] = useState<{ w: number; h: number } | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
@@ -60,7 +76,26 @@ export function CheckinView() {
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [displayW, setDisplayW] = useState(0);
 
-  // Cycle progress messages while capturing.
+  // Display-type creatives with a usable raster thumbnail.
+  const libraryItems = useMemo(() => {
+    const q = librarySearch.toLowerCase().trim();
+    return creatives.filter((c) => {
+      if (c.creative_type !== 'display' || !c.thumbnail_url) return false;
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        (c.dimensions || '').toLowerCase().includes(q)
+      );
+    });
+  }, [creatives, librarySearch]);
+
+  // Lazy-load the dashboard creatives the first time the library tab is opened.
+  useEffect(() => {
+    if (creativeSource === 'library' && creatives.length === 0 && !dashLoading) {
+      loadCreatives();
+    }
+  }, [creativeSource, creatives.length, dashLoading, loadCreatives]);
+
   useEffect(() => {
     if (status !== 'capturing') return;
     setProgressIdx(0);
@@ -68,7 +103,6 @@ export function CheckinView() {
     return () => clearInterval(t);
   }, [status]);
 
-  // Track rendered background width to map page-CSS-px → screen px.
   const measure = useCallback(() => {
     if (imgRef.current) setDisplayW(imgRef.current.clientWidth);
   }, []);
@@ -79,10 +113,22 @@ export function CheckinView() {
 
   const displayScale = result && displayW ? displayW / result.pageWidth : 1;
 
-  // --- Creative upload -------------------------------------------------------
+  // --- Creative selection ----------------------------------------------------
+  const setCreative = useCallback(
+    (src: string, isBlob: boolean, natural: { w: number; h: number } | null, size: string) => {
+      setCreativeSrc((prev) => {
+        if (prev && creativeIsBlob && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+        return src;
+      });
+      setCreativeIsBlob(isBlob);
+      setCreativeNatural(natural);
+      setCreativeSize(size);
+    },
+    [creativeIsBlob],
+  );
+
   const onCreativeFile = useCallback(
     (file: File) => {
-      if (creativeObjUrl) URL.revokeObjectURL(creativeObjUrl);
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
@@ -90,9 +136,27 @@ export function CheckinView() {
         setCreativeSize(`${img.naturalWidth}x${img.naturalHeight}`);
       };
       img.src = url;
-      setCreativeObjUrl(url);
+      setCreative(url, true, null, '');
     },
-    [creativeObjUrl],
+    [setCreative],
+  );
+
+  const onPickLibrary = useCallback(
+    (c: Creative) => {
+      const natural = parseDimensions(c.dimensions);
+      setCreative(c.thumbnail_url as string, false, natural, c.dimensions || '');
+      if (!natural) {
+        // Fall back to the image's intrinsic size if dimensions are missing.
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          setCreativeNatural({ w: img.naturalWidth, h: img.naturalHeight });
+          setCreativeSize(`${img.naturalWidth}x${img.naturalHeight}`);
+        };
+        img.src = c.thumbnail_url as string;
+      }
+    },
+    [setCreative],
   );
 
   // --- Capture ---------------------------------------------------------------
@@ -123,7 +187,6 @@ export function CheckinView() {
       setResult(r);
       setStatus('ready');
 
-      // Place the creative: snap to the recommended slot, else center it.
       const rec = r.slots.find((s) => s.recommended);
       if (rec) {
         setBox({ x: rec.x, y: rec.y, w: rec.w, h: rec.h });
@@ -148,7 +211,6 @@ export function CheckinView() {
         setBox({ x: slot.x, y: slot.y, w: slot.w, h: slot.h });
         return;
       }
-      // Fit the creative inside the slot keeping its aspect ratio.
       const ar = creativeNatural.w / creativeNatural.h;
       let w = slot.w;
       let h = w / ar;
@@ -161,7 +223,7 @@ export function CheckinView() {
     [creativeNatural],
   );
 
-  // --- Drag / resize (page-CSS-px, converted from pointer deltas) -----------
+  // --- Drag / resize ---------------------------------------------------------
   const dragState = useRef<{ mode: 'move' | 'resize'; sx: number; sy: number; box: Box } | null>(null);
 
   const onPointerDownMove = (e: React.PointerEvent) => {
@@ -187,9 +249,8 @@ export function CheckinView() {
       setBox({ ...ds.box, x: ds.box.x + dx, y: ds.box.y + dy });
     } else {
       const ar = ds.box.w / ds.box.h;
-      let w = Math.max(20, ds.box.w + dx);
-      const h = w / ar; // lock aspect ratio
-      setBox({ ...ds.box, w, h });
+      const w = Math.max(20, ds.box.w + dx);
+      setBox({ ...ds.box, w, h: w / ar });
     }
   };
   const onPointerUp = () => {
@@ -199,23 +260,22 @@ export function CheckinView() {
   // --- Export PNG ------------------------------------------------------------
   const [exporting, setExporting] = useState(false);
   const onExport = useCallback(async () => {
-    if (!result || !box || !creativeObjUrl) {
-      toast('Carregue um criativo e posicione a peça antes de exportar.', 'error');
+    if (!result || !box || !creativeSrc) {
+      toast('Selecione um criativo e posicione a peça antes de exportar.', 'error');
       return;
     }
     setExporting(true);
     try {
       const dsf = result.deviceScaleFactor;
-      const bg = new Image();
-      bg.crossOrigin = 'anonymous';
-      const creative = new Image();
-      const load = (img: HTMLImageElement, src: string) =>
-        new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
+      const load = (src: string) =>
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
           img.onerror = () => reject(new Error('falha ao carregar imagem'));
           img.src = src;
         });
-      await Promise.all([load(bg, result.screenshotUrl), load(creative, creativeObjUrl)]);
+      const [bg, creative] = await Promise.all([load(result.screenshotUrl), load(creativeSrc)]);
 
       const canvas = document.createElement('canvas');
       canvas.width = result.pageWidth * dsf;
@@ -240,7 +300,7 @@ export function CheckinView() {
     } finally {
       setExporting(false);
     }
-  }, [result, box, creativeObjUrl, creativeSize, toast]);
+  }, [result, box, creativeSrc, creativeSize, toast]);
 
   const reset = () => {
     setResult(null);
@@ -273,26 +333,71 @@ export function CheckinView() {
           />
         </div>
 
-        <div className={styles.row}>
-          <div className={styles.field}>
-            <label className={styles.label}>Criativo (imagem)</label>
-            <input
-              className={styles.fileInput}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              onChange={(e) => e.target.files?.[0] && onCreativeFile(e.target.files[0])}
-            />
+        <div className={styles.field}>
+          <label className={styles.label}>Criativo</label>
+          <div className={styles.tabs}>
+            <button
+              className={`${styles.tab} ${creativeSource === 'upload' ? styles.tabActive : ''}`}
+              onClick={() => setCreativeSource('upload')}
+            >
+              Upload
+            </button>
+            <button
+              className={`${styles.tab} ${creativeSource === 'library' ? styles.tabActive : ''}`}
+              onClick={() => setCreativeSource('library')}
+            >
+              Da biblioteca
+            </button>
           </div>
-          <div className={styles.fieldSm}>
-            <label className={styles.label}>Tamanho</label>
-            <input
-              className={styles.input}
-              type="text"
-              placeholder="300x600"
-              value={creativeSize}
-              onChange={(e) => setCreativeSize(e.target.value)}
-            />
-          </div>
+
+          {creativeSource === 'upload' ? (
+            <div className={styles.row}>
+              <input
+                className={styles.fileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                onChange={(e) => e.target.files?.[0] && onCreativeFile(e.target.files[0])}
+              />
+              <div className={styles.fieldSm}>
+                <input
+                  className={styles.input}
+                  type="text"
+                  placeholder="300x250"
+                  value={creativeSize}
+                  onChange={(e) => setCreativeSize(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={styles.library}>
+              <input
+                className={styles.input}
+                type="text"
+                placeholder="Buscar por nome ou tamanho…"
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+              />
+              {dashLoading ? (
+                <p className={styles.hint}>Carregando criativos…</p>
+              ) : libraryItems.length === 0 ? (
+                <p className={styles.hint}>Nenhum criativo de display com preview encontrado.</p>
+              ) : (
+                <div className={styles.grid}>
+                  {libraryItems.slice(0, 60).map((c) => (
+                    <button
+                      key={c.id}
+                      className={`${styles.card} ${creativeSrc === c.thumbnail_url ? styles.cardActive : ''}`}
+                      onClick={() => onPickLibrary(c)}
+                      title={`${c.name} · ${c.dimensions || ''}`}
+                    >
+                      <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
+                      <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <button className={styles.primary} onClick={onCapture} disabled={status === 'capturing'}>
@@ -316,7 +421,7 @@ export function CheckinView() {
             </label>
             <div className={styles.spacer} />
             <button className={styles.ghost} onClick={reset}>Novo checkin</button>
-            <button className={styles.primarySm} onClick={onExport} disabled={exporting || !box || !creativeObjUrl}>
+            <button className={styles.primarySm} onClick={onExport} disabled={exporting || !box || !creativeSrc}>
               {exporting ? 'Exportando…' : 'Exportar PNG'}
             </button>
           </div>
@@ -351,20 +456,20 @@ export function CheckinView() {
                   </button>
                 ))}
 
-            {box && creativeObjUrl && (
+            {box && creativeSrc && (
               <div
                 className={styles.creative}
                 style={{ left: sc(box.x), top: sc(box.y), width: sc(box.w), height: sc(box.h) }}
                 onPointerDown={onPointerDownMove}
               >
-                <img src={creativeObjUrl} alt="criativo" draggable={false} />
+                <img src={creativeSrc} alt="criativo" draggable={false} />
                 <span className={styles.resize} onPointerDown={onPointerDownResize} />
               </div>
             )}
           </div>
 
-          {box == null && creativeObjUrl == null && (
-            <p className={styles.hint}>Carregue um criativo acima e clique num slot para posicionar a peça.</p>
+          {!creativeSrc && (
+            <p className={styles.hint}>Selecione um criativo acima e clique num slot para posicionar a peça.</p>
           )}
         </section>
       )}
