@@ -45,6 +45,36 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
   function largestSize(arr) {
     return arr.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
   }
+  // A real display placement, not a micro text/native marker (globo's
+  // banner_insert__* are 90x32, banner_extra_fluid 80x35 — never a billboard).
+  function isDisplaySize(s) {
+    return s && s.w >= 120 && s.h >= 50;
+  }
+
+  // Publishers collapse empty ad wrappers (display:none / height:0 / hidden)
+  // until their ad script fills them — which we block. A slot can match and be
+  // filled yet render 0x0 because an ancestor is hidden. Walk up and clear the
+  // hiding styles so the baked creative actually shows (the globo header
+  // billboard, banner_home1, was exactly this case).
+  function reveal(el) {
+    let node = el;
+    let hops = 0;
+    while (node && node !== document.body && node !== document.documentElement && hops < 10) {
+      let cs;
+      try { cs = getComputedStyle(node); } catch (e) { break; }
+      if (cs.display === 'none') node.style.setProperty('display', 'block', 'important');
+      if (cs.visibility === 'hidden') node.style.setProperty('visibility', 'visible', 'important');
+      if (parseFloat(cs.opacity) === 0) node.style.setProperty('opacity', '1', 'important');
+      const clipped = cs.overflow === 'hidden' || cs.overflowY === 'hidden';
+      const h = parseFloat(cs.height) || 0;
+      if (clipped && (h === 0 || cs.maxHeight === '0px')) {
+        node.style.setProperty('height', 'auto', 'important');
+        node.style.setProperty('max-height', 'none', 'important');
+      }
+      node = node.parentElement;
+      hops++;
+    }
+  }
 
   // box: the reserved slot size {w,h}. mode: 'exact' (creative size matched a
   // booked size) or 'approx' (slot reserved at its own booked size, creative
@@ -73,6 +103,7 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
     img.style.cssText =
       'display:block;width:100%;height:100%;object-fit:contain;background:#fff;border:0;';
     el.appendChild(img);
+    reveal(el);
     const r = el.getBoundingClientRect();
     detail.push(Math.round(r.width) + 'x' + Math.round(r.height) + (mode === 'approx' ? '~' : ''));
     return true;
@@ -99,7 +130,9 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
         if (target && booked.some((s) => s.w === target.w && s.h === target.h)) {
           mode = 'exact'; box = target;              // creative size is booked here
         } else if (booked.length) {
-          mode = 'approx'; box = largestSize(booked); // reserve the slot's real size
+          const big = largestSize(booked);
+          if (!isDisplaySize(big)) { slots.push({ id, booked: bookedStr, mode: 'too-small', filled: false }); continue; }
+          mode = 'approx'; box = big;                 // reserve the slot's real size
         } else if (target) {
           mode = 'approx'; box = target;              // no booked info — use creative size
         } else {
@@ -124,7 +157,11 @@ export function bakeCreativeInPage(creativeUrl, sizeStr) {
           const flat = usableSizes(sizes.map((s) => (Array.isArray(s) ? { w: s[0], h: s[1] } : null)).filter(Boolean));
           let mode, box;
           if (target && flat.some((s) => s.w === target.w && s.h === target.h)) { mode = 'exact'; box = target; }
-          else if (flat.length) { mode = 'approx'; box = largestSize(flat); }
+          else if (flat.length) {
+            const big = largestSize(flat);
+            if (!isDisplaySize(big)) continue;
+            mode = 'approx'; box = big;
+          }
           else if (target) { mode = 'approx'; box = target; }
           else continue;
           const ok = fill(el, box, mode);

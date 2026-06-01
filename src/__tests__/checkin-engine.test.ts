@@ -86,6 +86,25 @@ describe('bakeCreativeInPage — googletag (primary path)', () => {
     expect(slot.style.width).toBe('300px');
     expect(slot.style.height).toBe('250px');
   });
+
+  it('skips micro insert slots (booked too small for a display ad)', () => {
+    makeSlot('banner_insert__001', 90, 32);
+    makeSlot('banner_home1', 0, 0);
+    // @ts-expect-error test stub
+    window.googletag = {
+      pubads: () => ({
+        getSlots: () => [
+          { getSlotElementId: () => 'banner_insert__001', getSizes: () => [{ getWidth: () => 90, getHeight: () => 32 }] },
+          { getSlotElementId: () => 'banner_home1', getSizes: () => [{ getWidth: () => 970, getHeight: () => 250 }] },
+        ],
+      }),
+    };
+    const r = bakeCreativeInPage(CREATIVE, '300x250');
+    // Only the billboard slot is filled (approx); the 90x32 insert is dropped.
+    expect(r.filled).toBe(1);
+    expect(document.getElementById('banner_home1')!.getAttribute('data-adbolt')).toBe('1');
+    expect(document.getElementById('banner_insert__001')!.getAttribute('data-adbolt')).toBeNull();
+  });
 });
 
 describe('bakeCreativeInPage — prebid fallback', () => {
