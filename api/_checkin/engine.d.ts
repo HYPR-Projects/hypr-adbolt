@@ -15,5 +15,5 @@ export function bakeCreativeInPage(
 };
 
 export function cleanOverlaysInPage(): number;
-export function autoScrollInPage(): Promise<void>;
+export function autoScrollInPage(maxHeight?: number): Promise<void>;
 export function dismissConsentInPage(): boolean;

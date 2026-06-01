@@ -338,19 +338,20 @@ export function cleanOverlaysInPage() {
 // ---------------------------------------------------------------------------
 // Auto-scroll to trigger lazy-loaded ads/images, then return to top.
 // ---------------------------------------------------------------------------
-export function autoScrollInPage() {
+export function autoScrollInPage(maxHeight) {
   return new Promise((resolve) => {
-    const step = Math.max(400, Math.floor(window.innerHeight * 0.8));
+    const step = Math.max(400, Math.floor(window.innerHeight * 0.85));
+    const cap = typeof maxHeight === 'number' && maxHeight > 0 ? maxHeight : Infinity;
     let y = 0;
-    const max = () => document.documentElement.scrollHeight;
+    const max = () => Math.min(document.documentElement.scrollHeight, cap);
     const timer = setInterval(() => {
       window.scrollTo(0, y);
       y += step;
       if (y >= max()) {
         clearInterval(timer);
-        setTimeout(() => { window.scrollTo(0, 0); resolve(); }, 350);
+        setTimeout(() => { window.scrollTo(0, 0); resolve(); }, 300);
       }
-    }, 220);
+    }, 120);
   });
 }
 

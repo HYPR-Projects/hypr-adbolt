@@ -277,6 +277,11 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
   let step = 'setup';
   let consentHandled = false;
   let creativeDataUri = null;
+  // Per-phase timing so we can see where the time actually goes (persisted into
+  // slots_meta.phases). mark('label') records ms since the previous mark.
+  const phases = {};
+  let _t = Date.now();
+  const mark = (label) => { phases[label] = Date.now() - _t; _t = Date.now(); };
   try {
     await page.setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
@@ -309,10 +314,12 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     } catch (e) { /* interception unsupported on some remote endpoints — non-fatal */ }
 
     step = 'goto';
+    mark('setup');
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: engine === 'browserbase' ? 60_000 : NAV_TIMEOUT });
     } catch (e) { /* capture whatever rendered */ }
     await page.waitForNetworkIdle({ idleTime: 600, timeout: 6_000 }).catch(() => {});
+    mark('nav');
 
     step = 'consent';
     for (let i = 0; i < 3; i++) {
@@ -321,25 +328,34 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
       if (clicked) { consentHandled = true; break; }
       await new Promise((r) => setTimeout(r, 400));
     }
+    mark('consent');
+
+    // Height cap reused by both scroll and trim. No point lazy-loading (and
+    // waiting on) content below the line we'll delete before serialize.
+    const CAP_HEIGHT = engine === 'browserbase' ? 6000 : 9000;
 
     step = 'scroll';
-    await page.evaluate(autoScrollInPage).catch(() => {});
+    // Cap the scroll a bit past the trim line so near-the-cut lazy images load
+    // but we don't crawl a 20k px homepage we're about to throw away.
+    await page.evaluate(autoScrollInPage, CAP_HEIGHT + 1200).catch(() => {});
     await page.waitForNetworkIdle({ idleTime: 500, timeout: 3_000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 1500));
+    mark('scroll');
 
     step = 'clean';
     await page.evaluate(cleanOverlaysInPage).catch(() => {});
+    mark('clean');
 
     step = 'bake';
     creativeDataUri = await creativePromise; // overlap with page load is done here
     const bake = await page.evaluate(bakeCreativeInPage, creativeDataUri, creativeSize || '', creativeKind || 'display');
+    mark('bake');
 
     // Trim the page below a height cap before serialize. Inlining every asset of
     // a full publisher homepage is memory- and time-heavy and can OOM the
     // function (HTTP 546); the ad + surrounding context lives within the cap.
     // Runs AFTER bake so baked slots (data-adbolt) are preserved. Embedded
     // Chromium gets more headroom than the remote (Browserbase) path.
-    const CAP_HEIGHT = engine === 'browserbase' ? 6000 : 9000;
     const trimmed = await page.evaluate((cap) => {
       if (document.documentElement.scrollHeight <= cap) return false;
       for (const el of [...document.body.children]) {
@@ -355,10 +371,12 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     step = 'serialize';
     await page.evaluate(SINGLEFILE_BUNDLE);
     const html = await page.evaluate(async (noCsp) => {
-      // Fetch every resource through Node (window.__adboltFetch) so cross-origin
-      // publisher assets aren't blocked by CORS / the page CSP. Falls back to the
-      // page's own fetch if the bridge is unavailable.
-      const bridged = async (url) => {
+      // Same-origin assets pass CSP/CORS natively, so fetch them directly — fast,
+      // parallel, no base64 round-trip. The Node bridge (window.__adboltFetch) is
+      // reserved for cross-origin assets, which is the only case it's needed for
+      // (publisher CDNs blocked by CORS / page CSP). Bridge is also the fallback
+      // if a same-origin native fetch fails.
+      const bridge = async (url) => {
         try {
           if (typeof window.__adboltFetch === 'function') {
             const r = await window.__adboltFetch(typeof url === 'string' ? url : String(url));
@@ -372,6 +390,14 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
           }
         } catch (e) { /* fall through */ }
         return fetch(url);
+      };
+      const bridged = async (url) => {
+        let sameOrigin = false;
+        try { sameOrigin = new URL(url, location.href).origin === location.origin; } catch (e) { /* treat as cross-origin */ }
+        if (sameOrigin) {
+          try { const res = await fetch(url); if (res && res.ok) return res; } catch (e) { /* fall back to bridge */ }
+        }
+        return bridge(url);
       };
       window.singlefile.init({ fetch: bridged });
       const data = await window.singlefile.getPageData({
@@ -393,6 +419,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
       });
       return data.content;
     }, !!liveEmbed);
+    mark('serialize');
 
     // Interactive: swap the baked placeholder <img> for the live <iframe>.
     const finalHtml = liveEmbed
@@ -400,10 +427,11 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
       : html;
 
     const title = await page.title().catch(() => '');
+    bake.phases = phases;
     return {
       html: finalHtml,
       slots: bake,
-      meta: { engine, consentHandled, durationMs: Date.now() - started, title },
+      meta: { engine, consentHandled, durationMs: Date.now() - started, title, phases },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
