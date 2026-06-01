@@ -124,14 +124,25 @@ function buildInjector(creativeUrl, creativeSize) {
 
     function start() {
       scan();
-      let raf = 0;
-      const mo = new MutationObserver(() => {
-        if (raf) return;
-        raf = requestAnimationFrame(() => { raf = 0; scan(); });
+      // A few bounded rescans catch slots that render shortly after load,
+      // then we stop the periodic loop so it doesn't burn CPU (which would
+      // degrade the live-view framerate). The observer below handles ad reloads.
+      let runs = 0;
+      const boot = setInterval(() => { scan(); if (++runs >= 6) clearInterval(boot); }, 1200);
+
+      let debounce = 0;
+      const mo = new MutationObserver((muts) => {
+        // Ignore pure text/attribute churn (e.g. stock tickers) — only react to
+        // added nodes, which is when ad slots (re)appear.
+        let added = false;
+        for (const m of muts) { if (m.addedNodes && m.addedNodes.length) { added = true; break; } }
+        if (!added) return;
+        if (debounce) return;
+        debounce = setTimeout(() => { debounce = 0; scan(); }, 800);
       });
-      try { mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true }); } catch (e) { /* ignore */ }
-      // Periodic re-scan catches slots that render outside mutation timing.
-      setInterval(scan, 1500);
+      try { mo.observe(document.body || document.documentElement, { childList: true, subtree: true }); } catch (e) { /* ignore */ }
+      // Stop observing after the page has settled to keep the session light.
+      setTimeout(() => { try { mo.disconnect(); } catch (e) { /* ignore */ } }, 30000);
     }
 
     if (document.readyState === 'loading') {
@@ -167,6 +178,7 @@ async function bbCreateSession(proxies) {
     body: JSON.stringify({
       projectId: BB_PROJECT_ID,
       keepAlive: true,
+      region: 'us-east-1', // closest Browserbase region to Brazil (no SA region exists)
       proxies: !!proxies,
       browserSettings: { viewport: { width: 1920, height: 1080 } },
     }),
@@ -259,19 +271,27 @@ export default async function handler(req, res) {
       });
     }
 
-    if (action === 'screenshot') {
+    if (action === 'screenshot' || action === 'freeze') {
       if (!body.sessionId) return res.status(400).json({ error: 'missing_session' });
       const connectUrl = await bbConnectUrl(body.sessionId);
       const browser = await puppeteer.connect({ browserWSEndpoint: connectUrl, defaultViewport: null });
-      let buffer;
-      let pageUrl = '';
-      let title = '';
+      let buffer, pageUrl = '', title = '', pageW = 1920, pageH = 1080;
       try {
         const page = (await browser.pages())[0];
         if (!page) throw new Error('no active page');
         pageUrl = page.url();
         title = await page.title().catch(() => '');
-        buffer = Buffer.from(await page.screenshot({ type: 'jpeg', quality: 90 }));
+        if (action === 'freeze') {
+          // Full page so the client can scroll the whole checkin.
+          const dims = await page.evaluate(() => ({
+            w: document.documentElement.scrollWidth,
+            h: Math.min(document.documentElement.scrollHeight, 8000),
+          }));
+          pageW = dims.w; pageH = dims.h;
+          buffer = Buffer.from(await page.screenshot({ type: 'jpeg', quality: 85, clip: { x: 0, y: 0, width: dims.w, height: dims.h } }));
+        } else {
+          buffer = Buffer.from(await page.screenshot({ type: 'jpeg', quality: 90 }));
+        }
       } finally {
         await browser.disconnect();
       }
@@ -283,7 +303,23 @@ export default async function handler(req, res) {
       const { error: upErr } = await userClient.storage.from('checkins').upload(path, buffer, { contentType: 'image/jpeg' });
       if (upErr) return res.status(500).json({ error: 'upload_failed', message: upErr.message });
       const url = userClient.storage.from('checkins').getPublicUrl(path).data.publicUrl;
-      return res.status(200).json({ screenshotUrl: url, pageUrl, title });
+
+      if (action === 'screenshot') {
+        return res.status(200).json({ screenshotUrl: url, pageUrl, title });
+      }
+      // freeze: persist a shareable, read-only checkin (ad already baked into the image).
+      const { data, error } = await userClient
+        .from('checkins')
+        .insert({
+          page_url: pageUrl, page_title: title, screenshot_url: url,
+          page_width: pageW, page_height: pageH, device_scale_factor: 1,
+          creative_url: url, creative_size: body.creativeSize || null,
+          box: { baked: true },
+        })
+        .select('id')
+        .single();
+      if (error) return res.status(500).json({ error: 'persist_failed', message: error.message });
+      return res.status(200).json({ shareId: data.id, screenshotUrl: url });
     }
 
     if (action === 'stop') {

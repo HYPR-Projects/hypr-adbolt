@@ -63,10 +63,17 @@
     function layout(c) {
       const pageW = c.page_width;
       const bg = $('bg');
+      const box = typeof c.box === 'string' ? JSON.parse(c.box) : c.box;
+      const baked = box && box.baked === true;
+      const cr = $('creative');
+      if (baked) {
+        // Ad is already part of the screenshot — just show it.
+        cr.style.display = 'none';
+        bg.src = c.screenshot_url;
+        return;
+      }
       const place = () => {
         const scale = bg.clientWidth / pageW;
-        const box = typeof c.box === 'string' ? JSON.parse(c.box) : c.box;
-        const cr = $('creative');
         cr.style.left = (box.x * scale) + 'px';
         cr.style.top = (box.y * scale) + 'px';
         cr.style.width = (box.w * scale) + 'px';

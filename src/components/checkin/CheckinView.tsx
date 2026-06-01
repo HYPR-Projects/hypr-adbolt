@@ -460,6 +460,29 @@ export function CheckinView() {
     }
   }, [liveSession, creativeSize, toast]);
 
+  const [liveShareUrl, setLiveShareUrl] = useState('');
+  const liveFreeze = useCallback(async () => {
+    if (!liveSession) return;
+    setLiveBusy(true);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch('/api/checkin-live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'freeze', sessionId: liveSession, creativeSize: creativeSize || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { const m = data?.message ?? data?.error; throw new Error(typeof m === 'string' ? m : `HTTP ${res.status}`); }
+      const link = `${window.location.origin}/preview/checkin.html?id=${data.shareId}`;
+      setLiveShareUrl(link);
+      try { await navigator.clipboard.writeText(link); toast('Link copiado.', 'success'); } catch { toast('Link gerado.', 'success'); }
+    } catch (err) {
+      toast(`Não foi possível gerar o link (${err instanceof Error ? err.message : String(err)}).`, 'error');
+    } finally {
+      setLiveBusy(false);
+    }
+  }, [liveSession, creativeSize, toast]);
+
   const stopLive = useCallback(async () => {
     const sid = liveSession;
     setLiveStatus('idle');
@@ -601,10 +624,19 @@ export function CheckinView() {
             <span className={styles.metaText}>sessão ao vivo · navegue dentro do site · o anúncio é servido nos slots do tamanho da peça</span>
             <div className={styles.spacer} />
             <button className={styles.ghost} onClick={stopLive}>Encerrar sessão</button>
+            <button className={styles.ghost} onClick={liveFreeze} disabled={liveBusy}>
+              {liveBusy ? 'Gerando…' : 'Gerar link'}
+            </button>
             <button className={styles.primarySm} onClick={liveScreenshot} disabled={liveBusy}>
               {liveBusy ? 'Gerando…' : 'Gerar PNG do estado atual'}
             </button>
           </div>
+          {liveShareUrl && (
+            <div className={styles.shareRow}>
+              <input className={styles.shareInput} readOnly value={liveShareUrl} onFocus={(e) => e.target.select()} />
+              <a className={styles.shareOpen} href={liveShareUrl} target="_blank" rel="noopener noreferrer">Abrir</a>
+            </div>
+          )}
           <div className={styles.liveFrameWrap}>
             <iframe
               className={styles.liveFrame}
