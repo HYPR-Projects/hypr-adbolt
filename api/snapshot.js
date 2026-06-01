@@ -273,15 +273,16 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 // ---------------------------------------------------------------------------
 async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, interactive, proxies }) {
   const started = Date.now();
-  const { browser, page, engine, cleanup } = await acquireBrowser({ proxies });
-  let step = 'setup';
-  let consentHandled = false;
-  let creativeDataUri = null;
   // Per-phase timing so we can see where the time actually goes (persisted into
   // slots_meta.phases). mark('label') records ms since the previous mark.
   const phases = {};
-  let _t = Date.now();
+  let _t = started;
   const mark = (label) => { phases[label] = Date.now() - _t; _t = Date.now(); };
+  const { browser, page, engine, cleanup } = await acquireBrowser({ proxies });
+  mark('acquire');
+  let step = 'setup';
+  let consentHandled = false;
+  let creativeDataUri = null;
   try {
     await page.setUserAgent(
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
@@ -339,7 +340,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, inter
     // but we don't crawl a 20k px homepage we're about to throw away.
     await page.evaluate(autoScrollInPage, CAP_HEIGHT + 1200).catch(() => {});
     await page.waitForNetworkIdle({ idleTime: 500, timeout: 3_000 }).catch(() => {});
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1000));
     mark('scroll');
 
     step = 'clean';
@@ -468,8 +469,10 @@ export default async function handler(req, res) {
   if (isBlockedHost(parsed.hostname)) return res.status(400).json({ error: 'blocked_host' });
   if (!body.creativeUrl) return res.status(400).json({ error: 'missing_creative' });
 
-  let result, lastErr;
+  let result, lastErr, firstErr = null;
+  let attempts = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
+    attempts++;
     try {
       result = await runSnapshot({
         url: parsed.toString(),
@@ -481,7 +484,7 @@ export default async function handler(req, res) {
       });
       lastErr = null;
       break;
-    } catch (err) { lastErr = err; }
+    } catch (err) { lastErr = err; if (!firstErr) firstErr = String(err && err.message || err); }
   }
   if (!result) {
     return res.status(502).json({ error: 'snapshot_failed', message: String(lastErr && lastErr.message || lastErr) });
@@ -493,12 +496,25 @@ export default async function handler(req, res) {
   });
 
   // Upload the self-contained HTML to storage.
+  const _tUp = Date.now();
   const htmlPath = `${userId}/snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`;
   const { error: upErr } = await userClient.storage
     .from('checkins')
     .upload(htmlPath, Buffer.from(result.html, 'utf8'), { contentType: 'text/html', upsert: false });
   if (upErr) return res.status(500).json({ error: 'upload_failed', message: String(upErr.message || upErr) });
   const snapshotUrl = userClient.storage.from('checkins').getPublicUrl(htmlPath).data.publicUrl;
+
+  // Full timing picture into slots_meta.phases: which engine, how big the HTML
+  // is, how long the upload took, and whether a silent retry happened (a failed
+  // first attempt is invisible in the per-run phases but doubles wall time).
+  if (result.slots && typeof result.slots === 'object') {
+    result.slots.phases = result.slots.phases || {};
+    result.slots.phases.engine = result.meta.engine;
+    result.slots.phases.htmlKB = Math.round((result.html || '').length / 1024);
+    result.slots.phases.upload = Date.now() - _tUp;
+    result.slots.phases.attempts = attempts;
+    if (attempts > 1 && firstErr) result.slots.phases.firstError = String(firstErr).slice(0, 220);
+  }
 
   // Persist a shareable check-in row.
   const { data, error } = await userClient
