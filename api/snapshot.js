@@ -176,6 +176,10 @@ async function tryImageDataUri(src) {
     const r = await fetch(src, { redirect: 'follow' });
     if (!r.ok) return null;
     const ct = (r.headers.get('content-type') || '').toLowerCase();
+    // Bail before reading the body when it's clearly not an image (e.g. a
+    // multi-MB mp4 passed as the video poster fallback) — avoids a wasteful
+    // full download and the OOM risk that comes with it.
+    if (ct && !ct.startsWith('image/')) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (!buf.length || buf.length > 12 * 1024 * 1024) return null;
     const mime = ct.startsWith('image/') && !ct.includes('octet') ? ct.split(';')[0] : sniffImageMime(buf, '');
@@ -372,6 +376,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
+  try {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return res.status(401).json({ error: 'unauthorized' });
@@ -449,4 +454,13 @@ export default async function handler(req, res) {
     slots: result.slots,
     meta: result.meta,
   });
+  } catch (err) {
+    // Surface the actual cause: an uncaught throw here is what shows up in the
+    // browser as an opaque "500 Internal Server Error". Now the response body
+    // (and the frontend error message) carries the real message + step.
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? (err.stack || '').split('\n').slice(0, 5).join(' | ') : '';
+    console.error('[snapshot] uncaught:', message, stack);
+    if (!res.headersSent) return res.status(500).json({ error: 'internal', message, stack });
+  }
 }
