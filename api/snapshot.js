@@ -177,16 +177,18 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
-// Origin that serves /preview/render-tag.html and /api/ad-proxy. The live layer
-// MUST load from a real https origin: 3P ad loaders (dcmads.js, Sizmek, ...)
-// probe window.location.protocol and refuse to run on blob:/opaque origins,
-// which is why inlining the tag into the serialized (blob-served) page goes
-// blank. Pointing an <iframe> at this origin is the only reliable path.
-const PUBLIC_ORIGIN = process.env.PUBLIC_PREVIEW_ORIGIN || 'https://adbolt.hypr.mobi';
-
-// Kinds that get a live layer laid over the frozen image. display/video have no
-// meaningful "live" form, so they stay frozen and never carry live metadata.
-const LIVE_KINDS = new Set(['html5', 'tag', 'survey']);
+// Kinds that CAN carry a live layer over the frozen image. The live layer is
+// only attached when resolveLive() returns a concrete embed for the creative —
+// the kind being in this set is necessary but not sufficient.
+//   • html5  → hosted bundle URL, framed live
+//   • survey → resolved embed URL (Typeform widget / generic iframe), framed live
+//   • video  → playable asset URL (mp4), native <video controls>
+// 'display' is always the frozen image. 'tag' (3P adserver tags: CM360, Xandr,
+// DV360) is deliberately NOT live: rendering a real serving tag fires billable
+// impressions/clicks and would pollute the very delivery this preview certifies.
+// Interactive 3P-tag preview is a follow-up that must use each DSP's non-billable
+// preview/render endpoint, not the serving tag.
+const LIVE_KINDS = new Set(['html5', 'survey', 'video']);
 
 // Strip the publisher's own CSP <meta> tags from the serialized HTML. They
 // survive SingleFile and would block both the injected hydrator script and the
@@ -198,61 +200,105 @@ function stripCspMeta(html) {
   );
 }
 
-// The hydrator runs in the final (serialized) page. For each slot tagged with
-// data-adbolt-live-kind it lays a live <iframe> over the frozen <img>:
-//   • html5 → the hosted creative URL directly
-//   • tag/survey → /preview/render-tag.html (CM360 ad-proxy fast-path +
-//     document.write fallback, all at https so 3P loaders run)
-// The iframe is transparent and z-stacked above the image; if the renderer
-// posts an error, or never reports loaded within the timeout, the iframe is
-// removed and the frozen image shows through. Net result: live when it can,
-// frozen when it can't, never blank.
-function buildHydratorScript(origin) {
+// Resolve a survey creative (a stored embed snippet) to a single framable https
+// URL. Runs in Node, so parsing is done here once — deterministically — instead
+// of regex-sniffing inside the client hydrator (which is exactly what used to
+// silently break: a mis-escaped regex left every Typeform survey frozen).
+// Handles the three shapes a survey embed arrives in:
+//   1. <iframe src="https://…">            → use the src
+//   2. Typeform data-tf-live/-widget="ID"   → build form.typeform.com/to/ID
+//   3. a bare https://…typeform.com/to/ID   → use it directly
+// As a last resort, any https URL in the snippet. Typeform standalone /to/ URLs
+// stall on a loading screen unless told they're an embed, so the embed flag is
+// appended for any typeform.com URL.
+function resolveSurveyEmbedUrl(html) {
+  const src = String(html || '');
+  if (!src) return null;
+  let url = null;
+
+  const iframe = src.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+  if (iframe && /^https?:\/\//i.test(iframe[1])) url = iframe[1];
+
+  if (!url) {
+    const tf = src.match(/data-tf-(?:live|widget|popup|slider|popover|sidetab)\s*=\s*["']([A-Za-z0-9]+)["']/i);
+    if (tf) url = `https://form.typeform.com/to/${tf[1]}`;
+  }
+  if (!url) {
+    const direct = src.match(/https?:\/\/[^\s"'<>]*typeform\.com\/to\/[A-Za-z0-9]+/i);
+    if (direct) url = direct[0];
+  }
+  if (!url) {
+    const any = src.match(/https?:\/\/[^\s"'<>]+/i);
+    if (any) url = any[0];
+  }
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  if (/(^|\.)typeform\.com\//i.test(url) && !/[?&]typeform-embed=/.test(url)) {
+    url += (url.indexOf('?') < 0 ? '?' : '&') + 'typeform-embed=embed-widget';
+  }
+  return url;
+}
+
+// Decide the live embed for a creative, server-side and deterministically.
+// Returns { mode, url } or null (→ stays frozen). No client-side guessing.
+//   • html5  → { mode:'iframe', url } when the hosted bundle URL is http(s)
+//   • survey → { mode:'iframe', url } from resolveSurveyEmbedUrl
+//   • video  → { mode:'video',  url } when a playable asset URL was provided
+function resolveLive({ kind, creativeUrl, liveUrl }) {
+  if (kind === 'html5') {
+    const u = String(creativeUrl || '').trim();
+    return /^https?:\/\//i.test(u) ? { mode: 'iframe', url: u } : null;
+  }
+  if (kind === 'survey') {
+    const u = resolveSurveyEmbedUrl(creativeUrl);
+    return u ? { mode: 'iframe', url: u } : null;
+  }
+  if (kind === 'video') {
+    const u = String(liveUrl || '').trim();
+    return /^https?:\/\//i.test(u) ? { mode: 'video', url: u } : null;
+  }
+  return null;
+}
+
+// The hydrator runs in the final (serialized) page. For each slot carrying a
+// resolved live embed it mounts the real creative ON TOP of the frozen <img>:
+//   • mode 'iframe' → sandboxed <iframe src=url> (html5 bundle / survey widget)
+//   • mode 'video'  → native <video controls> with the frozen image as poster
+// Deterministic by construction: the kind+url were resolved at generation time,
+// so there is no sniffing and no race. The frozen image stays underneath as the
+// backstop; if the live element errors, it removes itself and the frozen image
+// shows through. Never blank.
+function buildHydratorScript() {
   const body = `(function(){
-  var ORIGIN=${JSON.stringify(origin || PUBLIC_ORIGIN)};
-  function dec(b64){try{var s=atob(b64);var a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new TextDecoder('utf-8').decode(a);}catch(e){return null;}}
-  var slots=document.querySelectorAll('[data-adbolt-live-kind]');
-  var reg={};
-  Array.prototype.forEach.call(slots,function(slot,i){
-    var kind=slot.getAttribute('data-adbolt-live-kind');
-    var b64=slot.getAttribute('data-adbolt-live-src');
-    if(!kind||!b64)return;
-    var raw=dec(b64);if(!raw)return;
-    var r=slot.getBoundingClientRect();
-    var w=Math.round(r.width)||300,h=Math.round(r.height)||250;
-    // If the creative is already a direct iframe embed (Typeform and most modern
-    // surveys/3P), or an html5 hosted URL, frame that URL straight — no
-    // render-tag wrapper, no document.write nesting. The extra layers were what
-    // left the live frame blank-but-click-eating over the frozen image. Only
-    // real script-loader tags (dcmads, etc.) still go through render-tag.html.
-    var direct=null;
-    if(kind==='html5'){var u=raw.trim();if(/^https?:/i.test(u))direct=u;}
-    else{var im=raw.match(/<iframe[^>]*\\ssrc=["']([^"']+)["']/i);if(im&&/^https?:\\/\\//i.test(im[1]))direct=im[1];}
-    // Typeform's standalone /to/ URL stalls on its loading screen when framed
-    // without embed params (it waits for an embed handshake). Tell it it's an
-    // embed so it renders the interactive widget directly.
-    if(direct&&/(^|\\.)typeform\\.com\\//i.test(direct)&&!/[?&]typeform-embed=/.test(direct)){
-      direct+=(direct.indexOf('?')<0?'?':'&')+'typeform-embed=embed-widget';
-    }
-    var url,watch=false;
-    if(direct){url=direct;}
-    else{url=ORIGIN+'/preview/render-tag.html#tag='+encodeURIComponent(b64)+'&w='+w+'&h='+h+'&id=al'+i;watch=true;}
-    var f=document.createElement('iframe');
-    f.setAttribute('data-adbolt-live','1');
-    f.setAttribute('scrolling','no');
-    f.setAttribute('allow','fullscreen');
-    f.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
-    f.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:transparent;z-index:2';
-    f.src=url;
+  var slots=document.querySelectorAll('[data-adbolt-live-mode]');
+  Array.prototype.forEach.call(slots,function(slot){
+    var mode=slot.getAttribute('data-adbolt-live-mode');
+    var url=slot.getAttribute('data-adbolt-live-url');
+    if(!mode||!url)return;
+    var frozen=slot.querySelector('[data-adbolt-creative]');
     if(getComputedStyle(slot).position==='static')slot.style.position='relative';
-    slot.appendChild(f);
-    if(watch){var id2='al'+i;reg[id2]={frame:f,settled:false};reg[id2].to=setTimeout(function(){var e=reg[id2];if(e&&!e.settled){e.settled=true;try{e.frame.remove();}catch(x){}}},5000);}
-  });
-  window.addEventListener('message',function(ev){
-    var d=ev&&ev.data;if(!d||d.source!=='adbolt-render-tag')return;
-    var e=d.id&&reg[d.id];if(!e||e.settled)return;
-    if(d.type==='loaded'){e.settled=true;clearTimeout(e.to);}
-    else if(d.type==='error'){e.settled=true;clearTimeout(e.to);try{e.frame.remove();}catch(x){}}
+    var el;
+    if(mode==='video'){
+      el=document.createElement('video');
+      el.src=url;el.controls=true;el.playsInline=true;el.setAttribute('playsinline','');el.preload='metadata';
+      if(frozen&&frozen.src)el.poster=frozen.src;
+      el.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:2;display:block';
+      el.addEventListener('error',function(){try{el.remove();}catch(e){}});
+    }else{
+      el=document.createElement('iframe');
+      el.setAttribute('scrolling','no');
+      el.setAttribute('allow','fullscreen; autoplay; clipboard-write');
+      el.setAttribute('referrerpolicy','no-referrer-when-downgrade');
+      // Cross-origin embeds (Typeform, hosted html5 bundles): allow-same-origin
+      // lets the widget reach ITS own origin, not the host page, so there is no
+      // sandbox escape into the deliverable.
+      el.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
+      el.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:2';
+      el.onerror=function(){try{el.remove();}catch(e){}};
+      el.src=url;
+    }
+    el.setAttribute('data-adbolt-live','1');
+    slot.appendChild(el);
   });
 })();`;
   return `<script>${body}</script>`;
@@ -332,7 +378,7 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 }
 
 // ---------------------------------------------------------------------------
-async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freeze, proxies, publicOrigin }) {
+async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveUrl, freeze, proxies }) {
   const started = Date.now();
   // Per-phase timing so we can see where the time actually goes (persisted into
   // slots_meta.phases). mark('label') records ms since the previous mark.
@@ -356,15 +402,15 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
 
     step = 'creative';
     const kind = creativeKind || 'display';
-    // A live layer is attached automatically for html5/tag/survey unless the
-    // caller asked to freeze (static deliverable). display/video are always
-    // frozen — there's no meaningful live form. The frozen image is rendered
-    // either way, so a live layer that fails degrades to it instead of going
-    // blank. liveMeta carries the source the client-side hydrator needs.
-    const wantLive = !freeze && LIVE_KINDS.has(kind);
-    const liveMeta = wantLive
-      ? { kind, b64: Buffer.from(String(creativeUrl), 'utf8').toString('base64') }
+    // A live layer is attached for html5/survey/video, unless the caller asked
+    // to freeze (static deliverable) or no concrete embed could be resolved.
+    // 3P adserver tags ('tag') are never live (see LIVE_KINDS). The frozen image
+    // is baked either way, so a live element that errors degrades to it instead
+    // of going blank. liveMeta = { mode, url } drives the client-side hydrator.
+    const live = !freeze && LIVE_KINDS.has(kind)
+      ? resolveLive({ kind, creativeUrl, liveUrl })
       : null;
+    const liveMeta = live ? { mode: live.mode, url: live.url } : null;
     // Kick off the frozen render now but DON'T await — it's independent of the
     // publisher page, so it overlaps goto + scroll and its time is hidden behind
     // the page load. Awaited just before bake.
@@ -505,7 +551,7 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, freez
     let finalHtml = html;
     if (liveMeta) {
       finalHtml = stripCspMeta(html);
-      const hydrator = buildHydratorScript(publicOrigin);
+      const hydrator = buildHydratorScript();
       finalHtml = /<\/body>/i.test(finalHtml)
         ? finalHtml.replace(/<\/body>/i, `${hydrator}</body>`)
         : finalHtml + hydrator;
@@ -555,12 +601,6 @@ export default async function handler(req, res) {
 
   let result, lastErr, firstErr = null;
   let attempts = 0;
-  // Live iframes load render-tag.html from the same deployment that generated
-  // the snapshot, so a preview deploy references its own renderer (and the
-  // production custom domain stays stable for shared links).
-  const fwdProto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const fwdHost = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  const publicOrigin = fwdHost ? `${fwdProto}://${fwdHost}` : PUBLIC_ORIGIN;
   for (let attempt = 0; attempt < 2; attempt++) {
     attempts++;
     try {
@@ -569,9 +609,9 @@ export default async function handler(req, res) {
         creativeUrl: String(body.creativeUrl),
         creativeSize: body.creativeSize,
         creativeKind: body.creativeKind || 'display',
+        liveUrl: body.liveUrl ? String(body.liveUrl) : '',
         freeze: !!body.freeze,
         proxies: body.proxies,
-        publicOrigin,
       });
       lastErr = null;
       break;

@@ -88,6 +88,10 @@ export function CheckinView() {
   const [libraryStoragePath, setLibraryStoragePath] = useState<string | null>(null);
   const [creativeKind, setCreativeKind] = useState<CreativeKind>('display');
   const [creativeBakeSrc, setCreativeBakeSrc] = useState<string | null>(null); // html5: hosted url to render
+  // video: storage path of the playable asset (mp4), kept even when a poster
+  // exists, so the share preview can mount a live <video controls> on top of
+  // the frozen poster. Null for VAST-only / non-asset video → stays frozen.
+  const [videoLivePath, setVideoLivePath] = useState<string | null>(null);
   const [creativeSize, setCreativeSize] = useState('');
 
   const [status, setStatus] = useState<Status>('idle');
@@ -173,6 +177,8 @@ export function CheckinView() {
     setSelectedCreativeId(null);
     setCreativeKind('display');
     setCreativeBakeSrc(null);
+    setLibraryStoragePath(null);
+    setVideoLivePath(null);
   }, [creativeSrc, creativeIsBlob]);
 
   const onPickLibrary = useCallback((c: Creative) => {
@@ -188,6 +194,8 @@ export function CheckinView() {
     setCreativeKind(kind);
     setCreativeSrc((c.thumbnail_url as string) || null); // thumbnail for the chip/grid
     const cfg = typeof c.dsp_config === 'string' ? safeJson(c.dsp_config) : (c.dsp_config || {});
+    const storagePath = (cfg && (cfg as Record<string, unknown>).storage_path as string) || null;
+    setVideoLivePath(null);
 
     if (kind === 'html5') {
       // Hosted preview URL lives in js_tag (http). The snapshot renders it
@@ -205,10 +213,10 @@ export function CheckinView() {
       setLibraryStoragePath(null);
       if (!content) toast(`${KIND_LABEL[kind]} sem conteúdo de tag — não dá pra renderizar.`, 'error');
     } else if (kind === 'video') {
-      // Poster + play overlay. Prefer the generated thumbnail; fall back to the
-      // VAST tag, then the mp4 storage path. Without a real frame source the
-      // snapshot bakes a neutral VÍDEO card (headless Chromium can't decode the
-      // video, and VAST has no still by default).
+      // Frozen bake = poster (thumbnail) + play overlay; VAST tag, then mp4 as
+      // fallback bake sources. Independently, keep the mp4 storage path so the
+      // share preview can mount a live <video controls>. VAST-only video has no
+      // asset → no live layer, stays frozen.
       const poster = (c.thumbnail_url as string) || null;
       if (poster) {
         setCreativeBakeSrc(poster);
@@ -218,12 +226,13 @@ export function CheckinView() {
         setLibraryStoragePath(null);
       } else {
         setCreativeBakeSrc(null);
-        setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
+        setLibraryStoragePath(storagePath);
       }
+      setVideoLivePath(storagePath);
     } else {
       // display: full-res asset (signed URL) resolved at generate time.
       setCreativeBakeSrc(null);
-      setLibraryStoragePath((cfg && (cfg as Record<string, unknown>).storage_path as string) || null);
+      setLibraryStoragePath(storagePath);
     }
     const natural = parseDimensions(c.dimensions);
     setCreativeSize(c.dimensions || (natural ? `${natural.w}x${natural.h}` : ''));
@@ -285,11 +294,23 @@ export function CheckinView() {
     setShareUrl('');
     try {
       const creativeUrl = await resolveCreativeUrl();
+
+      // Video: a durable signed URL to the playable asset, baked into the share
+      // snapshot for the live <video controls>. Long TTL because the link is a
+      // delivery proof clients open later, not a short-lived in-app fetch.
+      let liveUrl: string | undefined;
+      if (!freeze && creativeKind === 'video' && videoLivePath) {
+        const { data: vData, error: vErr } = await supabase.storage
+          .from('asset-uploads')
+          .createSignedUrl(videoLivePath, 60 * 60 * 24 * 365);
+        if (!vErr && vData?.signedUrl) liveUrl = vData.signedUrl;
+      }
+
       const token = await getFreshToken();
       const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, freeze, proxies: useProxy }),
+        body: JSON.stringify({ url: normalized, creativeUrl, creativeSize: creativeSize || undefined, creativeKind, liveUrl, freeze, proxies: useProxy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -306,7 +327,7 @@ export function CheckinView() {
       setStatus('error');
       setErrorMsg(err instanceof Error ? err.message : String(err));
     }
-  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, creativeKind, creativeSize, useProxy, freeze, resolveCreativeUrl, toast]);
+  }, [pageUrl, creativeSrc, creativeBakeSrc, libraryStoragePath, videoLivePath, creativeKind, creativeSize, useProxy, freeze, resolveCreativeUrl, toast]);
 
   const copyLink = useCallback(async () => {
     if (!shareUrl) return;

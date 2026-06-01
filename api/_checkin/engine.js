@@ -30,7 +30,7 @@ export function bakeCreativeInPage(creativeUrl, sizeStr, kind, liveMeta) {
   // When present, the slot also gets a live layer (hydrated client-side after
   // serialization). The baked <img> stays as the always-present backstop, so a
   // live layer that fails to load degrades to the frozen image — never blank.
-  const LIVE = (liveMeta && liveMeta.kind && liveMeta.b64) ? liveMeta : null;
+  const LIVE = (liveMeta && liveMeta.mode && liveMeta.url) ? liveMeta : null;
   const detail = [];
   let source = null;
 
@@ -108,11 +108,11 @@ export function bakeCreativeInPage(creativeUrl, sizeStr, kind, liveMeta) {
       'display:block;width:100%;height:100%;object-fit:contain;background:#fff;border:0;';
     el.appendChild(img);
     // Tag the slot for the post-serialization hydrator. The frozen <img> above
-    // is the backstop; the hydrator lays a live <iframe> over it and removes it
-    // again if the live renderer errors out.
+    // is the backstop; the hydrator mounts the live element (iframe/video) over
+    // it and removes itself again if the live renderer errors out.
     if (LIVE) {
-      el.setAttribute('data-adbolt-live-kind', LIVE.kind);
-      el.setAttribute('data-adbolt-live-src', LIVE.b64);
+      el.setAttribute('data-adbolt-live-mode', LIVE.mode);
+      el.setAttribute('data-adbolt-live-url', LIVE.url);
     }
     reveal(el);
     const r = el.getBoundingClientRect();
