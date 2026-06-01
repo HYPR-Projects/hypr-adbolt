@@ -50,6 +50,53 @@
     var $ = function (s) { return document.getElementById(s); };
     function fail(msg) { var e = $('state'); e.textContent = msg || 'Preview não encontrado ou expirado.'; e.className = 'err'; }
 
+    // Mount the live creative INSIDE the framed snapshot, from here (the player),
+    // not from the serialized HTML. The frame is same-origin (the snapshot is
+    // fetched and served through a blob: URL created by this page, and the frame
+    // has allow-same-origin), so we can reach its document directly. Doing it
+    // here is robust: a captured publisher page often contains escaped `</body>`
+    // strings inside ad <iframe srcdoc> payloads, so injecting a hydrator script
+    // into the serialized HTML before "</body>" could land it inside an ad blob
+    // as inert text. Each slot carries data-adbolt-live-mode + -url; we lay a
+    // live <iframe>/<video> over the frozen <img>, which stays as the backstop.
+    function hydrateLive(frame) {
+      var doc;
+      try { doc = frame.contentDocument; } catch (e) { return; } // cross-origin fallback path: stay frozen
+      if (!doc) return;
+      var slots = doc.querySelectorAll('[data-adbolt-live-mode]');
+      Array.prototype.forEach.call(slots, function (slot) {
+        if (slot.querySelector('[data-adbolt-live]')) return; // already mounted
+        var mode = slot.getAttribute('data-adbolt-live-mode');
+        var liveUrl = slot.getAttribute('data-adbolt-live-url');
+        if (!mode || !liveUrl) return;
+        var frozen = slot.querySelector('[data-adbolt-creative]');
+        try { if (frame.contentWindow.getComputedStyle(slot).position === 'static') slot.style.position = 'relative'; }
+        catch (e) { slot.style.position = 'relative'; }
+        var el;
+        if (mode === 'video') {
+          el = doc.createElement('video');
+          el.src = liveUrl; el.controls = true; el.setAttribute('playsinline', ''); el.preload = 'metadata';
+          if (frozen && frozen.src) el.poster = frozen.src;
+          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:2;display:block';
+          el.addEventListener('error', function () { try { el.remove(); } catch (x) {} });
+        } else {
+          el = doc.createElement('iframe');
+          el.setAttribute('scrolling', 'no');
+          el.setAttribute('allow', 'fullscreen; autoplay; clipboard-write');
+          el.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+          // Cross-origin embed (Typeform widget / hosted html5 bundle).
+          // allow-same-origin here lets the widget reach ITS own origin, not the
+          // host snapshot, so there is no sandbox escape into the deliverable.
+          el.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
+          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:2';
+          el.onerror = function () { try { el.remove(); } catch (x) {} };
+          el.src = liveUrl;
+        }
+        el.setAttribute('data-adbolt-live', '1');
+        slot.appendChild(el);
+      });
+    }
+
     (function load() {
       if (!id) return fail('Link inválido.');
       fetch(SUPABASE_URL + '/rest/v1/checkins?id=eq.' + encodeURIComponent(id) + '&select=*', {
@@ -78,7 +125,14 @@
           }
 
           var frame = $('frame');
-          frame.onload = function () { $('state').className = 'hide'; frame.style.display = 'block'; };
+          frame.onload = function () {
+            $('state').className = 'hide';
+            frame.style.display = 'block';
+            // Mount live creatives once the framed snapshot has parsed. A tick
+            // later too, in case slot layout settles after first paint.
+            hydrateLive(frame);
+            setTimeout(function () { hydrateLive(frame); }, 400);
+          };
           frame.onerror = function () { fail('Erro ao carregar o snapshot.'); };
           // Supabase serves public HTML as text/plain (nosniff); fetch it and
           // render through a blob URL so the browser parses it as HTML.

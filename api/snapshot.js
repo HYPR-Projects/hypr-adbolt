@@ -260,50 +260,6 @@ function resolveLive({ kind, creativeUrl, liveUrl }) {
   return null;
 }
 
-// The hydrator runs in the final (serialized) page. For each slot carrying a
-// resolved live embed it mounts the real creative ON TOP of the frozen <img>:
-//   • mode 'iframe' → sandboxed <iframe src=url> (html5 bundle / survey widget)
-//   • mode 'video'  → native <video controls> with the frozen image as poster
-// Deterministic by construction: the kind+url were resolved at generation time,
-// so there is no sniffing and no race. The frozen image stays underneath as the
-// backstop; if the live element errors, it removes itself and the frozen image
-// shows through. Never blank.
-function buildHydratorScript() {
-  const body = `(function(){
-  var slots=document.querySelectorAll('[data-adbolt-live-mode]');
-  Array.prototype.forEach.call(slots,function(slot){
-    var mode=slot.getAttribute('data-adbolt-live-mode');
-    var url=slot.getAttribute('data-adbolt-live-url');
-    if(!mode||!url)return;
-    var frozen=slot.querySelector('[data-adbolt-creative]');
-    if(getComputedStyle(slot).position==='static')slot.style.position='relative';
-    var el;
-    if(mode==='video'){
-      el=document.createElement('video');
-      el.src=url;el.controls=true;el.playsInline=true;el.setAttribute('playsinline','');el.preload='metadata';
-      if(frozen&&frozen.src)el.poster=frozen.src;
-      el.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:2;display:block';
-      el.addEventListener('error',function(){try{el.remove();}catch(e){}});
-    }else{
-      el=document.createElement('iframe');
-      el.setAttribute('scrolling','no');
-      el.setAttribute('allow','fullscreen; autoplay; clipboard-write');
-      el.setAttribute('referrerpolicy','no-referrer-when-downgrade');
-      // Cross-origin embeds (Typeform, hosted html5 bundles): allow-same-origin
-      // lets the widget reach ITS own origin, not the host page, so there is no
-      // sandbox escape into the deliverable.
-      el.setAttribute('sandbox','allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
-      el.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:2';
-      el.onerror=function(){try{el.remove();}catch(e){}};
-      el.src=url;
-    }
-    el.setAttribute('data-adbolt-live','1');
-    slot.appendChild(el);
-  });
-})();`;
-  return `<script>${body}</script>`;
-}
-
 // Fetch a source only if it is an image; returns a data URI or null.
 async function tryImageDataUri(src) {
   try {
@@ -546,16 +502,15 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
     }, !!liveMeta);
     mark('serialize');
 
-    // Live mode: drop the publisher CSP so the hydrator + live iframes run, then
-    // inject the hydrator at end of body. Frozen mode ships the static HTML as-is.
-    let finalHtml = html;
-    if (liveMeta) {
-      finalHtml = stripCspMeta(html);
-      const hydrator = buildHydratorScript();
-      finalHtml = /<\/body>/i.test(finalHtml)
-        ? finalHtml.replace(/<\/body>/i, `${hydrator}</body>`)
-        : finalHtml + hydrator;
-    }
+    // Live mode: the serialized HTML carries only the slot attributes
+    // (data-adbolt-live-mode/-url) + the frozen <img> backstop. The live layer
+    // is mounted by the player (snapshot.html) after it frames this document,
+    // NOT injected here: a captured page can contain many escaped `</body>`
+    // strings inside ad <iframe srcdoc> payloads, so injecting before "</body>"
+    // landed the hydrator inside an ad blob (as inert text) and it never ran.
+    // We only strip the publisher CSP so the player's live <iframe>/<video>
+    // (frame-src) is not blocked once mounted.
+    const finalHtml = liveMeta ? stripCspMeta(html) : html;
 
     const title = await page.title().catch(() => '');
     bake.phases = phases;
