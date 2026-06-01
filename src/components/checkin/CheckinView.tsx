@@ -404,7 +404,10 @@ export function CheckinView() {
                             ? <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
                             : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '16/9', fontSize: 11, color: 'var(--ts, #8BA3AF)' }}>{KIND_LABEL[kind]}</span>}
                           <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, fontWeight: 700, letterSpacing: '.04em', padding: '2px 6px', borderRadius: 4, background: 'rgba(0,0,0,.6)', color: '#fff' }}>{KIND_LABEL[kind]}{bakeable ? '' : ' · em breve'}</span>
-                          <span className={styles.cardMeta}>{c.dimensions || c.name}</span>
+                          <span className={styles.cardMeta}>
+                            <span className={styles.cardName}>{c.name}</span>
+                            <span className={styles.cardDim}>{c.dimensions || KIND_LABEL[kind]}</span>
+                          </span>
                         </button>
                       );
                     })}
