@@ -302,15 +302,24 @@ export function CheckinView() {
     try {
       const creativeUrl = await resolveCreativeUrl();
 
-      // Video: a durable signed URL to the playable asset, baked into the share
-      // snapshot for the live <video controls>. Long TTL because the link is a
-      // delivery proof clients open later, not a short-lived in-app fetch.
+      // Video: prefer a web-optimized transcode served from the public CDN,
+      // reusing the same Cloudinary pipeline the DSP activation uses (720p,
+      // ~2500kbps). Transcoded once per asset and cached. On any failure, fall
+      // back to a long-lived signed URL of the raw asset (current behavior).
       let liveUrl: string | undefined;
       if (!freeze && creativeKind === 'video' && videoLivePath) {
-        const { data: vData, error: vErr } = await supabase.storage
-          .from('asset-uploads')
-          .createSignedUrl(videoLivePath, 60 * 60 * 24 * 365);
-        if (!vErr && vData?.signedUrl) liveUrl = vData.signedUrl;
+        try {
+          const { data: tx } = await supabase.functions.invoke('checkin-transcode', {
+            body: { storagePath: videoLivePath },
+          });
+          if (tx && typeof (tx as { url?: unknown }).url === 'string') liveUrl = (tx as { url: string }).url;
+        } catch { /* fall back to the raw asset below */ }
+        if (!liveUrl) {
+          const { data: vData, error: vErr } = await supabase.storage
+            .from('asset-uploads')
+            .createSignedUrl(videoLivePath, 60 * 60 * 24 * 365);
+          if (!vErr && vData?.signedUrl) liveUrl = vData.signedUrl;
+        }
       }
 
       const token = await getFreshToken();
