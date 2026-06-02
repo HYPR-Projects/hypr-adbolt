@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "node scripts/check-inline-scripts.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:html": "node scripts/check-inline-scripts.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "149.0.0",

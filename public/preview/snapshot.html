@@ -25,6 +25,23 @@
     #state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #71717a; font-size: 14px; background: #f4f4f5; }
     #state.err { color: #a01010; }
     #state.hide { display: none; }
+    /* Hide the AdBolt chrome for clean screenshots */
+    .hdrBtn {
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      font: 500 11px system-ui; color: #71717a; background: #f4f4f5;
+      border: 1px solid #e4e4e7; border-radius: 7px; padding: 4px 9px;
+    }
+    .hdrBtn:hover { color: #18181b; background: #ececef; }
+    header.hidden { display: none; }
+    #showHeader {
+      position: fixed; top: 10px; right: 12px; z-index: 50; display: none;
+      align-items: center; gap: 5px; cursor: pointer; font: 500 11px system-ui;
+      color: #71717a; background: rgba(255,255,255,.92); border: 1px solid #e4e4e7;
+      border-radius: 8px; padding: 5px 10px; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+      backdrop-filter: blur(4px);
+    }
+    #showHeader:hover { color: #18181b; }
+    body.chromeless #showHeader { display: inline-flex; }
   </style>
 </head>
 <body>
@@ -36,7 +53,15 @@
     <span class="meta" id="meta"></span>
     <span class="spacer"></span>
     <span class="badge" id="badge" style="display:none"></span>
+    <button class="hdrBtn" id="hideHeader" title="Ocultar barra para captura de tela">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.39-1.61"/></svg>
+      Ocultar barra
+    </button>
   </header>
+  <button id="showHeader" title="Mostrar barra do AdBolt">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s3-8 11-8 11 8 11 8-3 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    AdBolt
+  </button>
   <div class="frameWrap">
     <div id="state">Carregando preview…</div>
     <iframe id="frame" title="preview do anúncio" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-storage-access-by-user-activation" referrerpolicy="no-referrer" style="display:none"></iframe>
@@ -49,6 +74,19 @@
     var id = new URLSearchParams(location.search).get('id');
     var $ = function (s) { return document.getElementById(s); };
     function fail(msg) { var e = $('state'); e.textContent = msg || 'Preview não encontrado ou expirado.'; e.className = 'err'; }
+
+    // Hide the AdBolt bar for clean screenshots (a floating pill brings it back).
+    (function () {
+      var header = document.querySelector('header');
+      var hideBtn = $('hideHeader');
+      var showBtn = $('showHeader');
+      function setHidden(h) {
+        header.classList.toggle('hidden', h);
+        document.body.classList.toggle('chromeless', h);
+      }
+      if (hideBtn) hideBtn.addEventListener('click', function () { setHidden(true); });
+      if (showBtn) showBtn.addEventListener('click', function () { setHidden(false); });
+    })();
 
     // Mount the live creative INSIDE the framed snapshot, from here (the player),
     // not from the serialized HTML. The frame is same-origin (the snapshot is
@@ -81,6 +119,24 @@
             e.style.setProperty('pointer-events', 'none', 'important');
           }
         }
+      } catch (_) { /* best effort */ }
+    }
+
+    // In-stream ad marker, mimicking how publishers label served video ads
+    // (e.g. the "Ad" tag IMA/VAST players show). Cosmetic; sits above the video.
+    function addAdLabel(doc, slot) {
+      try {
+        if (slot.querySelector('[data-adbolt-adlabel]')) return;
+        var tag = doc.createElement('span');
+        tag.setAttribute('data-adbolt-adlabel', '1');
+        tag.textContent = 'Ad';
+        tag.style.cssText = [
+          'position:absolute', 'top:8px', 'left:8px', 'z-index:2147483647',
+          'font:600 11px/1 system-ui,-apple-system,sans-serif', 'letter-spacing:.04em',
+          'color:#fff', 'background:rgba(0,0,0,.66)', 'padding:3px 7px',
+          'border-radius:3px', 'pointer-events:none', 'user-select:none',
+        ].join(';');
+        slot.appendChild(tag);
       } catch (_) { /* best effort */ }
     }
 
@@ -122,6 +178,8 @@
         el.setAttribute('data-adbolt-live', '1');
         slot.appendChild(el);
         neutralizeOverlays(doc, win, slot);
+        if (mode === 'video') addAdLabel(doc, slot);
+      });
     }
 
     (function load() {
