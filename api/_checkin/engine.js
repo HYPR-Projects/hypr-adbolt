@@ -124,6 +124,30 @@ export function bakeCreativeInPage(creativeUrl, sizeStr, kind, liveMeta) {
   const slots = [];
   let hadRegistry = false;
 
+  // A publisher video player bakes its own chrome (poster, play button, skip
+  // strip, controls) as positioned siblings of the slot — outside the slot, so
+  // fill()'s innerHTML reset doesn't touch them. They sit above the live layer
+  // and cover/intercept it. Hide positioned, non-descendant elements overlapping
+  // the slot so the baked creative (and the hydrated live layer) is unobstructed.
+  function hidePlayerOverlays(slot) {
+    try {
+      const sr = slot.getBoundingClientRect();
+      const all = document.querySelectorAll('body *');
+      for (const e of all) {
+        if (e === slot || slot.contains(e) || e.contains(slot)) continue;
+        if (e.getAttribute && e.getAttribute(MARK)) continue;
+        let cs; try { cs = getComputedStyle(e); } catch (_) { continue; }
+        if (cs.position === 'static') continue;
+        const r = e.getBoundingClientRect();
+        const ix = Math.max(sr.left, r.left), iy = Math.max(sr.top, r.top);
+        const ax = Math.min(sr.right, r.right), ay = Math.min(sr.bottom, r.bottom);
+        if (ax - ix > 40 && ay - iy > 40) {
+          e.style.setProperty('display', 'none', 'important');
+        }
+      }
+    } catch (_) { /* best effort */ }
+  }
+
   // 0. VIDEO — a video creative's pixel size (1280x720) is never a display slot
   // size, and publishers serve video in players, not display slots. So instead
   // of size matching, find video surfaces and bake the poster there:
@@ -145,6 +169,7 @@ export function bakeCreativeInPage(creativeUrl, sizeStr, kind, liveMeta) {
       }
       if (fill(el, { w: bw, h: bh }, 'video')) {
         used.push(el);
+        hidePlayerOverlays(el);
         slots.push({ id: el.id || '(video)', booked: bw + 'x' + bh, mode: 'video', filled: true });
         return true;
       }

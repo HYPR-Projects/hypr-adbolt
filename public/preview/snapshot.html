@@ -59,9 +59,34 @@
     // into the serialized HTML before "</body>" could land it inside an ad blob
     // as inert text. Each slot carries data-adbolt-live-mode + -url; we lay a
     // live <iframe>/<video> over the frozen <img>, which stays as the backstop.
+    // Publisher players (e.g. omelete's .trv-* chrome) bake their own poster /
+    // play-button / skip overlays as siblings of the slot, in the SAME stacking
+    // context, at a z-index above the injected live layer — so they cover the
+    // <video> and swallow the click. Hide positioned, non-descendant elements
+    // that overlap the slot region so the live layer is the only thing on top.
+    function neutralizeOverlays(doc, win, slot) {
+      try {
+        var sr = slot.getBoundingClientRect();
+        var all = doc.querySelectorAll('body *');
+        for (var i = 0; i < all.length; i++) {
+          var e = all[i];
+          if (e === slot || slot.contains(e) || e.contains(slot) || e.hasAttribute('data-adbolt-live')) continue;
+          var cs; try { cs = win.getComputedStyle(e); } catch (_) { continue; }
+          if (cs.position === 'static') continue; // only player chrome is positioned over the slot
+          var r = e.getBoundingClientRect();
+          var ix = Math.max(sr.left, r.left), iy = Math.max(sr.top, r.top);
+          var ax = Math.min(sr.right, r.right), ay = Math.min(sr.bottom, r.bottom);
+          if (ax - ix > 40 && ay - iy > 40) {
+            e.style.setProperty('visibility', 'hidden', 'important');
+            e.style.setProperty('pointer-events', 'none', 'important');
+          }
+        }
+      } catch (_) { /* best effort */ }
+    }
+
     function hydrateLive(frame) {
-      var doc;
-      try { doc = frame.contentDocument; } catch (e) { return; } // cross-origin fallback path: stay frozen
+      var doc, win;
+      try { doc = frame.contentDocument; win = frame.contentWindow; } catch (e) { return; } // cross-origin fallback path: stay frozen
       if (!doc) return;
       var slots = doc.querySelectorAll('[data-adbolt-live-mode]');
       Array.prototype.forEach.call(slots, function (slot) {
@@ -76,8 +101,10 @@
         if (mode === 'video') {
           el = doc.createElement('video');
           el.src = liveUrl; el.controls = true; el.setAttribute('playsinline', ''); el.preload = 'metadata';
-          if (frozen && frozen.src) el.poster = frozen.src;
-          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:2;display:block';
+          // No poster: the publisher screenshot (with its own dead play button)
+          // is misleading, and a baked poster competes with the native control.
+          // The frozen <img> backstop stays behind for the error-degrade case.
+          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:2147483647;display:block';
           el.addEventListener('error', function () { try { el.remove(); } catch (x) {} });
         } else {
           el = doc.createElement('iframe');
@@ -88,13 +115,13 @@
           // allow-same-origin here lets the widget reach ITS own origin, not the
           // host snapshot, so there is no sandbox escape into the deliverable.
           el.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-modals allow-storage-access-by-user-activation');
-          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:2';
+          el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;display:block;background:#fff;z-index:2147483647';
           el.onerror = function () { try { el.remove(); } catch (x) {} };
           el.src = liveUrl;
         }
         el.setAttribute('data-adbolt-live', '1');
         slot.appendChild(el);
-      });
+        neutralizeOverlays(doc, win, slot);
     }
 
     (function load() {
