@@ -75,3 +75,56 @@ describe('parseCM360', () => {
     });
   });
 });
+
+// HYPR re-export: header at row 7, renamed tag columns, an unnamed iframe-tag
+// column, empty 'Standard Tag', and ${CLICK_URL} macros instead of a click col.
+const HYPR_REEXPORT: string[][] = [
+  ['', '', '', '', '', '', '', '', '', 'Tag DV360 (script + ${CLICK_URL})', 'Tag Xandr (iframe + ${CLICK_URL}, sem macros Google)'],
+  ['', '', '', '', '', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', '', '', '', '', ''],
+  // Header row (index 6 → row 7)
+  ['', 'Placement ID', 'Site', 'Placement Name', 'Placement Compatibility', 'Dimensions', 'Start Date', 'End Date', 'Standard Tag', 'Tag Corrigido DV360 (script + click macro)', ''],
+  // Data rows
+  ['', '447896893', 'Hypr', 'BR|PT|JohnsonsBaby|DISP|3P', 'Display', '320x480', '2026-05-01', '2026-06-30', '',
+    "<ins class='dcmads' style='display:inline-block;width:320px;height:480px' data-dcm-placement='N266802.3844866HYPR/B35441728.447896893' data-dcm-rendering-mode='script' data-dcm-click-tracker='${CLICK_URL}'><script src='https://www.googletagservices.com/dcm/dcmads.js'></script></ins>",
+    "<ins class='dcmads' style='display:inline-block;width:320px;height:480px' data-dcm-placement='N266802.3844866HYPR/B35441728.447896893' data-dcm-rendering-mode='iframe' data-dcm-click-tracker='${CLICK_URL}'><script src='https://www.googletagservices.com/dcm/dcmads.js'></script></ins>"],
+  ['', '447910513', 'Hypr', 'BR|PT|JohnsonsBaby|DISP|3P', 'Display', '970x250', '2026-05-01', '2026-06-30', '',
+    "<ins class='dcmads' style='display:inline-block;width:970px;height:250px' data-dcm-placement='N266802.3844866HYPR/B35441728.447910513' data-dcm-rendering-mode='script' data-dcm-click-tracker='${CLICK_URL}'><script src='https://www.googletagservices.com/dcm/dcmads.js'></script></ins>",
+    "<ins class='dcmads' style='display:inline-block;width:970px;height:250px' data-dcm-placement='N266802.3844866HYPR/B35441728.447910513' data-dcm-rendering-mode='iframe'><script src='https://www.googletagservices.com/dcm/dcmads.js'></script></ins>"],
+];
+
+describe('parseCM360 — HYPR re-export (renamed tag columns)', () => {
+  it('detects placements despite a header on row 7', () => {
+    const result = parseCM360(HYPR_REEXPORT);
+    expect(result).not.toBeNull();
+    expect(result!.placements).toHaveLength(2);
+  });
+
+  it('recognizes the renamed/headerless 3P tag columns by content', () => {
+    const p = parseCM360(HYPR_REEXPORT)!.placements;
+    expect(p[0].jsTag).toContain('data-dcm-placement');
+    expect(p[0].jsTag).toContain('dcmads');
+    expect(p[1].jsTag).toContain('970px');
+  });
+
+  it('prefers the script-mode tag over the iframe variant', () => {
+    const p = parseCM360(HYPR_REEXPORT)!.placements;
+    expect(p[0].jsTag).toContain("rendering-mode='script'");
+  });
+
+  it('derives the CM360 click-through URL from the placement id', () => {
+    const p = parseCM360(HYPR_REEXPORT)!.placements;
+    expect(p[0].clickUrl).toBe(
+      'https://ad.doubleclick.net/ddm/jump/N266802.3844866HYPR/B35441728.447896893;sz=320x480;dc_tdv=1'
+    );
+  });
+
+  it('reads dimensions from the Dimensions column', () => {
+    const p = parseCM360(HYPR_REEXPORT)!.placements;
+    expect(p[0].dimensions).toBe('320x480');
+    expect(p[1].dimensions).toBe('970x250');
+  });
+});
