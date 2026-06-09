@@ -80,6 +80,14 @@ const URL_PRESETS = [
   'https://www.tecmundo.com.br/',
 ];
 
+function faviconUrl(u: string): string {
+  try {
+    return `https://www.google.com/s2/favicons?sz=32&domain=${new URL(u).hostname}`;
+  } catch {
+    return '';
+  }
+}
+
 export function CheckinView() {
   const toast = useUIStore((s) => s.toast);
   const creatives = useDashboardStore((s) => s.creatives);
@@ -425,7 +433,14 @@ export function CheckinView() {
                       className={styles.urlOption}
                       onClick={() => { setPageUrl(u); setUrlMenuOpen(false); }}
                     >
-                      {u.replace(/^https?:\/\//, '')}
+                      <img
+                        className={styles.urlFavicon}
+                        src={faviconUrl(u)}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                      />
+                      <span>{u.replace(/^https?:\/\//, '')}</span>
                     </button>
                   ))}
                 </div>
