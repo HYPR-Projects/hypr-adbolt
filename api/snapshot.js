@@ -67,7 +67,7 @@ async function createBrowserbaseSession(proxies) {
     headers: { 'X-BB-API-Key': BROWSERBASE_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       projectId: BROWSERBASE_PROJECT_ID,
-      proxies: !!proxies,
+      proxies: proxies ? [{ type: 'browserbase', geolocation: { country: 'BR' } }] : false,
       browserSettings: { viewport: { width: 1440, height: 900 } },
     }),
   });

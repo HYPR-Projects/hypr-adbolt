@@ -382,7 +382,7 @@ export function CheckinView() {
             />
             <label className={styles.proxyToggle}>
               <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
-              Proxy residencial (sites que bloqueiam mais)
+              Proxy residencial BR (preview como o público brasileiro vê; também destrava sites com anti-bot)
             </label>
             <label className={styles.proxyToggle}>
               <input type="checkbox" checked={freeze} onChange={(e) => setFreeze(e.target.checked)} />

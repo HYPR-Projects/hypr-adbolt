@@ -179,7 +179,7 @@ async function bbCreateSession(proxies) {
       projectId: BB_PROJECT_ID,
       keepAlive: true,
       region: 'us-east-1', // closest Browserbase region to Brazil (no SA region exists)
-      proxies: !!proxies,
+      proxies: proxies ? [{ type: 'browserbase', geolocation: { country: 'BR' } }] : false,
       browserSettings: { viewport: { width: 1920, height: 1080 } },
     }),
   });
