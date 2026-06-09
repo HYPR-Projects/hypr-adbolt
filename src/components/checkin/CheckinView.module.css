@@ -50,6 +50,37 @@
 .input:focus, .sizeInput:focus { outline: none; border-color: var(--border-active); }
 .input::placeholder, .sizeInput::placeholder { color: var(--text-tri); opacity: 0.7; }
 
+.urlCombo { position: relative; }
+.urlMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm, 10px);
+  box-shadow: var(--shadow-md);
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.urlOption {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-sm, 8px);
+  font-size: var(--fs-sm, 14px);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dur-f, 0.12s);
+}
+.urlOption:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+
 .proxyToggle {
   display: flex; align-items: center; gap: 8px;
   font-size: var(--fs-xs, 12px); color: var(--text-tri); cursor: pointer;

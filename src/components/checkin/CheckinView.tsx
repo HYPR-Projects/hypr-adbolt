@@ -69,6 +69,17 @@ const KIND_LABEL: Record<CreativeKind, string> = {
 // faithful and never horizontally cropped.
 const DESKTOP_W = 1280;
 
+const URL_PRESETS = [
+  'https://www.omelete.com.br/',
+  'https://www.globo.com/',
+  'https://vogue.globo.com/',
+  'https://ge.globo.com/',
+  'https://www.tudogostoso.com.br/',
+  'https://www.uol.com.br/',
+  'https://www.cnnbrasil.com.br/',
+  'https://www.tecmundo.com.br/',
+];
+
 export function CheckinView() {
   const toast = useUIStore((s) => s.toast);
   const creatives = useDashboardStore((s) => s.creatives);
@@ -76,6 +87,8 @@ export function CheckinView() {
   const dashLoading = useDashboardStore((s) => s.isLoading);
 
   const [pageUrl, setPageUrl] = useState('');
+  const [urlMenuOpen, setUrlMenuOpen] = useState(false);
+  const urlComboRef = useRef<HTMLDivElement>(null);
   const [useProxy, setUseProxy] = useState(false);
   const [freeze, setFreeze] = useState(false);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('library');
@@ -124,6 +137,18 @@ export function CheckinView() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [status, frameUrl]);
+
+  // Close the URL preset dropdown when clicking outside it.
+  useEffect(() => {
+    if (!urlMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (urlComboRef.current && !urlComboRef.current.contains(e.target as Node)) {
+        setUrlMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [urlMenuOpen]);
 
   // Supabase serves public HTML as text/plain (nosniff), so the iframe can't load
   // the storage URL directly — fetch the HTML and render it via a blob URL, which
@@ -289,6 +314,11 @@ export function CheckinView() {
   const hasCreative = !!creativeSrc || !!creativeBakeSrc || !!libraryStoragePath;
   const canGenerate = !!pageUrl.trim() && hasCreative && status !== 'running';
 
+  const urlOptions = useMemo(() => {
+    const q = pageUrl.trim().toLowerCase();
+    return q ? URL_PRESETS.filter((u) => u.toLowerCase().includes(q)) : URL_PRESETS;
+  }, [pageUrl]);
+
   const generate = useCallback(async () => {
     let normalized = pageUrl.trim();
     if (!normalized) { toast('Informe a URL da página.', 'error'); return; }
@@ -372,14 +402,35 @@ export function CheckinView() {
         <section className={styles.panel}>
           <div className={styles.field}>
             <label className={styles.label}>URL da página</label>
-            <input
-              className={styles.input}
-              type="text"
-              placeholder="cnnbrasil.com.br/esportes/"
-              value={pageUrl}
-              onChange={(e) => setPageUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && canGenerate && generate()}
-            />
+            <div className={styles.urlCombo} ref={urlComboRef}>
+              <input
+                className={styles.input}
+                type="text"
+                placeholder="cnnbrasil.com.br/esportes/"
+                value={pageUrl}
+                autoComplete="off"
+                onChange={(e) => { setPageUrl(e.target.value); setUrlMenuOpen(true); }}
+                onFocus={() => setUrlMenuOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && canGenerate) { setUrlMenuOpen(false); generate(); }
+                  if (e.key === 'Escape') setUrlMenuOpen(false);
+                }}
+              />
+              {urlMenuOpen && urlOptions.length > 0 && (
+                <div className={styles.urlMenu} role="listbox">
+                  {urlOptions.map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      className={styles.urlOption}
+                      onClick={() => { setPageUrl(u); setUrlMenuOpen(false); }}
+                    >
+                      {u.replace(/^https?:\/\//, '')}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <label className={styles.proxyToggle}>
               <input type="checkbox" checked={useProxy} onChange={(e) => setUseProxy(e.target.checked)} />
               Proxy residencial BR (preview como o público brasileiro vê; também destrava sites com anti-bot)
