@@ -1,5 +1,5 @@
 import type { ParsedData, Placement } from '@/types';
-import { cleanCR, extractBrand } from '@/lib/utils';
+import { cleanCR, extractBrand, extractTagClickUrl } from '@/lib/utils';
 
 const NAME_ALIASES = ['creative name', 'creative_name', 'name', 'placement name', 'placement_name', 'ad name', 'creative'];
 const TAG_ALIASES = ['third-party tag', 'third_party_tag', 'tag', 'html tag', 'js tag', 'javascript tag', 'ad tag', 'embed', 'code', 'script', 'third party tag'];
@@ -92,6 +92,9 @@ export function parseGenericTags(rows: string[][]): ParsedData | null {
       const ct = tag.match(/data-click-tracker="([^"]*)"/);
       if (ct) clickUrl = ct[1].replace(/\$\{CLICK_URL\}/g, '').replace(/\$\{CLICK_URL_ENC\}/g, '');
     }
+    // HYPR AdTag: no literal landing in the tag (data-clicktag is a DSP macro);
+    // fall back to the hosted creative URL in data-iframe-src.
+    if (!clickUrl && tag) clickUrl = extractTagClickUrl(tag);
 
     // Detect source format from tag content
     if (!sourceFormat || sourceFormat === 'generic') {

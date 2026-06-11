@@ -98,3 +98,32 @@ export function getRenamedName(
   }
   return (prefix || '') + original + (suffix || '');
 }
+
+/**
+ * Extract a usable click/landing URL from a pasted ad tag.
+ *
+ * Priority:
+ *  1) data-cta-url — explicit CTA attribute (AdCanvas, Nexd).
+ *  2) href / url / landing attributes with a literal https URL.
+ *  3) HYPR AdTag (`data-hypr-adtag`): the tag carries no literal landing —
+ *     `data-clicktag` holds a DSP macro (${CLICK_URL}) expanded at serve time,
+ *     and the real CTA lives inside the hosted creative. Fall back to
+ *     `data-iframe-src` (platform.hypr.mobi/share/creatives/...), which is the
+ *     raw-navigation destination per hypr-adtag.js and a valid https URL that
+ *     satisfies the DSP exit-event requirement (DV360 would otherwise default
+ *     to https://www.example.com inside dsp-dv360).
+ *
+ * Macro placeholders (${...}) are never returned as click URLs.
+ */
+export function extractTagClickUrl(tag: string): string {
+  if (!tag) return '';
+  const cta = tag.match(/data-cta-url\s*=\s*"(https?:\/\/[^"]+)"/i);
+  if (cta) return cta[1];
+  const href = tag.match(/(?:href|url|landing)\s*=\s*"(https?:\/\/[^"]+)"/i);
+  if (href) return href[1];
+  if (/data-hypr-adtag/i.test(tag)) {
+    const src = tag.match(/data-iframe-src\s*=\s*"(https?:\/\/[^"]+)"/i);
+    if (src) return src[1];
+  }
+  return '';
+}

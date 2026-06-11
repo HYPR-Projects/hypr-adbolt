@@ -12,7 +12,7 @@ import { PreviewThumb, CreativePreviewModal } from '@/components/shared/Creative
 import { parseCM360 } from '@/parsers/cm360';
 import { parseGenericTags } from '@/parsers/generic';
 import { analyzeTracker } from '@/parsers/tracker';
-import { normalizeUrl, isValidUrl } from '@/lib/utils';
+import { normalizeUrl, isValidUrl, extractTagClickUrl } from '@/lib/utils';
 import { requireCdnLib } from '@/lib/cdn-loader';
 import type { Placement, Tracker } from '@/types';
 import { DSP_SHORT_LABELS } from '@/types';
@@ -73,11 +73,10 @@ export function StepTags() {
     if (!w || !h) { const dm = tag.match(/(\d{2,4})x(\d{2,4})/i); if (dm) { w = parseInt(dm[1]); h = parseInt(dm[2]); } }
     if (w && !mtWidth) setMtWidth(String(w));
     if (h && !mtHeight) setMtHeight(String(h));
-    // Auto-detect click URL
+    // Auto-detect click URL (cta-url → href/url/landing → HYPR adtag iframe-src)
     if (!mtClick) {
-      const ctaMatch = tag.match(/data-cta-url\s*=\s*"([^"]+)"/i);
-      if (ctaMatch) setMtClick(ctaMatch[1]);
-      else { const hrefMatch = tag.match(/(?:href|url|landing)\s*=\s*"(https?:\/\/[^"]+)"/i); if (hrefMatch) setMtClick(hrefMatch[1]); }
+      const detected = extractTagClickUrl(tag);
+      if (detected) setMtClick(detected);
     }
   }, [mtWidth, mtHeight, mtClick]);
 
@@ -100,11 +99,7 @@ export function StepTags() {
     setMtErrors({});
     const dims = w + 'x' + h;
     let clickUrl = mtClick.trim();
-    if (!clickUrl) {
-      const ctaMatch = tag.match(/data-cta-url\s*=\s*"([^"]+)"/i);
-      if (ctaMatch) clickUrl = ctaMatch[1];
-      else { const hrefMatch = tag.match(/(?:href|url|landing)\s*=\s*"(https?:\/\/[^"]+)"/i); if (hrefMatch) clickUrl = hrefMatch[1]; }
-    }
+    if (!clickUrl) clickUrl = extractTagClickUrl(tag);
     let name = mtName.trim();
     if (!name) {
       const srcMatch = tag.match(/data-iframe-src\s*=\s*"([^"]+)"/i) || tag.match(/src\s*=\s*"([^"]+)"/i);

@@ -91,3 +91,29 @@ describe('parseGenericTags', () => {
     expect(result!.placements[0].placementName).toBe('MyAd');
   });
 });
+
+describe('parseGenericTags — HYPR adtag', () => {
+  it('falls back to data-iframe-src as clickUrl when tag carries only the ${CLICK_URL} macro', () => {
+    const hyprTag = '<script src="mraid.js"></script><div data-hypr-adtag data-iframe-src="https://platform.hypr.mobi/share/creatives/zbq5fbc6ni3wwc" data-width="300" data-height="250" data-clicktag="${CLICK_URL}" data-cb="${CACHEBUSTER}"></div><script src="https://platform.hypr.mobi/hypr-adtag.js" async></script>';
+    const rows: string[][] = [
+      ['Creative name', 'Tag'],
+      ['HYPR_BOTICARIO_300x250', hyprTag],
+    ];
+    const result = parseGenericTags(rows);
+    expect(result).not.toBeNull();
+    const p = result!.placements[0];
+    expect(p.clickUrl).toBe('https://platform.hypr.mobi/share/creatives/zbq5fbc6ni3wwc');
+    expect(p.dimensions).toBe('300x250');
+    expect(p.type).toBe('display');
+  });
+
+  it('spreadsheet click column still wins over the HYPR fallback', () => {
+    const hyprTag = '<div data-hypr-adtag data-iframe-src="https://platform.hypr.mobi/share/creatives/abc" data-width="300" data-height="250" data-clicktag="${CLICK_URL}"></div>';
+    const rows: string[][] = [
+      ['Creative name', 'Tag', 'Click URL'],
+      ['HYPR_300x250', hyprTag, 'https://cliente.com/lp'],
+    ];
+    const result = parseGenericTags(rows);
+    expect(result!.placements[0].clickUrl).toBe('https://cliente.com/lp');
+  });
+});
