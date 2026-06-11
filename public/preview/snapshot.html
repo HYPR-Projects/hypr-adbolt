@@ -64,7 +64,7 @@
   </button>
   <div class="frameWrap">
     <div id="state">Carregando preview…</div>
-    <iframe id="frame" title="preview do anúncio" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-storage-access-by-user-activation" referrerpolicy="no-referrer" style="display:none"></iframe>
+    <iframe id="frame" title="preview do anúncio" allow="geolocation" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-storage-access-by-user-activation" referrerpolicy="no-referrer" style="display:none"></iframe>
   </div>
 
   <script>
@@ -165,7 +165,7 @@
         } else {
           el = doc.createElement('iframe');
           el.setAttribute('scrolling', 'no');
-          el.setAttribute('allow', 'fullscreen; autoplay; clipboard-write');
+          el.setAttribute('allow', 'fullscreen; autoplay; clipboard-write; geolocation');
           el.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
           // Cross-origin embed (Typeform widget / hosted html5 bundle).
           // allow-same-origin here lets the widget reach ITS own origin, not the

@@ -18,6 +18,7 @@ import {
   autoScrollInPage,
   dismissConsentInPage,
 } from './_checkin/engine.js';
+import { resolveHyprAdtagEmbedUrl } from './_checkin/live.js';
 
 export const config = { maxDuration: 180 };
 
@@ -183,12 +184,17 @@ async function shotToDataUri(page, w, h) {
 //   • html5  → hosted bundle URL, framed live
 //   • survey → resolved embed URL (Typeform widget / generic iframe), framed live
 //   • video  → playable asset URL (mp4), native <video controls>
-// 'display' is always the frozen image. 'tag' (3P adserver tags: CM360, Xandr,
-// DV360) is deliberately NOT live: rendering a real serving tag fires billable
-// impressions/clicks and would pollute the very delivery this preview certifies.
-// Interactive 3P-tag preview is a follow-up that must use each DSP's non-billable
-// preview/render endpoint, not the serving tag.
-const LIVE_KINDS = new Set(['html5', 'survey', 'video']);
+//   • tag    → ONLY HYPR AdTags (data-hypr-adtag): the hosted creative URL in
+//              data-iframe-src is framed bare. hypr-adtag.js gates impressions/
+//              events behind a delivery URL param (dlv=...), so the bare share
+//              URL fires NO billable beacons — same rationale as the Typeform
+//              direct-iframe path. Other 3P adserver tags (CM360, Xandr, DV360)
+//              stay frozen: rendering a real serving tag fires billable
+//              impressions/clicks and would pollute the very delivery this
+//              preview certifies. Interactive preview for those is a follow-up
+//              that must use each DSP's non-billable preview/render endpoint.
+// 'display' is always the frozen image.
+const LIVE_KINDS = new Set(['html5', 'survey', 'video', 'tag']);
 
 // Strip the publisher's own CSP <meta> tags from the serialized HTML. They
 // survive SingleFile and would block both the injected hydrator script and the
@@ -329,6 +335,15 @@ async function resolveLive({ kind, creativeUrl, liveUrl, vastTag }) {
     const u = resolveSurveyEmbedUrl(creativeUrl);
     return u ? { mode: 'iframe', url: u } : null;
   }
+  if (kind === 'tag') {
+    // HYPR AdTag only — creativeUrl carries the tag content for kind 'tag'.
+    // Frame data-iframe-src BARE (no dlv/clicktag params): hypr-adtag.js only
+    // counts impressions/events when the URL carries a delivery param, so the
+    // bare hosted-creative URL is non-billable by design. Any other tag → null
+    // (frozen) — see LIVE_KINDS comment.
+    const u = resolveHyprAdtagEmbedUrl(creativeUrl);
+    return u ? { mode: 'iframe', url: u } : null;
+  }
   if (kind === 'video') {
     const u = String(liveUrl || '').trim();
     if (/^https?:\/\//i.test(u)) return { mode: 'video', url: u };
@@ -438,7 +453,8 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
     const kind = creativeKind || 'display';
     // A live layer is attached for html5/survey/video, unless the caller asked
     // to freeze (static deliverable) or no concrete embed could be resolved.
-    // 3P adserver tags ('tag') are never live (see LIVE_KINDS). The frozen image
+    // 3P adserver tags ('tag') are only live when they are HYPR AdTags — the
+    // non-billable hosted-creative URL is framed (see LIVE_KINDS). The frozen image
     // is baked either way, so a live element that errors degrades to it instead
     // of going blank. liveMeta = { mode, url } drives the client-side hydrator.
     const live = !freeze && LIVE_KINDS.has(kind)
