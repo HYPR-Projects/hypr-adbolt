@@ -121,14 +121,56 @@ async function creativeToDataUri(url) {
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
+// Lazy sharp: present on Vercel (declared dep), optional elsewhere — the bridge
+// degrades to pass-through when unavailable.
+let _sharp;
+async function getSharp() {
+  if (_sharp !== undefined) return _sharp;
+  try { _sharp = (await import('sharp')).default; } catch (e) { _sharp = null; }
+  return _sharp;
+}
+
+// Recompress large raster images before shipping them through the CDP websocket
+// into the page. The bridge payload (base64 in JSON CDP messages over ONE remote
+// websocket) is the dominant serialize cost on image-heavy publishers; a 1280px
+// webp q70 cut is invisible in an ad-in-context preview but cuts the wire bytes
+// (and the final snapshot HTML) 3-5x. GIF (animation) and SVG are passed through.
+const DOWNSCALE_MIN_BYTES = 150 * 1024;
+async function maybeDownscaleImage(buf, contentType) {
+  if (!buf || buf.length < DOWNSCALE_MIN_BYTES) return { buf, contentType };
+  if (!/^image\/(jpeg|jpg|png|webp)$/i.test(contentType)) return { buf, contentType };
+  const sharp = await getSharp();
+  if (!sharp) return { buf, contentType };
+  try {
+    const out = await sharp(buf).resize({ width: 1280, withoutEnlargement: true }).webp({ quality: 70 }).toBuffer();
+    if (out.length < buf.length * 0.9) return { buf: out, contentType: 'image/webp' };
+  } catch (e) { /* corrupt/unsupported image — keep original */ }
+  return { buf, contentType };
+}
+
 // Fetch a page resource (image/css/font) in Node — no CORS, not subject to the
 // publisher's CSP. SingleFile runs inside the page and its in-page fetch of
 // cross-origin assets (publisher CDN images, fonts) is blocked, leaving the
 // page's own images blank. Exposed to the page as window.__adboltFetch so
 // SingleFile can inline everything through Node instead.
-async function nodeFetchResource(url) {
+//
+// `cache` is the response cache populated DURING page load (see runSnapshot):
+// a hit skips the refetch entirely — the browser→Node transfer already happened
+// overlapped with nav/scroll wait time instead of serially during serialize.
+async function nodeFetchResource(url, cache) {
   try {
     if (!/^https?:/i.test(url)) return { status: 0, base64: '', headers: {} };
+    const hit = cache && cache.get(url);
+    if (cache) {
+      const st = cache.__stats || (cache.__stats = { hit: 0, miss: 0, missUrls: [] });
+      if (hit) st.hit++; else { st.miss++; if (st.missUrls.length < 25) st.missUrls.push(url.slice(0, 120)); }
+    }
+    if (hit) {
+      // Served as cached — the downscale (if applicable) already ran at
+      // cache-fill time, overlapped with page load. Never encode here: this is
+      // the serialize critical path.
+      return { status: 200, base64: hit.buf.toString('base64'), headers: { 'content-type': hit.contentType } };
+    }
     // Bound every asset fetch: a single slow/hanging publisher resource (tracker,
     // slow CDN) with no timeout was stalling the whole SingleFile serialize for
     // tens of seconds. 4s is plenty for a real asset; anything slower is skipped.
@@ -139,10 +181,11 @@ async function nodeFetchResource(url) {
     finally { clearTimeout(t); }
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.length > 3 * 1024 * 1024) return { status: 0, base64: '', headers: {} }; // skip huge assets
+    const ct = (r.headers.get('content-type') || '').split(';')[0];
     return {
       status: r.status,
       base64: buf.toString('base64'),
-      headers: { 'content-type': r.headers.get('content-type') || '' },
+      headers: { 'content-type': ct || '' },
     };
   } catch (e) {
     return { status: 0, base64: '', headers: {} };
@@ -427,7 +470,7 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 }
 
 // ---------------------------------------------------------------------------
-async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveUrl, vastTag, freeze, proxies }) {
+export async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveUrl, vastTag, freeze, proxies }) {
   const started = Date.now();
   // Per-phase timing so we can see where the time actually goes (persisted into
   // slots_meta.phases). mark('label') records ms since the previous mark.
@@ -446,8 +489,44 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8' });
     try { await page.emulateTimezone('America/Sao_Paulo'); } catch (e) { /* ignore */ }
 
+    // Asset response cache — populated DURING page load. Every body capture
+    // here happens overlapped with the nav/scroll wait time; at serialize the
+    // bridge serves from this map instead of refetching, turning the previously
+    // serial fetch-and-transfer phase into (mostly) transfer-only. Capped per
+    // asset and in total — OOM history on this function (HTTP 546) demands it.
+    const assetCache = new Map();
+    const downscalePending = [];
+    let assetCacheBytes = 0;
+    const ASSET_CACHE_LIMIT = 48 * 1024 * 1024; // transient preload duplicates this as base64 — keep headroom (OOM/546 history)
+    const CACHEABLE_CT = /^(image\/|text\/css|font\/|application\/(x-)?font)/i;
+    page.on('response', (resp) => {
+      (async () => {
+        try {
+          if (resp.status() !== 200 || resp.request().method() !== 'GET') return;
+          const u = resp.url();
+          if (!/^https?:/i.test(u) || assetCache.has(u)) return;
+          const ct = (resp.headers()['content-type'] || '').split(';')[0];
+          if (!CACHEABLE_CT.test(ct)) return;
+          if (assetCacheBytes >= ASSET_CACHE_LIMIT) return;
+          const buf = await resp.buffer();
+          if (!buf || !buf.length || buf.length > 3 * 1024 * 1024) return;
+          if (assetCacheBytes + buf.length > ASSET_CACHE_LIMIT) return;
+          assetCache.set(u, { buf, contentType: ct });
+          assetCacheBytes += buf.length;
+          // Downscale NOW, overlapped with the nav/scroll wait — doing it at
+          // bridge-call time put hundreds of serial webp encodes inside the
+          // serialize critical path and made it SLOWER than no cache at all.
+          downscalePending.push(
+            maybeDownscaleImage(buf, ct)
+              .then((ds) => { if (ds.buf !== buf) assetCache.set(u, ds); })
+              .catch(() => {})
+          );
+        } catch (e) { /* redirected/evicted body — bridge refetches on demand */ }
+      })();
+    });
+
     // Bridge SingleFile's asset fetching through Node (bypasses publisher CSP/CORS).
-    try { await page.exposeFunction('__adboltFetch', nodeFetchResource); } catch (e) { /* already bound / unsupported */ }
+    try { await page.exposeFunction('__adboltFetch', (u) => nodeFetchResource(u, assetCache)); } catch (e) { /* already bound / unsupported */ }
 
     step = 'creative';
     const kind = creativeKind || 'display';
@@ -533,6 +612,54 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
     bake.live = !!liveMeta;
 
     step = 'serialize';
+    // Let in-flight downscales settle (bounded — they've had all of nav/scroll
+    // to run) so the preloaded payload ships the small webp versions and no
+    // sharp encode competes with the serialize for CPU.
+    await Promise.race([Promise.allSettled(downscalePending), new Promise((r) => setTimeout(r, 5000))]);
+    // Prefetch the gaps: hidden/lazy <img> the browser never painted (and so
+    // never loaded) are absent from the load-time cache, but SingleFile will
+    // request them one by one — each a serial bridge round-trip. Collect every
+    // in-DOM img URL that survived the trim and bulk-fetch the missing ones in
+    // parallel in Node, so they ride the preload below instead.
+    try {
+      const wantUrls = await page.evaluate(() => {
+        const out = new Set();
+        for (const img of document.querySelectorAll('img')) {
+          for (const u of [img.currentSrc, img.getAttribute('src')]) {
+            if (!u) continue;
+            try { out.add(new URL(u, location.href).href); } catch (e) { /* skip */ }
+          }
+        }
+        return Array.from(out).slice(0, 500);
+      });
+      const gaps = wantUrls.filter((u) => /^https?:/i.test(u) && !assetCache.has(u));
+      await Promise.allSettled(gaps.map(async (u) => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        try {
+          const r = await fetch(u, { redirect: 'follow', signal: ctrl.signal });
+          if (!r.ok) return;
+          const ct = (r.headers.get('content-type') || '').split(';')[0];
+          if (!/^image\//i.test(ct)) return;
+          const buf = Buffer.from(await r.arrayBuffer());
+          if (!buf.length || buf.length > 3 * 1024 * 1024) return;
+          if (assetCacheBytes + buf.length > ASSET_CACHE_LIMIT) return;
+          const ds = await maybeDownscaleImage(buf, ct);
+          assetCache.set(u, ds);
+          assetCacheBytes += ds.buf.length;
+        } catch (e) { /* slow/broken asset — bridge handles it on demand */ }
+        finally { clearTimeout(t); }
+      }));
+    } catch (e) { /* prefetch is best-effort */ }
+
+    // Preload the whole asset cache into the page in ONE CDP message. The
+    // per-asset exposeFunction round-trip (page→Node→page over the remote
+    // websocket) was the dominant serialize cost — ~100-200 calls × RTT. A
+    // single bulk transfer collapses that to one message; bridged() then
+    // resolves cached assets synchronously in-page.
+    const preload = {};
+    for (const [u, v] of assetCache) preload[u] = { b: v.buf.toString('base64'), ct: v.contentType };
+    await page.evaluate((m) => { window.__adboltAssets = m; }, preload).catch(() => {});
     await page.evaluate(SINGLEFILE_BUNDLE);
     const html = await page.evaluate(async (noCsp) => {
       // Same-origin assets pass CSP/CORS natively, so fetch them directly — fast,
@@ -562,6 +689,19 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
         return tfetch(url);
       };
       const bridged = async (url) => {
+        // Same-origin → native fetch (parallel, browser HTTP cache, zero CDP).
+        // Cross-origin → straight to the bridge: a native-first attempt was
+        // benchmarked and REGRESSED serialize ~35% — on CORS-less CDNs (the
+        // common publisher case) every asset paid a doomed fetch round-trip
+        // before bridging. The bridge is cheap now (load-time response cache).
+        const abs = (() => { try { return new URL(url, location.href).href; } catch (e) { return String(url); } })();
+        const pre = (window.__adboltAssets || {})[abs] || (window.__adboltAssets || {})[String(url)];
+        if (pre) {
+          const bin = atob(pre.b);
+          const arr = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          return new Response(arr, { status: 200, headers: { 'content-type': pre.ct || '' } });
+        }
         let sameOrigin = false;
         try { sameOrigin = new URL(url, location.href).origin === location.origin; } catch (e) { /* treat as cross-origin */ }
         if (sameOrigin) {
@@ -608,10 +748,11 @@ async function runSnapshot({ url, creativeUrl, creativeSize, creativeKind, liveU
 
     const title = await page.title().catch(() => '');
     bake.phases = phases;
+    bake.cache = assetCache.__stats ? { hit: assetCache.__stats.hit, miss: assetCache.__stats.miss } : null;
     return {
       html: finalHtml,
       slots: bake,
-      meta: { engine, consentHandled, durationMs: Date.now() - started, title, phases, live: !!liveMeta },
+      meta: { engine, consentHandled, durationMs: Date.now() - started, title, phases, live: !!liveMeta, cacheStats: assetCache.__stats || { hit: 0, miss: 0 } },
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
