@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { initRouter } from '@/lib/router';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { LoginScreen } from '@/components/LoginScreen';
 import { Topbar } from '@/components/layout/Topbar';
@@ -49,6 +50,11 @@ export function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // URL ↔ store sync (refresh, back/forward, deep links)
+  useEffect(() => {
+    initRouter();
+  }, []);
 
   // Sync theme attribute on mount
   useEffect(() => {
