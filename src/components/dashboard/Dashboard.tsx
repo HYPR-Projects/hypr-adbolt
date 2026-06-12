@@ -2,12 +2,14 @@ import { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import { useDashboardStore, getFormatLabel } from '@/stores/dashboard';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { useWizardStore } from '@/stores/wizard';
 import { useColumnResize } from '@/hooks/useColumnResize';
 import { BulkBar } from '@/components/shared/BulkBar';
 import { Modal } from '@/components/shared/Modal';
 import { syncCreatives as syncCreativesApi } from '@/services/sync';
 import { updateCreative } from '@/services/update';
 import { deleteCreatives } from '@/services/delete';
+import { detectGroupKind, groupsToParsedData, groupsToAssetEntries } from '@/services/duplicate';
 import { normalizeUrl, getRenamedName } from '@/lib/utils';
 import { genDV360 } from '@/generators/dv360';
 import { genXandr } from '@/generators/xandr';
@@ -28,6 +30,8 @@ export function Dashboard() {
   const store = useDashboardStore();
   const session = useAuthStore((s) => s.session);
   const toast = useUIStore((s) => s.toast);
+  const setView = useUIStore((s) => s.setView);
+  const hydrateForDuplicate = useWizardStore((s) => s.hydrateForDuplicate);
 
   const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -218,8 +222,86 @@ export function Dashboard() {
     finally { setIsDeleting(false); setDeleteProgress(''); }
   }, [session?.access_token, store.selectedKeys, store.groups, toast, deleteDspFilter]);
 
+  // ── Duplicate ──
+  const [dupVisible, setDupVisible] = useState(false);
+  const [dupKind, setDupKind] = useState<'tag' | 'asset'>('tag');
+  const [dupSuffix, setDupSuffix] = useState('_v2');
+  const [dupBusy, setDupBusy] = useState(false);
+  const [dupProgress, setDupProgress] = useState('');
+
+  // Breakdown of selected groups by duplication kind (computed when modal opens)
+  const dupBreakdown = useMemo(() => {
+    if (!dupVisible) return { tagGroups: [] as CreativeGroup[], assetGroups: [] as CreativeGroup[] };
+    const keys = [...store.selectedKeys];
+    const groups = keys.map((k) => store.groups.find((g) => g._gid === k)).filter(Boolean) as CreativeGroup[];
+    return {
+      tagGroups: groups.filter((g) => detectGroupKind(g) === 'tag'),
+      assetGroups: groups.filter((g) => detectGroupKind(g) === 'asset'),
+    };
+  }, [dupVisible, store.selectedKeys, store.groups]);
+
+  const openDuplicate = useCallback(() => {
+    if (!store.selectedKeys.size) return;
+    const keys = [...store.selectedKeys];
+    const groups = keys.map((k) => store.groups.find((g) => g._gid === k)).filter(Boolean) as CreativeGroup[];
+    const hasTags = groups.some((g) => detectGroupKind(g) === 'tag');
+    setDupKind(hasTags ? 'tag' : 'asset');
+    setDupSuffix('_v2');
+    setDupVisible(true);
+  }, [store.selectedKeys, store.groups]);
+
+  const executeDuplicate = useCallback(async () => {
+    const groups = dupKind === 'tag' ? dupBreakdown.tagGroups : dupBreakdown.assetGroups;
+    if (!groups.length) return;
+    const suffix = dupSuffix.trim();
+
+    if (dupKind === 'tag') {
+      const { parsed, skipped } = groupsToParsedData(groups, suffix);
+      if (!parsed) {
+        toast('Nenhum criativo duplicável: ' + skipped.map((s) => `${s.name} (${s.reason})`).join('; '), 'error');
+        return;
+      }
+      if (skipped.length) {
+        toast(`${skipped.length} pulado(s): ${skipped.map((s) => s.name).join(', ')}`, 'error');
+      }
+      hydrateForDuplicate({ mode: 'tags', parsedData: parsed });
+      setDupVisible(false);
+      store.clearSelection();
+      setView('wizard');
+      toast(`${parsed.placements.length} criativo(s) carregado(s) no wizard. Ajuste e ative.`, 'success');
+      return;
+    }
+
+    // Assets: async — downloads files from storage
+    setDupBusy(true);
+    setDupProgress(`Baixando 0/${groups.length}...`);
+    try {
+      const { entries, skipped } = await groupsToAssetEntries(groups, suffix, (done, total) => {
+        setDupProgress(`Baixando ${done}/${total}...`);
+      });
+      if (!entries.length) {
+        toast('Nenhum asset duplicável: ' + skipped.map((s) => `${s.name} (${s.reason})`).join('; '), 'error');
+        return;
+      }
+      if (skipped.length) {
+        toast(`${skipped.length} pulado(s): ${skipped.map((s) => `${s.name} (${s.reason})`).join('; ')}`, 'error');
+      }
+      hydrateForDuplicate({ mode: 'assets', assetEntries: entries });
+      setDupVisible(false);
+      store.clearSelection();
+      setView('wizard');
+      toast(`${entries.length} asset(s) carregado(s) no wizard. Ajuste e ative.`, 'success');
+    } catch (err) {
+      toast('Erro ao duplicar: ' + (err as Error).message, 'error');
+    } finally {
+      setDupBusy(false);
+      setDupProgress('');
+    }
+  }, [dupKind, dupBreakdown, dupSuffix, hydrateForDuplicate, setView, store, toast]);
+
   const bulkActions = [
     { label: 'Editar', onClick: () => openBulkEdit() },
+    { label: 'Duplicar', onClick: () => openDuplicate() },
     { label: 'Renomear', onClick: () => openBulkRename() },
     { label: 'Gerar Template', onClick: () => openTemplateGen() },
     { label: 'Deletar', onClick: handleBulkDelete, danger: true },
@@ -868,6 +950,70 @@ export function Dashboard() {
       </Modal>
 
       {/* Rename Modal */}
+      {/* Duplicate modal */}
+      <Modal
+        visible={dupVisible}
+        onClose={() => { if (!dupBusy) setDupVisible(false); }}
+        title="Duplicar criativos"
+        footer={
+          <>
+            <button className={styles.btn} onClick={() => setDupVisible(false)} disabled={dupBusy}>Cancelar</button>
+            <button
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={executeDuplicate}
+              disabled={dupBusy || (dupKind === 'tag' ? !dupBreakdown.tagGroups.length : !dupBreakdown.assetGroups.length)}
+            >
+              {dupBusy ? (dupProgress || 'Processando...') : 'Duplicar e abrir no wizard'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--text-sec)' }}>
+          Os criativos selecionados serão carregados no wizard como novos criativos.
+          Lá você ajusta nomes, click URLs e trackers antes de escolher as DSPs e ativar.
+          Os originais não são alterados.
+        </p>
+
+        {dupBreakdown.tagGroups.length > 0 && dupBreakdown.assetGroups.length > 0 && (
+          <div className={styles.editField}>
+            <label>A seleção mistura formatos. O wizard processa um tipo por vez:</label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                className={`${styles.btn} ${dupKind === 'tag' ? styles.btnPrimary : ''}`}
+                onClick={() => setDupKind('tag')}
+                disabled={dupBusy}
+              >
+                Tags/VAST/Surveys ({dupBreakdown.tagGroups.length})
+              </button>
+              <button
+                className={`${styles.btn} ${dupKind === 'asset' ? styles.btnPrimary : ''}`}
+                onClick={() => setDupKind('asset')}
+                disabled={dupBusy}
+              >
+                Assets ({dupBreakdown.assetGroups.length})
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={styles.editField}>
+          <label>Sufixo do nome <span style={{ fontWeight: 400, color: 'var(--text-tri)' }}>(evita confundir cópia com original no dashboard)</span></label>
+          <input value={dupSuffix} onChange={(e) => setDupSuffix(e.target.value)} placeholder="_v2" disabled={dupBusy} />
+        </div>
+
+        <div style={{ fontSize: '0.74rem', color: 'var(--text-tri)', marginTop: 8 }}>
+          {(dupKind === 'tag' ? dupBreakdown.tagGroups : dupBreakdown.assetGroups).slice(0, 6).map((g) => (
+            <div key={g._gid}>• {g.name}{dupSuffix.trim()}</div>
+          ))}
+          {(dupKind === 'tag' ? dupBreakdown.tagGroups : dupBreakdown.assetGroups).length > 6 && (
+            <div>...e mais {(dupKind === 'tag' ? dupBreakdown.tagGroups : dupBreakdown.assetGroups).length - 6}</div>
+          )}
+          {dupKind === 'asset' && (
+            <div style={{ marginTop: 6 }}>Assets serão re-baixados do storage. Criativos antigos sem arquivo em cache serão pulados com aviso.</div>
+          )}
+        </div>
+      </Modal>
+
       <Modal visible={renameVisible} onClose={() => setRenameVisible(false)} title={`Renomear ${store.selectedKeys.size} criativos`}>
         <div className={styles.editField}>
           <label>Prefixo <span style={{ fontWeight: 400, color: 'var(--text-tri)' }}>(adicionado antes do nome)</span></label>

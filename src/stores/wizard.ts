@@ -53,6 +53,12 @@ interface WizardState {
 
   // ── Actions ──
   enterWizard: (mode: WizardMode) => void;
+  /** Enter the wizard pre-populated from duplicated creatives (dashboard → Duplicar). */
+  hydrateForDuplicate: (payload: {
+    mode: 'tags' | 'assets';
+    parsedData?: ParsedData | null;
+    assetEntries?: AssetEntry[];
+  }) => void;
   resetWizard: () => void;
   setStep: (step: number) => void;
 
@@ -162,6 +168,24 @@ export const useWizardStore = create<WizardState>((set, get) => ({
       mode,
       // Legacy: surveys mode pre-fills xandrBrandUrl with hypr.mobi
       xandrBrandUrl: mode === 'surveys' ? 'https://hypr.mobi' : '',
+    });
+  },
+
+  hydrateForDuplicate: ({ mode, parsedData, assetEntries }) => {
+    const maxAssetId = (assetEntries || []).reduce((max, e) => Math.max(max, e.id), 0);
+    set({
+      ...INITIAL_STATE,
+      // Deep-copy sets to avoid sharing references (same as enterWizard)
+      selectedTagIds: new Set(),
+      selectedAssetIds: new Set(),
+      selectedDsps: new Set(),
+      generatedFiles: {},
+      activationResults: [],
+      mode,
+      parsedData: parsedData ?? null,
+      assetEntries: assetEntries ?? [],
+      assetIdCounter: maxAssetId,
+      currentStep: 0,
     });
   },
 
