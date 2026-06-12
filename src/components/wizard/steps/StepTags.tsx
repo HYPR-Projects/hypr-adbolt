@@ -33,6 +33,7 @@ export function StepTags() {
 
   // Track whether a file was uploaded (separate from manual tags)
   const [fileUploaded, setFileUploaded] = useState(false);
+  const [uploadedFileCount, setUploadedFileCount] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // ── Column resize ──
@@ -145,8 +146,7 @@ export function StepTags() {
 
   // ── File handling ──
   const handleFiles = useCallback(async (files: File[]) => {
-    const file = files[0];
-    if (!file) return;
+    if (!files.length) return;
     setUploadError(null);
 
     let XLSX: any;
@@ -159,11 +159,17 @@ export function StepTags() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
+    // Sequential processing: each file merges into the result of the previous
+    // one via mergeParsedData (which reads live store state — no stale closure).
+    const okParts: string[] = [];
+    const failures: string[] = [];
+    let totalAdded = 0;
+    let totalSkipped = 0;
 
-        const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' });
+    for (const file of files) {
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
         const sheetName = wb.SheetNames.includes('Tags') ? 'Tags' : wb.SheetNames[0];
         const ws = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
@@ -171,47 +177,51 @@ export function StepTags() {
         // Try CM360 first, then generic
         let result = parseCM360(rows);
         let source = 'CM360';
-
         if (!result) {
           result = parseGenericTags(rows);
           source = result?.sourceFormat || 'generic';
         }
 
         if (!result) {
-          const msg = 'Formato não reconhecido. Esperado: CM360, DV360 bulk, ou planilha com "Creative name" + "Third-party tag".';
-          setUploadError(msg);
-          toast(msg, 'error');
-          return;
+          failures.push(`${file.name}: formato não reconhecido`);
+          continue;
         }
 
-        // Merge with existing data
-        setUploadError(null);
-        if (parsedData?.placements?.length) {
-          const { added, skipped } = mergeParsedData(result);
-          setFileUploaded(true);
-          toast(
-            `${added} novo${added !== 1 ? 's' : ''} adicionado${added !== 1 ? 's' : ''}` +
-            (skipped > 0 ? `, ${skipped} já existente${skipped !== 1 ? 's' : ''}` : '') +
-            ` (total: ${(parsedData.placements.length + added)})`,
-            'success'
-          );
-        } else {
-          setParsedData(result);
-          setFileUploaded(true);
-          if (result.brandName) {
-            setConfig({ brand: result.brandName });
-          }
-          toast(`${result.placements.length} placements extraídos (${source})`, 'success');
+        const { added, skipped } = mergeParsedData(result);
+        totalAdded += added;
+        totalSkipped += skipped;
+        okParts.push(`${file.name}: ${added} (${source})`);
+
+        // Prefill brand from the first file that carries one
+        if (result.brandName && !useWizardStore.getState().brand) {
+          setConfig({ brand: result.brandName });
         }
       } catch (err) {
         console.error(err);
-        const msg = 'Erro: ' + (err as Error).message;
-        setUploadError(msg);
-        toast(msg, 'error');
+        failures.push(`${file.name}: ${(err as Error).message}`);
       }
-    };
-    reader.readAsArrayBuffer(file);
-  }, [parsedData, setParsedData, mergeParsedData, setConfig, toast]);
+    }
+
+    if (okParts.length) {
+      setFileUploaded(true);
+      setUploadedFileCount((n) => n + okParts.length);
+    }
+
+    if (failures.length && !okParts.length) {
+      const msg = failures.join(' · ');
+      setUploadError(msg);
+      toast(msg, 'error');
+      return;
+    }
+
+    const total = useWizardStore.getState().parsedData?.placements.length || 0;
+    let msg = `${totalAdded} placement${totalAdded !== 1 ? 's' : ''} extraído${totalAdded !== 1 ? 's' : ''}`;
+    if (files.length > 1) msg += ` de ${okParts.length} arquivo${okParts.length !== 1 ? 's' : ''}`;
+    if (totalSkipped > 0) msg += `, ${totalSkipped} já existente${totalSkipped !== 1 ? 's' : ''}`;
+    msg += ` (total: ${total})`;
+    if (failures.length) msg += ` — falhou: ${failures.join(' · ')}`;
+    toast(msg, failures.length ? 'error' : 'success');
+  }, [mergeParsedData, setConfig, toast]);
 
   // ── Filtering ──
   const allPlacements = parsedData?.placements || [];
@@ -265,15 +275,20 @@ export function StepTags() {
 
       <UploadZone
         accept=".xlsx,.xls,.csv"
+        multiple
         icon="📄"
-        formatHint=".xlsx .csv"
+        formatHint=".xlsx .csv · múltiplos arquivos (display + vídeo)"
         hasFiles={fileUploaded}
         fileSummary={fileUploaded && parsedData ? (
-          <span><strong>{allPlacements.length}</strong> placements · {parsedData.campaignName || parsedData.advertiserName}</span>
+          <span>
+            <strong>{allPlacements.length}</strong> placements
+            {uploadedFileCount > 1 ? <> · {uploadedFileCount} arquivos</> : null}
+            {' · '}{parsedData.campaignName || parsedData.advertiserName}
+          </span>
         ) : undefined}
         errorMessage={uploadError}
         onFiles={handleFiles}
-        onClear={() => { setParsedData(null); setFileUploaded(false); setUploadError(null); }}
+        onClear={() => { setParsedData(null); setFileUploaded(false); setUploadedFileCount(0); setUploadError(null); }}
         onClearError={() => setUploadError(null)}
       />
 

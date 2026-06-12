@@ -231,7 +231,21 @@ export const useWizardStore = create<WizardState>((set, get) => ({
 
     const existingIds = new Set(parsedData.placements.map((p) => String(p.placementId)));
     const newOnly = newData.placements.filter((p) => !existingIds.has(String(p.placementId)));
-    const merged = { ...newData, placements: [...parsedData.placements, ...newOnly] };
+    const placements = [...parsedData.placements, ...newOnly];
+
+    // Existing metadata wins (first file uploaded defines the header); new
+    // data only fills gaps. contentType is recomputed from the merged set so
+    // display + video exports of the same campaign correctly become 'mixed'.
+    const hasV = placements.some((p) => p.type === 'video');
+    const hasD = placements.some((p) => p.type === 'display');
+    const merged = {
+      ...newData,
+      advertiserName: parsedData.advertiserName || newData.advertiserName,
+      campaignName: parsedData.campaignName || newData.campaignName,
+      brandName: parsedData.brandName || newData.brandName,
+      contentType: hasV && hasD ? ('mixed' as const) : hasV ? ('video' as const) : ('display' as const),
+      placements,
+    };
     set({ parsedData: merged });
     return { added: newOnly.length, skipped: newData.placements.length - newOnly.length };
   },
