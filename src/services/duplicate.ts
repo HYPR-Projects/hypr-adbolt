@@ -14,6 +14,7 @@ import { requireCdnLib } from '@/lib/cdn-loader';
 import { getAssetType, generateThumb, readFileDimensions } from '@/lib/asset-processing';
 import { analyzeVideo } from '@/lib/video-analysis';
 import { processHTML5Zip } from '@/lib/html5-zip';
+import { analyzeTracker } from '@/parsers/tracker';
 import type {
   CreativeGroup, DspDetail, Placement, ParsedData, Tracker, AssetEntry,
 } from '@/types';
@@ -30,18 +31,41 @@ export function detectGroupKind(g: CreativeGroup): DuplicateKind {
   return g.asset_filename ? 'asset' : 'tag';
 }
 
-/** Trackers come from JSONB and may arrive as string. */
-function parseTrackers(raw: Tracker[] | string | null): Tracker[] {
+/**
+ * Trackers come from JSONB and exist in three persisted shapes (verified in prod):
+ * 1. Array of Tracker objects (or its JSON-string form): [{url, format, dsps, eventType?}]
+ * 2. Legacy array of plain URL strings: ["https://..."] — pre-Tracker-object era
+ * 3. Empty: [] / null
+ * Normalizes everything into Tracker[]; malformed entries are dropped, never crash.
+ */
+export function parseTrackers(raw: Tracker[] | string | null): Tracker[] {
   if (!raw) return [];
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+  let list: unknown = raw;
+  if (typeof list === 'string') {
+    try { list = JSON.parse(list); } catch { return []; }
   }
-  return Array.isArray(raw) ? raw : [];
+  if (!Array.isArray(list)) return [];
+
+  const out: Tracker[] = [];
+  for (const item of list) {
+    if (typeof item === 'string') {
+      // Legacy format: plain URL string → infer format, scope to all DSPs
+      const t = item.trim();
+      if (!t) continue;
+      const { url, format } = analyzeTracker(t);
+      out.push({ url, format, dsps: 'all' });
+    } else if (item && typeof item === 'object' && typeof (item as Tracker).url === 'string') {
+      const t = item as Partial<Tracker> & { url: string };
+      out.push({
+        url: t.url,
+        format: t.format || 'url-image',
+        dsps: t.dsps === 'all' || Array.isArray(t.dsps) ? t.dsps : 'all',
+        ...(t.eventType ? { eventType: t.eventType } : {}),
+      });
+    }
+    // anything else (number, null, nested garbage) is silently dropped
+  }
+  return out;
 }
 
 /**
@@ -54,10 +78,12 @@ function pickCanonicalDsp(g: CreativeGroup): DspDetail | null {
 
 function parseDspConfig(raw: DspDetail['dsp_config'] | string | null): Record<string, unknown> {
   if (!raw) return {};
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw) || {}; } catch { return {}; }
+  let v: unknown = raw;
+  // Prod has double-encoded rows (JSONB string containing a JSON string) — unwrap up to 2 levels
+  for (let i = 0; i < 2 && typeof v === 'string'; i++) {
+    try { v = JSON.parse(v); } catch { return {}; }
   }
-  return raw as Record<string, unknown>;
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
 /** Scan all DSP rows of a group for a persisted storage_path. */
