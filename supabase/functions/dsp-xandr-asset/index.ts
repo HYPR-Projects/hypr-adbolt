@@ -163,16 +163,33 @@ async function processCreative(token:string, advId:number, input:Input, brandUrl
       // o arquivo já chega no formato esperado pra serving.
       const linearObj: Record<string, unknown> = {};
       if (normalizedTrackers.length > 0) {
+        // O endpoint /creative-vast valida os trackers do inline.linear pelo
+        // campo STRING `vast_event_type` (snake_case). Mandar só
+        // `vast_event_type_id` (numérico) → "field 'vast_event_type' is required"
+        // / INVALID_VAST_EVENT_TYPE. Enum confirmado na doc da Xandr
+        // (creative-service): impression/start/skip/error/first_quartile/
+        // midpoint/third_quartile/completion/click. Mandamos os dois campos
+        // (a doc mostra ambos coexistindo) — string satisfaz a validação, id
+        // é redundância segura.
+        const VAST_EVENT_STR_MAP: Record<string, string> = {
+          impression: 'impression', start: 'start', first_quartile: 'first_quartile',
+          midpoint: 'midpoint', third_quartile: 'third_quartile', completion: 'completion',
+          click: 'click', skip: 'skip', error: 'error',
+        };
         const VAST_EVENT_ID_MAP: Record<string, number> = {
           impression: 9, start: 2, first_quartile: 5, midpoint: 6,
           third_quartile: 7, completion: 8, click: 10, skip: 3, error: 4,
         };
-        linearObj.trackers = normalizedTrackers.slice(0, 5).map((t, i) => ({
-          name: `tracker_${i}`,
-          vast_event_type_id: VAST_EVENT_ID_MAP[t.eventType || 'impression'] || 9,
-          url: t.url,
-          secure_url: t.url.replace(/^http:/, 'https:'),
-        }));
+        linearObj.trackers = normalizedTrackers.slice(0, 5).map((t, i) => {
+          const ev = t.eventType || 'impression';
+          return {
+            name: `tracker_${i}`,
+            vast_event_type: VAST_EVENT_STR_MAP[ev] || 'impression',
+            vast_event_type_id: VAST_EVENT_ID_MAP[ev] || 9,
+            url: t.url,
+            secure_url: t.url.replace(/^http:/, 'https:'),
+          };
+        });
       }
       const inlineObj: Record<string, unknown> = {
         ad_title: input.name,

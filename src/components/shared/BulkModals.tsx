@@ -497,3 +497,114 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
     </Modal>
   );
 }
+// ── Edição inline de um tracker já adicionado (chip clicável no StepAssets) ──
+// Reusa os mesmos controles do BulkTrackerModal: escopo por DSP, formato
+// (Pixel vs JavaScript) e — só pra vídeo — o VAST event type. O formato importa
+// porque tag de brand safety (DV/IAS) precisa rodar como <script>; se ficar
+// como <img>, a medição não executa (vale pra Xandr via `pixels.format` e pra
+// DV360 via appendedTag).
+interface TrackerEditModalProps {
+  visible: boolean;
+  onClose: () => void;
+  url: string;
+  format: TrackerFormat;
+  scope: 'all' | DspType[];
+  eventType?: VastEventType;
+  isVideo: boolean;
+  availableDsps?: DspType[];
+  onSave: (patch: { format: TrackerFormat; dsps: 'all' | DspType[]; eventType?: VastEventType }) => void;
+}
+export function TrackerEditModal({ visible, onClose, url, format, scope, eventType, isVideo, availableDsps, onSave }: TrackerEditModalProps) {
+  const [fmt, setFmt] = useState<TrackerFormat>(format);
+  const [sc, setSc] = useState<'all' | DspType[]>(scope);
+  const [ev, setEv] = useState<VastEventType>(eventType || 'impression');
+  const dsps = availableDsps || ALL_DSPS;
+  // raw-js (script inline colado) e url-html (iframe) não são alternáveis sem
+  // corromper o conteúdo — mostramos o formato mas só deixamos togglar o caso
+  // comum URL: pixel (url-image) vs JavaScript (url-js).
+  const togglable = fmt === 'url-image' || fmt === 'url-js';
+
+  useEffect(() => {
+    if (visible) { setFmt(format); setSc(scope); setEv(eventType || 'impression'); }
+  }, [visible, format, scope, eventType]);
+
+  const toggleScope = useCallback((dsp: DspType | 'all') => {
+    if (dsp === 'all') { setSc('all'); return; }
+    setSc((prev) => {
+      if (prev === 'all') return [dsp];
+      const arr = [...prev];
+      const idx = arr.indexOf(dsp);
+      if (idx >= 0) { arr.splice(idx, 1); return arr.length === 0 ? 'all' : arr; }
+      arr.push(dsp);
+      if (arr.length === dsps.length) return 'all';
+      return arr;
+    });
+  }, [dsps.length]);
+
+  const isActive = (dsp: DspType | 'all'): boolean => {
+    if (dsp === 'all') return sc === 'all';
+    if (sc === 'all') return false;
+    return sc.includes(dsp);
+  };
+
+  const handleSave = () => {
+    const eventInScope = sc === 'all' || (Array.isArray(sc) && (sc.includes('xandr') || sc.includes('dv360')));
+    onSave({ format: fmt, dsps: sc, eventType: isVideo && eventInScope ? ev : undefined });
+    onClose();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      onClose={onClose}
+      title="Editar tracker"
+      maxWidth="520px"
+      footer={
+        <div className={styles.footerRow}>
+          <button className={styles.btnCancel} onClick={onClose}>Cancelar</button>
+          <button className={styles.btnPrimary} onClick={handleSave}>Salvar</button>
+        </div>
+      }
+    >
+      <div className={styles.field}>
+        <label className={styles.label}>URL</label>
+        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-sec)', wordBreak: 'break-all', lineHeight: 1.5 }}>{url}</div>
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label}>Formato</label>
+        {togglable ? (
+          <div className={styles.scopeRow}>
+            <button className={`${styles.scopeBtn} ${fmt === 'url-image' ? styles.scopeBtnActive : ''}`} onClick={() => setFmt('url-image')}>Pixel (img)</button>
+            <button className={`${styles.scopeBtn} ${fmt === 'url-js' ? styles.scopeBtnActive : ''}`} onClick={() => setFmt('url-js')}>JavaScript</button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)', lineHeight: 1.5 }}>
+            {fmt === 'raw-js' ? 'Script inline' : 'iframe/HTML'} — formato detectado da tag, não alterável.
+          </div>
+        )}
+      </div>
+
+      <div className={styles.field}>
+        <label className={styles.label}>Aplicar em quais DSPs?</label>
+        <div className={styles.scopeRow}>
+          <button className={`${styles.scopeBtn} ${isActive('all') ? styles.scopeBtnActive : ''}`} onClick={() => toggleScope('all')}>Todas</button>
+          {dsps.map((dsp) => (
+            <button key={dsp} className={`${styles.scopeBtn} ${isActive(dsp) ? styles.scopeBtnActive : ''}`} onClick={() => toggleScope(dsp)}>{DSP_LABELS[dsp]}</button>
+          ))}
+        </div>
+      </div>
+
+      {isVideo && (sc === 'all' || (Array.isArray(sc) && (sc.includes('xandr') || sc.includes('dv360')))) && (
+        <div className={styles.field}>
+          <label className={styles.label}>Tipo de evento<span className={styles.hint}>(contabilização para vídeo)</span></label>
+          <div className={styles.eventGrid}>
+            {VAST_EVENT_OPTIONS.map((opt) => (
+              <button key={opt.value} className={`${styles.eventBtn} ${ev === opt.value ? styles.eventBtnActive : ''}`} onClick={() => setEv(opt.value)}>{opt.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}

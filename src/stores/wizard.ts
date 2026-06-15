@@ -86,6 +86,7 @@ interface WizardState {
   clearAssetSelection: () => void;
   setAssetsFilter: (filter: Partial<{ type: 'all' | 'display' | 'video'; size: string; text: string }>) => void;
   addAssetTracker: (id: number, tracker: Tracker) => void;
+  updateAssetTracker: (id: number, trackerIdx: number, patch: Partial<Tracker>) => void;
   removeAssetTracker: (id: number, trackerIdx: number) => void;
   getNextAssetId: () => number;
 
@@ -389,6 +390,18 @@ export const useWizardStore = create<WizardState>((set, get) => ({
         if (a.id !== id) return a;
         if (a.trackers.some((t) => t.url === tracker.url)) return a;
         return { ...a, trackers: [...a.trackers, tracker] };
+      }),
+    }));
+  },
+
+  updateAssetTracker: (id, trackerIdx, patch) => {
+    set((s) => ({
+      assetEntries: s.assetEntries.map((a) => {
+        if (a.id !== id) return a;
+        return {
+          ...a,
+          trackers: a.trackers.map((t, i) => (i === trackerIdx ? { ...t, ...patch } : t)),
+        };
       }),
     }));
   },

@@ -51,7 +51,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       skip: 'THIRD_PARTY_URL_TYPE_AUDIO_VIDEO_SKIP',
       error: 'THIRD_PARTY_URL_TYPE_IMPRESSION',
     };
-    const allTrackerUrls: Array<{type: string; url: string}> = [];
+    const allTrackerUrls: Array<{type: string; url: string; format: string}> = [];
     const seen = new Set<string>();
     for (const t of normalizedTrackers) {
       const key = t.url + '|' + (t.eventType || 'impression');
@@ -60,7 +60,7 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
       const dv360Type = isVideo
         ? (DV360_EVENT_MAP[t.eventType || 'impression'] || 'THIRD_PARTY_URL_TYPE_IMPRESSION')
         : 'THIRD_PARTY_URL_TYPE_IMPRESSION';
-      allTrackerUrls.push({type: dv360Type, url: t.url});
+      allTrackerUrls.push({type: dv360Type, url: t.url, format: t.format || 'url-image'});
     }
 
     // ── Upload: streaming pra video, Blob combinado pra display/html5 ──
@@ -220,8 +220,15 @@ async function process(token: string, advId: string, input: Input, sb: any): Pro
         creative.thirdPartyUrls = allTrackerUrls.map(t => ({ type: t.type, url: t.url }));
       } else {
         const tagParts = allTrackerUrls.map(t => {
+          // Honra o `format` definido na UI. raw-js já é uma tag/script inline
+          // colado — vai como está. url-js (ou URL .js detectada) → <script src>.
+          // Senão, pixel <img>. Assim tracker de brand safety (DV/IAS) marcado
+          // como JS sempre executa, mesmo que a URL não termine em .js.
+          if (t.format === 'raw-js') return t.url;
           const lower = t.url.toLowerCase();
-          if (lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/')) {
+          const isJs = t.format === 'url-js'
+            || lower.endsWith('.js') || lower.includes('.js?') || lower.includes('/js/');
+          if (isJs) {
             return `<scr` + `ipt src="${t.url}"></scr` + `ipt>`;
           }
           return `<img src="${t.url}" width="1" height="1" style="display:none" />`;

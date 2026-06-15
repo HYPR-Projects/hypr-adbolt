@@ -7,7 +7,7 @@ import { FilterBar } from '@/components/shared/FilterBar';
 import { BulkBar } from '@/components/shared/BulkBar';
 import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
-import { RenameModal, FindReplaceModal, BulkTrackerModal, BulkLandingModal } from '@/components/shared/BulkModals';
+import { RenameModal, FindReplaceModal, BulkTrackerModal, BulkLandingModal, TrackerEditModal } from '@/components/shared/BulkModals';
 import { PreviewThumb, CreativePreviewModal } from '@/components/shared/CreativePreview';
 import {
   getAssetType, readFileDimensions, generateThumb,
@@ -28,7 +28,7 @@ export function StepAssets() {
     selectedAssetIds, toggleAssetSelection, selectAllAssets, clearAssetSelection,
     bulkUpdateAssets, bulkRemoveAssets,
     assetsFilterType, assetsFilterSize, assetsFilterText, setAssetsFilter,
-    addAssetTracker, removeAssetTracker, getNextAssetId,
+    addAssetTracker, removeAssetTracker, updateAssetTracker, getNextAssetId,
     selectedDsps, currentStep, setStep, hasContent, hasDsp,
   } = store;
   const config = store.getStepConfig();
@@ -245,6 +245,7 @@ export function StepAssets() {
   const [frOpen, setFrOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
   const [landingOpen, setLandingOpen] = useState(false);
+  const [editingTracker, setEditingTracker] = useState<{ assetId: number; idx: number } | null>(null);
   const [previewAsset, setPreviewAsset] = useState<AssetEntry | null>(null);
 
   // Track object URLs for proper cleanup (prevent memory leaks)
@@ -563,7 +564,15 @@ export function StepAssets() {
                               {t.eventType && t.eventType !== 'impression' && a.type === 'video' && (
                                 <span className={styles.trackerEvent}>{t.eventType.toUpperCase()}</span>
                               )}
-                              <span className={styles.trackerUrl} title={t.url}>{t.url}</span>
+                              {(t.format === 'url-js' || t.format === 'raw-js') && (
+                                <span className={styles.trackerEvent}>JS</span>
+                              )}
+                              <span
+                                className={styles.trackerUrl}
+                                title={`${t.url}\n\nClique para editar tipo/escopo`}
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => setEditingTracker({ assetId: a.id, idx: ti })}
+                              >{t.url}</span>
                               <button
                                 className={styles.trackerRm}
                                 onClick={() => removeAssetTracker(a.id, ti)}
@@ -669,6 +678,28 @@ export function StepAssets() {
           toast(`Tracker aplicado em ${selectedAssetIds.size} asset(s)`, 'success');
         }}
       />
+
+      {editingTracker && (() => {
+        const a = assetMap.get(editingTracker.assetId);
+        const t = a?.trackers[editingTracker.idx];
+        if (!a || !t) return null;
+        return (
+          <TrackerEditModal
+            visible={true}
+            onClose={() => setEditingTracker(null)}
+            url={t.url}
+            format={t.format}
+            scope={t.dsps}
+            eventType={t.eventType}
+            isVideo={a.type === 'video'}
+            availableDsps={['xandr', 'dv360', 'stackadapt', 'amazondsp']}
+            onSave={(patch) => {
+              updateAssetTracker(editingTracker.assetId, editingTracker.idx, patch);
+              toast('Tracker atualizado', 'success');
+            }}
+          />
+        );
+      })()}
 
       <BulkLandingModal
         visible={landingOpen}
