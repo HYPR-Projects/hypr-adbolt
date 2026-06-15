@@ -31,6 +31,10 @@ export interface Tracker {
   /** Content-derived purpose (impression/click/verification/unknown). Metadata
    *  for review/audit; the billing guard re-derives at activation time. */
   role?: 'impression' | 'click' | 'verification' | 'unknown';
+  /** Human explicitly vouched for an otherwise-unknown tracker in review.
+   *  Lets the billing guard pass unknown-vendor pixels. Never bypasses the
+   *  click check — a URL that re-derives to 'click' is blocked regardless. */
+  confirmed?: boolean;
 }
 
 // ── Placement (from CM360 / generic parser) ──

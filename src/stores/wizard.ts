@@ -73,6 +73,7 @@ interface WizardState {
   updatePlacement: (idx: number, field: keyof Placement, value: string) => void;
   addPlacementTracker: (idx: number, tracker: Tracker) => void;
   removePlacementTracker: (idx: number, trackerIdx: number) => void;
+  updatePlacementTracker: (idx: number, trackerIdx: number, patch: Partial<Tracker>) => void;
 
   // Assets
   addAssetEntries: (entries: AssetEntry[]) => void;
@@ -306,6 +307,16 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     const placements = [...parsedData.placements];
     const p = { ...placements[idx] };
     p.trackers = p.trackers.filter((_, i) => i !== trackerIdx);
+    placements[idx] = p;
+    set({ parsedData: { ...parsedData, placements } });
+  },
+
+  updatePlacementTracker: (idx, trackerIdx, patch) => {
+    const { parsedData } = get();
+    if (!parsedData) return;
+    const placements = [...parsedData.placements];
+    const p = { ...placements[idx] };
+    p.trackers = p.trackers.map((t, i) => (i === trackerIdx ? { ...t, ...patch } : t));
     placements[idx] = p;
     set({ parsedData: { ...parsedData, placements } });
   },

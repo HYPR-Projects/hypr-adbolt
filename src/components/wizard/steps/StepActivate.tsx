@@ -14,7 +14,8 @@ import { activateDV360Tags } from '@/services/activation/dv360-tags';
 import { activateAmazonDspTags } from '@/services/activation/amazondsp-tags';
 import { activateXandrAssets } from '@/services/activation/xandr-assets';
 import { activateDV360Assets } from '@/services/activation/dv360-assets';
-import { auditTrackerBilling, formatBillingBlock } from '@/services/activation/billing-guard';
+import { trackerBlockReason } from '@/services/activation/billing-guard';
+import { TrackerReviewModal, type ReviewIssue, type TrackerLocator } from '@/components/shared/TrackerReviewModal';
 import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { buildSurveyIframe } from '@/services/typeform';
 import { normalizeUrl, isValidUrl } from '@/lib/utils';
@@ -43,6 +44,83 @@ export function StepActivate() {
 
   const [progress, setProgress] = useState<DspProgress[]>([]);
   const [showProgress, setShowProgress] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewIssues, setReviewIssues] = useState<ReviewIssue[]>([]);
+
+  // Build the list of billing-blocked trackers, located so they can be mutated.
+  // Reads fresh store state so it stays correct after each resolution.
+  const buildReviewIssues = (): ReviewIssue[] => {
+    const s = useWizardStore.getState();
+    const out: ReviewIssue[] = [];
+    if (s.mode === 'assets') {
+      for (const a of s.assetEntries) {
+        const isVideo = a.type === 'video';
+        a.trackers.forEach((t, ti) => {
+          const reason = trackerBlockReason(t, isVideo);
+          if (!reason) return;
+          let autoFix: ReviewIssue['autoFix'];
+          if (reason === 'click-as-impression') {
+            if (isVideo) autoFix = 'video-click';
+            else if (!a.landingPage?.trim()) autoFix = 'to-clickthrough';
+          }
+          out.push({ locator: { kind: 'asset', id: a.id, trackerIdx: ti }, label: a.name, tracker: t, reason, autoFix });
+        });
+      }
+    } else if (s.parsedData) {
+      s.parsedData.placements.forEach((p, pi) => {
+        const isVideo = p.type === 'video';
+        p.trackers.forEach((t, ti) => {
+          const reason = trackerBlockReason(t, isVideo);
+          if (!reason) return;
+          let autoFix: ReviewIssue['autoFix'];
+          if (reason === 'click-as-impression') {
+            if (isVideo) autoFix = 'video-click';
+            else if (!p.clickUrl?.trim()) autoFix = 'to-clickthrough';
+          }
+          out.push({ locator: { kind: 'placement', index: pi, trackerIdx: ti }, label: p.placementName, tracker: t, reason, autoFix });
+        });
+      });
+    }
+    return out;
+  };
+
+  const refreshReview = () => {
+    const remaining = buildReviewIssues();
+    setReviewIssues(remaining);
+    if (!remaining.length) setReviewOpen(false);
+  };
+
+  const resolveConfirmImpression = (loc: TrackerLocator) => {
+    if (loc.kind === 'placement') store.updatePlacementTracker(loc.index, loc.trackerIdx, { role: 'impression', confirmed: true });
+    else store.updateAssetTracker(loc.id, loc.trackerIdx, { role: 'impression', confirmed: true });
+    refreshReview();
+  };
+
+  const resolveAutoFix = (iss: ReviewIssue) => {
+    const { locator, tracker, autoFix } = iss;
+    if (autoFix === 'video-click') {
+      // Re-route to the VAST click event — fires on click, not impression.
+      if (locator.kind === 'placement') store.updatePlacementTracker(locator.index, locator.trackerIdx, { eventType: 'click', role: 'click' });
+      else store.updateAssetTracker(locator.id, locator.trackerIdx, { eventType: 'click', role: 'click' });
+    } else if (autoFix === 'to-clickthrough') {
+      // Display click tracker → use as the creative's click-through, drop from
+      // the impression-firing array. Only offered when click-through is empty.
+      if (locator.kind === 'placement') {
+        store.updatePlacement(locator.index, 'clickUrl', tracker.url);
+        store.removePlacementTracker(locator.index, locator.trackerIdx);
+      } else {
+        store.updateAsset(locator.id, { landingPage: tracker.url });
+        store.removeAssetTracker(locator.id, locator.trackerIdx);
+      }
+    }
+    refreshReview();
+  };
+
+  const resolveRemove = (loc: TrackerLocator) => {
+    if (loc.kind === 'placement') store.removePlacementTracker(loc.index, loc.trackerIdx);
+    else store.removeAssetTracker(loc.id, loc.trackerIdx);
+    refreshReview();
+  };
 
   const config = store.getStepConfig();
   const isAssetMode = store.mode === 'assets';
@@ -165,14 +243,13 @@ export function StepActivate() {
 
     // ── Billing guard (deterministic) ──
     // Block before any DSP call if an impression-firing tracker would actually
-    // count clicks, or its purpose can't be determined. Re-derives from the URL
-    // at activation time — does not trust stored metadata.
-    const auditItems = isAssetMode
-      ? store.assetEntries.map((a) => ({ label: a.name, trackers: a.trackers || [] }))
-      : allPlacements.map((p) => ({ label: p.placementName, trackers: p.trackers || [] }));
-    const billingIssues = auditTrackerBilling(auditItems);
-    if (billingIssues.length) {
-      toast(formatBillingBlock(billingIssues), 'error');
+    // count clicks, or its purpose can't be determined. Opens a review modal so
+    // the user resolves each (confirm unknown as impression, or remove).
+    const review = buildReviewIssues();
+    if (review.length) {
+      setReviewIssues(review);
+      setReviewOpen(true);
+      toast(`${review.length} tracker(s) bloqueado(s) por risco de billing — revise antes de ativar.`, 'error');
       return;
     }
 
@@ -586,6 +663,16 @@ export function StepActivate() {
 
       {/* Progress */}
       {showProgress && <ActivationProgress dsps={progress} />}
+
+      {/* Billing review */}
+      <TrackerReviewModal
+        visible={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        issues={reviewIssues}
+        onConfirmImpression={resolveConfirmImpression}
+        onAutoFix={resolveAutoFix}
+        onRemove={resolveRemove}
+      />
 
       {/* Results */}
       {store.activationResults.length > 0 && (
