@@ -9,6 +9,8 @@ import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { RenameModal, FindReplaceModal, BulkTrackerModal, BulkLandingModal, TrackerEditModal } from '@/components/shared/BulkModals';
 import { PreviewThumb, CreativePreviewModal } from '@/components/shared/CreativePreview';
+import { SheetImportModal } from './SheetImportModal';
+import type { AssetSheetRow } from '@/parsers/asset-sheet';
 import {
   getAssetType, readFileDimensions, generateThumb,
   isIABSize, getSizeSuggestion, resizeAssetImage, compressImage,
@@ -36,6 +38,33 @@ export function StepAssets() {
 
   // O(1) asset lookups by ID — avoids repeated .find() in render loops
   const assetMap = useMemo(() => new Map(assetEntries.map((a) => [a.id, a])), [assetEntries]);
+
+  // ── Spreadsheet metadata import ──
+  const [sheetImportOpen, setSheetImportOpen] = useState(false);
+
+  const applySheetImport = useCallback((assignments: Array<{ assetId: number; row: AssetSheetRow }>) => {
+    let filled = 0;
+    for (const { assetId, row } of assignments) {
+      const asset = assetMap.get(assetId);
+      if (!asset) continue;
+      const updates: Partial<AssetEntry> = {};
+      if (row.name) updates.name = row.name;
+      if (row.landing) updates.landingPage = normalizeUrl(row.landing);
+      if (Object.keys(updates).length) updateAsset(assetId, updates);
+      // Impression + verification trackers fire on impression; tag eventType on video for Xandr.
+      const isVideo = asset.type === 'video';
+      for (const tr of row.trackers) {
+        addAssetTracker(assetId, {
+          url: normalizeUrl(tr.url),
+          format: tr.format,
+          dsps: 'all',
+          eventType: isVideo ? 'impression' : undefined,
+        });
+      }
+      filled++;
+    }
+    toast(`${filled} asset(s) preenchido(s) pela planilha`, 'success');
+  }, [assetMap, updateAsset, addAssetTracker, toast]);
 
   // ── Column resize ──
   const ASSET_COLUMNS = useMemo(() => [
@@ -391,6 +420,17 @@ export function StepAssets() {
         }}
       />
 
+      {assetEntries.length > 0 && (
+        <div className={styles.sheetImportRow}>
+          <button className={styles.sheetImportBtn} onClick={() => setSheetImportOpen(true)}>
+            📊 Importar planilha
+          </button>
+          <span className={styles.sheetImportHint}>
+            Preenche nome, landing e trackers por código/dimensão a partir de um .xlsx
+          </span>
+        </div>
+      )}
+
       {/* Assets table */}
       {assetEntries.length > 0 && (
         <div className={styles.tableSection}>
@@ -714,6 +754,13 @@ export function StepAssets() {
       <CreativePreviewModal
         data={previewAsset ? getPreviewData(previewAsset) : null}
         onClose={() => setPreviewAsset(null)}
+      />
+
+      <SheetImportModal
+        visible={sheetImportOpen}
+        onClose={() => setSheetImportOpen(false)}
+        assets={assetEntries}
+        onApply={applySheetImport}
       />
     </div>
   );
