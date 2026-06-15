@@ -160,3 +160,28 @@ describe('matchAssets', () => {
     expect(r.matched[0].row.code).toBe('36.1');
   });
 });
+
+describe('parseAssetSheet — plain landing/destination capture', () => {
+  it('captures a destination URL column even without a click tracker', () => {
+    const rows: string[][] = [
+      ['Anuncios', 'Formato', 'Url Parametrizada'],
+      ['q3_video_lanc', '300x250', 'https://www.audi.com.br/pt/models/q3?utm_source=hypr'],
+      ['q3_display_lanc', '728x90', 'https://www.audi.com.br/pt/models/q3?utm_source=hypr&x=2'],
+    ];
+    const parsed = parseAssetSheet(rows);
+    expect(parsed.landingCol).toBeGreaterThanOrEqual(0);
+    expect(parsed.rows[0].landing).toContain('audi.com.br');
+    // a plain landing must NOT be misfiled as an impression-firing tracker
+    expect(parsed.rows[0].trackers).toHaveLength(0);
+  });
+
+  it('does not override a click-tracker landing with the destination column', () => {
+    const rows: string[][] = [
+      ['Name', 'Size', 'Landing', 'Tracker'],
+      ['ad1', '300x250', 'https://brand.com/page', 'https://ad.doubleclick.net/ddm/trackclk/B1.2'],
+    ];
+    const parsed = parseAssetSheet(rows);
+    // click tracker wins as the landing (existing behavior preserved)
+    expect(parsed.rows[0].landing).toContain('trackclk');
+  });
+});

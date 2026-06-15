@@ -47,6 +47,7 @@ export interface AssetSheetParse {
   headerRowIndex: number;
   sizeCol: number;
   nameCol: number;
+  landingCol: number;
   warnings: string[];
 }
 
@@ -136,6 +137,7 @@ function parsePlacementId(url: string): string | null {
 
 const SIZE_HEADER_RE = /tamanho|size|dimens|formato/i;
 const NAME_HEADER_RE = /an[uú]ncio|nome|name|criativ|linha/i;
+const LANDING_HEADER_RE = /landing|destino|parametriz|direcionamento/i;
 
 /** Find the header row within the first 10 rows (HYPR re-exports can offset it). */
 function findHeaderRow(rows: string[][]): number {
@@ -163,7 +165,7 @@ function findHeaderRow(rows: string[][]): number {
 function resolveStructuralCols(
   header: string[],
   dataRows: string[][],
-): { sizeCol: number; nameCol: number } {
+): { sizeCol: number; nameCol: number; landingCol: number } {
   const nCols = header.length;
   const sample = dataRows.slice(0, 25);
 
@@ -196,24 +198,48 @@ function resolveStructuralCols(
     }
   }
 
-  return { sizeCol, nameCol };
+  // Landing/destination column: bare http URLs that are NOT recognized trackers
+  // (a destination page, not a click/impression/verification beacon). Content
+  // decides; the header only boosts. Identifying a landing this way is safe —
+  // a landing fires no billable beacon — unlike tracker purpose, which never
+  // gets guessed from column position.
+  let landingCol = -1;
+  let bestLandingScore = 0;
+  for (let c = 0; c < nCols; c++) {
+    if (c === sizeCol || c === nameCol) continue;
+    const head = String(header[c] || '').toLowerCase();
+    const cells = sample.map((r) => String(r[c] ?? '').trim()).filter(Boolean);
+    if (!cells.length) continue;
+    const landingHits = cells.filter((v) =>
+      /^https?:\/\//i.test(v) && !v.startsWith('<') && (classifyTrackerCell(v)?.role ?? 'unknown') === 'unknown',
+    ).length / cells.length;
+    const landingScore = landingHits + (LANDING_HEADER_RE.test(head) ? 0.3 : 0);
+    if (landingHits > 0.5 && landingScore > bestLandingScore) {
+      bestLandingScore = landingScore;
+      landingCol = c;
+    }
+  }
+
+  return { sizeCol, nameCol, landingCol };
 }
 
 export function parseAssetSheet(rows: string[][]): AssetSheetParse {
   const warnings: string[] = [];
   if (!rows || rows.length < 2) {
-    return { rows: [], headerRowIndex: -1, sizeCol: -1, nameCol: -1, warnings: ['Planilha vazia ou sem linhas de dados.'] };
+    return { rows: [], headerRowIndex: -1, sizeCol: -1, nameCol: -1, landingCol: -1, warnings: ['Planilha vazia ou sem linhas de dados.'] };
   }
 
   const headerRowIndex = findHeaderRow(rows);
   const header = rows[headerRowIndex].map((c) => String(c || ''));
   const dataRows = rows.slice(headerRowIndex + 1).filter((r) => r.some((c) => String(c || '').trim()));
 
-  const { sizeCol, nameCol } = resolveStructuralCols(header, dataRows);
+  const { sizeCol, nameCol, landingCol } = resolveStructuralCols(header, dataRows);
   if (nameCol === -1) warnings.push('Não identifiquei a coluna de nome do criativo.');
   if (sizeCol === -1) warnings.push('Não identifiquei a coluna de tamanho — vou depender do código/nome do arquivo.');
 
-  const structural = new Set([sizeCol, nameCol].filter((c) => c >= 0));
+  // The landing column is treated as structural so its destination URLs are
+  // NOT swept as trackers; they fill the landing field directly.
+  const structural = new Set([sizeCol, nameCol, landingCol].filter((c) => c >= 0));
 
   const parsed: AssetSheetRow[] = [];
   for (const row of dataRows) {
@@ -243,6 +269,13 @@ export function parseAssetSheet(rows: string[][]): AssetSheetParse {
       }
     }
 
+    // Fallback: when no click-tracker supplied a landing, use the destination
+    // column (plain landing URL from a taxonomy sheet).
+    if (!landing && landingCol >= 0) {
+      const lp = String(row[landingCol] ?? '').trim();
+      if (/^https?:\/\//i.test(lp)) landing = lp;
+    }
+
     // Code: prefer the structured name, fall back to size token only as last resort
     const code = extractCode(name);
 
@@ -254,5 +287,5 @@ export function parseAssetSheet(rows: string[][]): AssetSheetParse {
 
   if (!parsed.length) warnings.push('Nenhuma linha de criativo encontrada.');
 
-  return { rows: parsed, headerRowIndex, sizeCol, nameCol, warnings };
+  return { rows: parsed, headerRowIndex, sizeCol, nameCol, landingCol, warnings };
 }

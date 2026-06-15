@@ -29,6 +29,8 @@ export interface DocTypeResult {
   reason: string;
   /** User-facing message — only set when the sheet is rejectable. */
   message?: string;
+  /** What the scan found, for informative messaging. */
+  counts: { servable: number; urls: number };
 }
 
 // A cell that looks like something you can actually traffic or that
@@ -54,7 +56,7 @@ function cellHasServable(cell: string): boolean {
  */
 export function detectDocType(rows: string[][], maxRows = 300): DocTypeResult {
   if (!rows || rows.length === 0) {
-    return { type: 'unknown', reason: 'empty', message: 'Planilha vazia.' };
+    return { type: 'unknown', reason: 'empty', message: 'Planilha vazia.', counts: { servable: 0, urls: 0 } };
   }
 
   let servableCells = 0;
@@ -74,23 +76,28 @@ export function detectDocType(rows: string[][], maxRows = 300): DocTypeResult {
     }
   }
 
+  const counts = { servable: servableCells, urls: urlCells };
+
   if (servableCells > 0) {
-    return { type: 'tag-sheet', reason: `${servableCells} servable cell(s)` };
+    return { type: 'tag-sheet', reason: `${servableCells} servable cell(s)`, counts };
   }
 
   if (urlCells > 0) {
     return {
       type: 'naming-only',
       reason: `${urlCells} url cell(s), no servable tags`,
+      counts,
       message:
-        'Essa planilha é de nomeação/taxonomia (nomes de anúncio + URLs de destino) e não contém tags servíveis. ' +
-        'Suba a planilha de tags/embeds do cliente.',
+        `Planilha de taxonomia/landing: ${urlCells} URL(s) de destino e nenhuma tag servível. ` +
+        'Pra subir peças, use Standard Assets — eu preencho as landings nos criativos. ' +
+        'Pra subir tags, use a planilha de tags/embeds do cliente.',
     };
   }
 
   return {
     type: 'unknown',
     reason: 'no servable tags and no urls',
+    counts,
     message:
       'Não encontrei tags servíveis nem URLs nessa planilha. ' +
       'Confirme se é a planilha de tags/embeds correta.',
