@@ -117,3 +117,38 @@ describe('parseGenericTags — HYPR adtag', () => {
     expect(result!.placements[0].clickUrl).toBe('https://cliente.com/lp');
   });
 });
+
+describe('parseGenericTags — DoubleVerify / HYPR taxonomy sheets', () => {
+  it('parses a Pepsi-style DV sheet (Anúncio + Formato + DV Tag Javascript)', () => {
+    const rows: string[][] = [
+      ['Campanha', 'Anúncio', 'Formato', 'Criativo', 'DV Tag Javascript', 'DV Tag - 1x1', 'DV 1x1 Tag - Video'],
+      ['Pepsi_uefa', 'LABM_Display_728', '728x90', 'MEALS', '<script src="https://cdn.doubleverify.com/dvtp_src.js#cmp=DV1"></script>', '', '<img src="https://tps.doubleverify.com/v.gif">'],
+      ['Pepsi_uefa', 'LABH_Display_300', '300x250', '', '<script src="https://cdn.doubleverify.com/dvtp_src.js#cmp=DV2"></script>', '', '<img src="https://tps.doubleverify.com/v.gif">'],
+    ];
+    const result = parseGenericTags(rows);
+    expect(result).not.toBeNull();
+    expect(result!.sourceFormat).toBe('DoubleVerify');
+    expect(result!.placements).toHaveLength(2);
+    expect(result!.placements[0].placementName).toBe('LABM_Display_728');
+    expect(result!.placements[0].dimensions).toBe('728x90');
+    // servable JS tag captured; tracker columns NOT auto-imported
+    expect(result!.placements[0].jsTag).toContain('dvtp_src.js');
+    expect(result!.placements[0].trackers).toEqual([]);
+  });
+
+  it('extracts size from free-text Formato and skips separator + tag-less rows', () => {
+    const rows: string[][] = [
+      ['Campanha', 'Anúncio', 'Formato', 'Criativo', 'DISPLAY TAGS (Use on Display Placements Only)', '', 'VIDEO TAGS (Use on Video Placements Only)'],
+      ['Linha criativa: E2E - DESCONTO PADRÃO'],
+      ['Geo'],
+      ['gatorade_aware', 'lab_display_300', 'Standard IAB - Display 300x600', '', '<script src="https://cdn.doubleverify.com/dvtp_src.js"></script>', '', '<img src="https://tps.doubleverify.com/v.gif">'],
+      // video row: no servable display tag, only a measurement pixel → must be skipped
+      ['gatorade_consider', 'lab_video_640', 'Standard IAB - Video - 640x360 - 10s', '', '', '', '<img src="https://tps.doubleverify.com/v.gif">'],
+    ];
+    const result = parseGenericTags(rows);
+    expect(result).not.toBeNull();
+    expect(result!.placements).toHaveLength(1);
+    expect(result!.placements[0].dimensions).toBe('300x600');
+    expect(result!.placements[0].placementName).toBe('lab_display_300');
+  });
+});

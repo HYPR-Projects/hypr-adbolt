@@ -11,6 +11,7 @@ import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/sh
 import { PreviewThumb, CreativePreviewModal } from '@/components/shared/CreativePreview';
 import { parseCM360 } from '@/parsers/cm360';
 import { parseGenericTags } from '@/parsers/generic';
+import { detectDocType } from '@/parsers/doc-type';
 import { analyzeTracker } from '@/parsers/tracker';
 import { normalizeUrl, isValidUrl, extractTagClickUrl } from '@/lib/utils';
 import { requireCdnLib } from '@/lib/cdn-loader';
@@ -173,6 +174,15 @@ export function StepTags() {
         const sheetName = wb.SheetNames.includes('Tags') ? 'Tags' : wb.SheetNames[0];
         const ws = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+
+        // Fail loud on sheets that carry no servable tags (naming-only
+        // taxonomy / destination-URL references) instead of producing an
+        // empty result. Never guess intent on billing-relevant data.
+        const docType = detectDocType(rows);
+        if (docType.type !== 'tag-sheet') {
+          failures.push(`${file.name}: ${docType.message || 'sem tags servíveis'}`);
+          continue;
+        }
 
         // Try CM360 first, then generic
         let result = parseCM360(rows);
