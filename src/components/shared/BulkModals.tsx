@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import type { DspType, TrackerFormat, VastEventType } from '@/types';
 import { DSP_LABELS, VAST_EVENT_OPTIONS } from '@/types';
 import { analyzeTracker } from '@/parsers/tracker';
+import { classifyTrackerCell } from '@/parsers/asset-sheet';
 import { normalizeUrl, getRenamedName } from '@/lib/utils';
 import styles from './BulkModals.module.css';
 
@@ -360,7 +361,7 @@ const ALL_DSPS: DspType[] = ['xandr', 'dv360', 'stackadapt', 'amazondsp'];
 export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVideo, hasDisplay, onApply }: BulkTrackerModalProps) {
   const [raw, setRaw] = useState('');
   const [scope, setScope] = useState<'all' | DspType[]>('all');
-  const [eventType, setEventType] = useState<VastEventType>('impression');
+  const [eventType, setEventType] = useState<VastEventType | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const dsps = availableDsps || ALL_DSPS;
@@ -369,7 +370,7 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
     if (visible) {
       setRaw('');
       setScope('all');
-      setEventType('impression');
+      setEventType(undefined);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [visible]);
@@ -393,14 +394,30 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
     });
   }, [dsps.length]);
 
+  const videoEventsInScope = scope === 'all' || (Array.isArray(scope) && (scope.includes('xandr') || scope.includes('dv360')));
+  const needsEvent = !!hasVideo && videoEventsInScope;
+  const eventMissing = needsEvent && !eventType;
+
   const handleApply = () => {
     if (!raw.trim()) return;
+    if (eventMissing) return; // force explicit event choice for video
     const analyzed = analyzeTracker(raw);
     const url = normalizeUrl(analyzed.url);
-    const videoEventsInScope = scope === 'all' || (Array.isArray(scope) && (scope.includes('xandr') || scope.includes('dv360')));
-    onApply(url, analyzed.format, scope, hasVideo && videoEventsInScope ? eventType : undefined);
+    onApply(url, analyzed.format, scope, needsEvent ? eventType : undefined);
     onClose();
   };
+
+  // Warn when the pasted value looks like a CLICK tracker — adding it as an
+  // impression-firing pixel is the misrouting that overcounts billing.
+  const mismatchWarning = (() => {
+    const v = raw.trim();
+    if (!v) return null;
+    const cls = classifyTrackerCell(v);
+    if (cls?.role === 'click') {
+      return 'Isso parece um CLICK tracker. Adicionar como pixel de impressão faz ele disparar em volume de impressão — confirme antes de prosseguir.';
+    }
+    return null;
+  })();
 
   // Warn if URL doesn't look like a tracking pixel
   const trackerWarning = (() => {
@@ -429,7 +446,7 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
       footer={
         <div className={styles.footerRow}>
           <button className={styles.btnCancel} onClick={onClose}>Cancelar</button>
-          <button className={styles.btnPrimary} disabled={!raw.trim()} onClick={handleApply}>Adicionar</button>
+          <button className={styles.btnPrimary} disabled={!raw.trim() || eventMissing} onClick={handleApply}>Adicionar</button>
         </div>
       }
     >
@@ -446,6 +463,11 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
         {trackerWarning && (
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--warning)', marginTop: 6, lineHeight: 1.5 }}>
             ⚠ {trackerWarning}
+          </div>
+        )}
+        {mismatchWarning && (
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger, var(--warning))', marginTop: 6, lineHeight: 1.5 }}>
+            ⛔ {mismatchWarning}
           </div>
         )}
       </div>
@@ -474,7 +496,7 @@ export function BulkTrackerModal({ visible, onClose, count, availableDsps, hasVi
       {hasVideo && (scope === 'all' || (Array.isArray(scope) && (scope.includes('xandr') || scope.includes('dv360')))) && (
         <div className={styles.field}>
           <label className={styles.label}>
-            Tipo de evento<span className={styles.hint}>(contabilização para vídeo)</span>
+            Tipo de evento<span className={styles.hint}>(obrigatório p/ vídeo — selecione)</span>
           </label>
           <div className={styles.eventGrid}>
             {VAST_EVENT_OPTIONS.map((opt) => (

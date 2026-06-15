@@ -1,5 +1,6 @@
-import type { ParsedData, Placement } from '@/types';
+import type { ParsedData, Placement, Tracker } from '@/types';
 import { cleanCR, extractBrand, extractTagClickUrl } from '@/lib/utils';
+import { classifyTrackerCell } from './asset-sheet';
 
 const NAME_ALIASES = [
   'creative name', 'creative_name', 'name', 'placement name', 'placement_name',
@@ -162,6 +163,32 @@ export function parseGenericTags(rows: string[][]): ParsedData | null {
       else if (tag.includes('flashtalking')) sourceFormat = 'Flashtalking';
     }
 
+    // ── Tracker sweep ──
+    // Sweep every NON-structural column through the content-first classifier
+    // (same primitive the asset-sheet parser uses). Only impression/verification
+    // beacons — which legitimately fire on impression — are imported. A cell
+    // that classifies as 'click' or 'unknown' is DROPPED, never added to the
+    // impression-firing array: that is the exact misrouting that overcounts.
+    const structural = new Set([colName, colTag, colDim, colClick, colVast].filter((c) => c >= 0));
+    const trackers: Tracker[] = [];
+    for (let c = 0; c < row.length; c++) {
+      if (structural.has(c)) continue;
+      const cell = String(row[c] ?? '').trim();
+      if (!cell) continue;
+      const parts = cell.split(/[\r\n]+|;\s*(?=https?:\/\/|<)/).map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        const tr = classifyTrackerCell(part);
+        if (!tr) continue;
+        if (tr.role === 'impression' || tr.role === 'verification') {
+          if (!trackers.some((x) => x.url === tr.url)) {
+            trackers.push({ url: tr.url, format: tr.format, dsps: 'all', role: tr.role });
+          }
+        }
+        // 'click' and 'unknown' are intentionally not imported here — a human
+        // adds/confirms those in the reviewed step.
+      }
+    }
+
     placements.push({
       placementId: 'gen_' + (i - headerIdx),
       placementName: name,
@@ -170,7 +197,7 @@ export function parseGenericTags(rows: string[][]): ParsedData | null {
       clickUrl,
       type: placementType,
       vastTag: isVideo ? (vastRaw || tag) : '',
-      trackers: [],
+      trackers,
     });
   }
 

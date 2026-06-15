@@ -131,9 +131,14 @@ describe('parseGenericTags — DoubleVerify / HYPR taxonomy sheets', () => {
     expect(result!.placements).toHaveLength(2);
     expect(result!.placements[0].placementName).toBe('LABM_Display_728');
     expect(result!.placements[0].dimensions).toBe('728x90');
-    // servable JS tag captured; tracker columns NOT auto-imported
+    // servable JS tag captured
     expect(result!.placements[0].jsTag).toContain('dvtp_src.js');
-    expect(result!.placements[0].trackers).toEqual([]);
+    // the DV 1x1 measurement pixel is imported as a verification (impression-firing) tracker
+    expect(result!.placements[0].trackers).toHaveLength(1);
+    expect(result!.placements[0].trackers[0].role).toBe('verification');
+    expect(result!.placements[0].trackers[0].url).toContain('tps.doubleverify.com');
+    // the servable script column is NOT re-added as a tracker
+    expect(result!.placements[0].trackers.some((t) => t.url.includes('dvtp_src.js'))).toBe(false);
   });
 
   it('extracts size from free-text Formato and skips separator + tag-less rows', () => {

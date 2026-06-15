@@ -28,6 +28,9 @@ export interface Tracker {
   format: TrackerFormat;
   dsps: TrackerScope;
   eventType?: VastEventType; // Only relevant for video creatives on Xandr
+  /** Content-derived purpose (impression/click/verification/unknown). Metadata
+   *  for review/audit; the billing guard re-derives at activation time. */
+  role?: 'impression' | 'click' | 'verification' | 'unknown';
 }
 
 // ── Placement (from CM360 / generic parser) ──

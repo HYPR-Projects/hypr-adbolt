@@ -14,6 +14,7 @@ import { activateDV360Tags } from '@/services/activation/dv360-tags';
 import { activateAmazonDspTags } from '@/services/activation/amazondsp-tags';
 import { activateXandrAssets } from '@/services/activation/xandr-assets';
 import { activateDV360Assets } from '@/services/activation/dv360-assets';
+import { auditTrackerBilling, formatBillingBlock } from '@/services/activation/billing-guard';
 import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { buildSurveyIframe } from '@/services/typeform';
 import { normalizeUrl, isValidUrl } from '@/lib/utils';
@@ -160,6 +161,19 @@ export function StepActivate() {
 
     if (store.activationDone) {
       if (!confirm('Criativos já foram ativados nesta sessão. Ativar novamente pode criar duplicados nas DSPs. Continuar?')) return;
+    }
+
+    // ── Billing guard (deterministic) ──
+    // Block before any DSP call if an impression-firing tracker would actually
+    // count clicks, or its purpose can't be determined. Re-derives from the URL
+    // at activation time — does not trust stored metadata.
+    const auditItems = isAssetMode
+      ? store.assetEntries.map((a) => ({ label: a.name, trackers: a.trackers || [] }))
+      : allPlacements.map((p) => ({ label: p.placementName, trackers: p.trackers || [] }));
+    const billingIssues = auditTrackerBilling(auditItems);
+    if (billingIssues.length) {
+      toast(formatBillingBlock(billingIssues), 'error');
+      return;
     }
 
     // Validate Xandr brandUrl
