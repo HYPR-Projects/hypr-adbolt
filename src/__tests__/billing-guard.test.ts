@@ -75,29 +75,16 @@ describe('trackerBlockReason — human confirmation', () => {
   });
 });
 
-import { trackerFiresOnImpression } from '@/services/activation/billing-guard';
-
-describe('trackerBlockReason — video/event awareness', () => {
+describe('trackerBlockReason — click always blocks (edges fire all trackers on impression)', () => {
   const clk = (eventType?: string): Tracker => ({ url: 'https://ad.doubleclick.net/ddm/trackclk/B1.2', format: 'url-image', dsps: 'all', eventType: eventType as Tracker['eventType'] });
 
-  it('display click always fires on impression → blocked', () => {
-    expect(trackerBlockReason(clk(), false)).toBe('click-as-impression');
+  it('blocks a click tracker regardless of eventType', () => {
+    expect(trackerBlockReason(clk())).toBe('click-as-impression');
+    expect(trackerBlockReason(clk('click'))).toBe('click-as-impression');
+    expect(trackerBlockReason(clk('impression'))).toBe('click-as-impression');
   });
 
-  it('video click on the CLICK event does not fire on impression → passes', () => {
-    expect(trackerFiresOnImpression(clk('click'), true)).toBe(false);
-    expect(trackerBlockReason(clk('click'), true)).toBeNull();
-  });
-
-  it('video click with no event (defaults impression) → blocked', () => {
-    expect(trackerBlockReason(clk(undefined), true)).toBe('click-as-impression');
-  });
-
-  it('video click explicitly on impression event → blocked', () => {
-    expect(trackerBlockReason(clk('impression'), true)).toBe('click-as-impression');
-  });
-
-  it('auditTrackerBilling skips a legit video click-event tracker', () => {
-    expect(auditTrackerBilling([{ label: 'v', isVideo: true, trackers: [clk('click')] }])).toHaveLength(0);
+  it('a click eventType does NOT make it safe (Xandr/DV360 ignore eventType)', () => {
+    expect(auditTrackerBilling([{ label: 'v', trackers: [clk('click')] }])).toHaveLength(1);
   });
 });

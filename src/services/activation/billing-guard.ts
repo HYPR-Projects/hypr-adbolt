@@ -35,32 +35,24 @@ export interface BillingIssue {
 export interface AuditItem {
   label: string;
   trackers: Tracker[];
-  /** Video creatives fire VAST event trackers, not every tracker on impression. */
-  isVideo?: boolean;
 }
 
 /**
- * Whether this tracker actually fires on an impression. Display trackers fire
- * on every render. Video (VAST) trackers fire on their event — only the
- * impression event (or an unset event, which defaults to impression) counts
- * at impression volume; click/quartile/etc. events do not.
+ * Reason a single tracker must be blocked, or null if safe. Re-derives purpose
+ * from the URL (anti-spoof): a 'click' URL is ALWAYS blocked — `confirmed`
+ * cannot override it. Only a genuinely-unknown vendor pixel can be unblocked by
+ * human confirmation.
+ *
+ * IMPORTANT — why there is no per-event exemption: the Xandr and DV360 edge
+ * functions attach EVERY tracker as an impression beacon (Xandr hardcodes
+ * vast_event_type_id 9; DV360 hardcodes THIRD_PARTY_URL_TYPE_IMPRESSION) and
+ * ignore `eventType`. So any tracker that reaches the array fires at impression
+ * volume regardless of a 'click' eventType. Treating a click tracker as safe
+ * because its eventType says 'click' would be unsound against the real DSP
+ * behavior — exactly the over-count we guard against.
  */
-export function trackerFiresOnImpression(t: Tracker, isVideo: boolean): boolean {
-  if (!isVideo) return true;
-  return !t.eventType || t.eventType === 'impression';
-}
-
-/**
- * Reason a single tracker must be blocked from firing at impression volume,
- * or null if it's safe. Re-derives purpose from the URL (anti-spoof): a URL
- * that resolves to 'click' is ALWAYS blocked when it fires on impression —
- * `confirmed` cannot override it. Only a genuinely-unknown vendor pixel can be
- * unblocked by human confirmation. A tracker that does not fire on impression
- * (e.g. a VAST click-event tracker on a video) is never an over-count risk.
- */
-export function trackerBlockReason(t: Tracker, isVideo = false): BillingIssueKind | null {
+export function trackerBlockReason(t: Tracker): BillingIssueKind | null {
   if (!t || !t.url) return null;
-  if (!trackerFiresOnImpression(t, isVideo)) return null;
   const role = classifyTrackerCell(t.url)?.role ?? 'unknown';
   if (role === 'click') return 'click-as-impression';
   if (role === 'impression' || role === 'verification') return null;
@@ -77,7 +69,7 @@ export function auditTrackerBilling(items: AuditItem[]): BillingIssue[] {
 
   for (const item of items) {
     for (const t of item.trackers || []) {
-      const kind = trackerBlockReason(t, !!item.isVideo);
+      const kind = trackerBlockReason(t);
       if (!kind) continue;
       issues.push({
         label: item.label,

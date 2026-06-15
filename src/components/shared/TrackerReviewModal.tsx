@@ -13,9 +13,10 @@ export interface ReviewIssue {
   tracker: Tracker;
   reason: BillingIssueKind;
   /** A deterministic correction the system can apply on its own, when it has
-   *  enough info. Only set for click trackers (video → click event; display →
-   *  click-through). Never set for unknown — that would require guessing. */
-  autoFix?: 'video-click' | 'to-clickthrough';
+   *  enough info: a click tracker on a creative with an empty click-through is
+   *  moved there (and out of the impression array). Never set for unknown —
+   *  that would require guessing. */
+  autoFix?: 'to-clickthrough';
 }
 
 interface TrackerReviewModalProps {
@@ -66,7 +67,7 @@ export function TrackerReviewModal({ visible, onClose, issues, onConfirmImpressi
             ⛔ Trackers de clique ({clicks.length})
           </h4>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tri)', margin: '0 0 10px', lineHeight: 1.5 }}>
-            A URL é de clique. Onde dá, eu corrijo sozinho (manda pro evento de clique no vídeo, ou pro click-through no display); senão, remova.
+            A URL é de clique e não pode contar como impressão. Quando o click-through do criativo está vazio, eu corrijo sozinho (uso essa URL como click-through e tiro do array); senão, remova.
           </p>
           {clicks.map((iss, k) => (
             <div key={k} style={rowStyle}>
@@ -77,7 +78,7 @@ export function TrackerReviewModal({ visible, onClose, issues, onConfirmImpressi
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 {iss.autoFix && (
                   <button onClick={() => onAutoFix(iss)} style={confirmBtn}
-                    title={iss.autoFix === 'video-click' ? 'Mover para o evento de clique (VAST)' : 'Usar como click-through do criativo'}>
+                    title="Usar como click-through do criativo e tirar do array de impressão">
                     Corrigir
                   </button>
                 )}

@@ -54,29 +54,21 @@ export function StepActivate() {
     const out: ReviewIssue[] = [];
     if (s.mode === 'assets') {
       for (const a of s.assetEntries) {
-        const isVideo = a.type === 'video';
         a.trackers.forEach((t, ti) => {
-          const reason = trackerBlockReason(t, isVideo);
+          const reason = trackerBlockReason(t);
           if (!reason) return;
-          let autoFix: ReviewIssue['autoFix'];
-          if (reason === 'click-as-impression') {
-            if (isVideo) autoFix = 'video-click';
-            else if (!a.landingPage?.trim()) autoFix = 'to-clickthrough';
-          }
+          const autoFix: ReviewIssue['autoFix'] =
+            reason === 'click-as-impression' && !a.landingPage?.trim() ? 'to-clickthrough' : undefined;
           out.push({ locator: { kind: 'asset', id: a.id, trackerIdx: ti }, label: a.name, tracker: t, reason, autoFix });
         });
       }
     } else if (s.parsedData) {
       s.parsedData.placements.forEach((p, pi) => {
-        const isVideo = p.type === 'video';
         p.trackers.forEach((t, ti) => {
-          const reason = trackerBlockReason(t, isVideo);
+          const reason = trackerBlockReason(t);
           if (!reason) return;
-          let autoFix: ReviewIssue['autoFix'];
-          if (reason === 'click-as-impression') {
-            if (isVideo) autoFix = 'video-click';
-            else if (!p.clickUrl?.trim()) autoFix = 'to-clickthrough';
-          }
+          const autoFix: ReviewIssue['autoFix'] =
+            reason === 'click-as-impression' && !p.clickUrl?.trim() ? 'to-clickthrough' : undefined;
           out.push({ locator: { kind: 'placement', index: pi, trackerIdx: ti }, label: p.placementName, tracker: t, reason, autoFix });
         });
       });
@@ -98,13 +90,9 @@ export function StepActivate() {
 
   const resolveAutoFix = (iss: ReviewIssue) => {
     const { locator, tracker, autoFix } = iss;
-    if (autoFix === 'video-click') {
-      // Re-route to the VAST click event — fires on click, not impression.
-      if (locator.kind === 'placement') store.updatePlacementTracker(locator.index, locator.trackerIdx, { eventType: 'click', role: 'click' });
-      else store.updateAssetTracker(locator.id, locator.trackerIdx, { eventType: 'click', role: 'click' });
-    } else if (autoFix === 'to-clickthrough') {
-      // Display click tracker → use as the creative's click-through, drop from
-      // the impression-firing array. Only offered when click-through is empty.
+    if (autoFix === 'to-clickthrough') {
+      // Click tracker → use as the creative's click-through, drop from the
+      // impression-firing array. Only offered when click-through is empty.
       if (locator.kind === 'placement') {
         store.updatePlacement(locator.index, 'clickUrl', tracker.url);
         store.removePlacementTracker(locator.index, locator.trackerIdx);
