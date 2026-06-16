@@ -101,6 +101,15 @@ export function CheckinView() {
   const [freeze, setFreeze] = useState(false);
   const [creativeSource, setCreativeSource] = useState<CreativeSource>('library');
   const [librarySearch, setLibrarySearch] = useState('');
+  // Server-side library search: the dashboard cache (loadCreatives) is capped
+  // (~1000 rows by PostgREST + a 2000 client limit), so older/archived
+  // creatives never reach the client and the picker shows "nada encontrado"
+  // even when the creative is active. When the user types we query Supabase
+  // directly by name/dimensions, INCLUDING archived (status=deleted), so any
+  // creative ever uploaded is selectable here. Empty query keeps the recent
+  // cache (current behavior).
+  const [serverResults, setServerResults] = useState<Creative[] | null>(null);
+  const [serverSearching, setServerSearching] = useState(false);
 
   const [creativeSrc, setCreativeSrc] = useState<string | null>(null);
   const [creativeIsBlob, setCreativeIsBlob] = useState(false);
@@ -182,13 +191,42 @@ export function CheckinView() {
 
   const libraryItems = useMemo(() => {
     const q = librarySearch.toLowerCase().trim();
-    return creatives
+    // With an active query, use the server results (full base + archived);
+    // otherwise fall back to the recent dashboard cache.
+    const base = (q.length >= 2 && serverResults) ? serverResults : creatives;
+    return base
       .map((c) => ({ c, kind: classifyCreative(c) }))
       .filter(({ c }) => {
         if (!q) return true;
         return c.name.toLowerCase().includes(q) || (c.dimensions || '').toLowerCase().includes(q);
       });
-  }, [creatives, librarySearch]);
+  }, [creatives, librarySearch, serverResults]);
+
+  // Debounced server-side search by name/dimensions. Includes archived
+  // creatives (no status filter) so they can be picked for a checkin.
+  useEffect(() => {
+    if (creativeSource !== 'library') return;
+    const q = librarySearch.trim();
+    if (q.length < 2) { setServerResults(null); setServerSearching(false); return; }
+    let cancelled = false;
+    setServerSearching(true);
+    // '*' is the PostgREST wildcard inside .or(); strip chars that would break
+    // the or-filter grammar (commas / parens), keep underscores (literal-safe).
+    const term = q.replace(/[(),]/g, ' ').trim();
+    const pat = `*${term}*`;
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('creatives')
+        .select('*')
+        .or(`name.ilike.${pat},dimensions.ilike.${pat}`)
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (cancelled) return;
+      setServerSearching(false);
+      setServerResults(error ? [] : ((data || []) as Creative[]));
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [librarySearch, creativeSource]);
 
   useEffect(() => {
     if (creativeSource === 'library' && creatives.length === 0 && !dashLoading) loadCreatives();
@@ -492,8 +530,8 @@ export function CheckinView() {
                   value={librarySearch}
                   onChange={(e) => setLibrarySearch(e.target.value)}
                 />
-                {dashLoading ? (
-                  <p className={styles.hint}>Carregando criativos…</p>
+                {(dashLoading || (serverSearching && libraryItems.length === 0)) ? (
+                  <p className={styles.hint}>Buscando criativos…</p>
                 ) : libraryItems.length === 0 ? (
                   <p className={styles.hint}>Nenhum criativo encontrado.</p>
                 ) : (
@@ -512,6 +550,9 @@ export function CheckinView() {
                             ? <img src={c.thumbnail_url as string} alt={c.name} loading="lazy" />
                             : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', aspectRatio: '16/9', fontSize: 11, color: 'var(--ts, #8BA3AF)' }}>{KIND_LABEL[kind]}</span>}
                           <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, fontWeight: 700, letterSpacing: '.04em', padding: '2px 6px', borderRadius: 4, background: 'rgba(0,0,0,.6)', color: '#fff' }}>{KIND_LABEL[kind]}{bakeable ? '' : ' · em breve'}</span>
+                          {(c.status === 'deleted' || c.status === 'archived') && (
+                            <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 9, fontWeight: 700, letterSpacing: '.04em', padding: '2px 6px', borderRadius: 4, background: 'rgba(180,83,9,.92)', color: '#fff' }}>arquivado</span>
+                          )}
                           <span className={styles.cardMeta}>
                             <span className={styles.cardName}>{c.name}</span>
                             <span className={styles.cardDim}>{c.dimensions || KIND_LABEL[kind]}</span>
