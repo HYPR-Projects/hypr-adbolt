@@ -235,61 +235,43 @@ interface ThreePartyTagFrameProps {
 }
 
 function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyTagFrameProps) {
-  // Strategy: for CM360 iframe-mode tags, extract the placement, call our
-  // same-origin proxy (which asks the ad server server-side and returns JSON
-  // with the creative image URL), and render a plain <img> in React's DOM.
-  // No iframes, no dcmads.js in this page, no cross-origin storage partitioning.
-  // For non-CM360 tags we fall back to a srcdoc iframe that injects the tag.
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [clickUrl, setClickUrl] = useState<string | null>(null);
+  // Live-render strategy — identical to what test-a-tag.com, DV360 Studio
+  // preview and the CM360 in-product tester do under the hood: inject the tag
+  // into a same-origin, src-less iframe via the document open/write/close
+  // pattern. A src-less iframe inherits the parent origin
+  // (https://adbolt.hypr.mobi), so dcmads.js / enabler.js do not abort on the
+  // https-only / origin checks, and every <script> — including their own
+  // document.write() calls — runs during a real parse stream.
+  //
+  // This renders HTML5 (Studio sadbundle), static-image, and script-mode CM360
+  // tags alike, plus Sizmek / Flashtalking / Innovid. It replaces the previous
+  // /api/ad-proxy approach, which scraped the /ddm/adi response for a static
+  // s0.2mdn.net/simgad image URL and returned "no image in ad response" for any
+  // HTML5 creative (no flat image exists to extract).
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const placementMatch = tagContent?.match(/data-dcm-placement=['"]([^'"]+)['"]/);
-  // Any CM360 tag (iframe or script rendering-mode) can be previewed via proxy.
-  // The ad server's /ddm/adi endpoint returns the creative regardless of client-side render mode.
-  const isCm360 = !!placementMatch;
-
   useEffect(() => {
-    if (!isCm360 || !placementMatch) return;
-    const ord = Math.floor(Math.random() * 1e13).toString();
-    const proxyUrl = `/api/ad-proxy?placement=${encodeURIComponent(placementMatch[1])}&sz=${tagW}x${tagH}&ord=${ord}`;
-    let cancelled = false;
-    fetch(proxyUrl)
-      .then((r) => r.json())
-      .then((body: { image?: string; click?: string; error?: string }) => {
-        if (cancelled) return;
-        if (body.error) { setLoadError(body.error); return; }
-        if (body.image) {
-          setImageUrl(body.image);
-          setClickUrl(body.click || null);
-        }
-      })
-      .catch((e) => { if (!cancelled) setLoadError(String(e)); });
-    return () => { cancelled = true; };
-    // Intentional: we want this to run exactly once per mount. Mount identity is
-    // controlled by the parent via `key` — see CreativePreviewModal.
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) { setLoadError('iframe document indisponível'); return; }
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}</style></head><body>${tagContent}</body></html>`;
+      doc.open();
+      doc.write(html);
+      doc.close();
+    } catch (e) {
+      setLoadError(String((e as Error)?.message || e));
+    }
+    // Run once per mount. Mount identity is controlled by the parent via `key`
+    // — see the call site in renderContent / CreativePreviewModal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const wrapperStyle: React.CSSProperties = scale < 1
     ? { transformOrigin: '0 0', transform: `scale(${scale})`, width: tagW, height: tagH, display: 'block', position: 'relative' }
     : { width: tagW, height: tagH, display: 'block', position: 'relative' };
-
-  // Non-CM360 fallback: srcdoc iframe
-  if (!isCm360) {
-    const fallbackDoc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${tagW}px;height:${tagH}px;overflow:hidden;background:transparent}</style></head><body>${tagContent}</body></html>`;
-    return (
-      <iframe
-        title={`Preview: ${name}`}
-        srcDoc={fallbackDoc}
-        width={tagW}
-        height={tagH}
-        style={scale < 1
-          ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block' }
-          : { border: 'none', display: 'block' }}
-      />
-    );
-  }
 
   if (loadError) {
     return (
@@ -298,32 +280,17 @@ function ThreePartyTagFrame({ tagContent, tagW, tagH, scale, name }: ThreePartyT
       </div>
     );
   }
-  if (!imageUrl) {
-    return (
-      <div style={{ ...wrapperStyle, background: 'var(--bg-surface, #1a1a1a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'var(--text-sec, #888)', font: '12px sans-serif' }}>Carregando preview…</span>
-      </div>
-    );
-  }
-
-  const img = (
-    <img
-      src={imageUrl}
-      alt={name}
-      width={tagW}
-      height={tagH}
-      style={{ display: 'block', width: tagW, height: tagH, objectFit: 'contain' }}
-    />
-  );
 
   return (
-    <div style={wrapperStyle}>
-      {clickUrl ? (
-        <a href={clickUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', width: tagW, height: tagH }}>
-          {img}
-        </a>
-      ) : img}
-    </div>
+    <iframe
+      ref={iframeRef}
+      title={`Preview: ${name}`}
+      width={tagW}
+      height={tagH}
+      style={scale < 1
+        ? { transformOrigin: '0 0', transform: `scale(${scale})`, border: 'none', display: 'block', background: 'transparent' }
+        : { border: 'none', display: 'block', background: 'transparent' }}
+    />
   );
 }
 
