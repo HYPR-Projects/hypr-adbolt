@@ -240,6 +240,12 @@ async function shotToDataUri(page, w, h) {
 // 'display' is always the frozen image.
 const LIVE_KINDS = new Set(['html5', 'survey', 'video', 'tag']);
 
+// Blank page served from our own https origin. The headless 3P-tag bake
+// navigates here before injecting the tag, so https-only adserver bootstraps
+// (dcmads.js, enabler.js) see a real https origin and render. See the bake
+// branch in renderCreativeToImage.
+const BAKE_BLANK_URL = 'https://adbolt.hypr.mobi/preview/tagbake.html';
+
 // Strip the publisher's own CSP <meta> tags from the serialized HTML. They
 // survive SingleFile and would block both the injected hydrator script and the
 // live <iframe> (frame-src/script-src). Safe to drop in a static deliverable.
@@ -388,9 +394,28 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
       try { await p.goto(src, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
       return await shotToDataUri(p, w, h);
     }
-    // tag / survey: inject the tag content and let it render
+    // tag / survey: inject the tag content and let it render.
+    //
+    // CM360 (dcmads.js) and Studio HTML5 (enabler.js) bootstraps carry an
+    // https-only guard and abort on a non-https document origin. setContent
+    // leaves the page at about:blank, so the abort left CM360 bakes blank —
+    // which is why HTML5 creatives (no flat simgad image to scrape above)
+    // came out empty. Navigate to a real blank page on our https origin first,
+    // then inject via document.open/write/close: the write keeps the page's
+    // https origin, so the guard passes and the creative paints. setContent is
+    // kept as the fallback if the navigation fails (e.g. blank page not yet
+    // deployed).
     const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank"><style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}html,body{width:${w}px;height:${h}px;overflow:hidden;background:#fff}</style></head><body>${src || ''}</body></html>`;
-    try { await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
+    let injected = false;
+    try {
+      await p.goto(BAKE_BLANK_URL, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      await p.evaluate((html) => { document.open(); document.write(html); document.close(); }, doc);
+      await p.waitForNetworkIdle({ idleTime: 700, timeout: 8_000 }).catch(() => {});
+      injected = true;
+    } catch (e) { /* fall back to setContent */ }
+    if (!injected) {
+      try { await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
+    }
     return await shotToDataUri(p, w, h);
   } finally {
     await p.close().catch(() => {});
