@@ -193,33 +193,77 @@ async function nodeFetchResource(url, cache) {
   }
 }
 
-// Resolve a CM360 placement to the real creative image URL via the ad server's
-// /ddm/adi endpoint (same approach as api/ad-proxy.js) — works regardless of the
-// tag's client-side render mode and without running dcmads.js.
-async function resolveCm360Image(placement, w, h) {
-  if (!/^[A-Za-z0-9._/-]+$/.test(placement)) return null;
-  const ord = String(Math.floor(Math.random() * 1e13));
-  const adUrl = `https://ad.doubleclick.net/ddm/adi/${placement};sz=${w}x${h};ord=${ord}?`;
-  try {
-    const r = await fetch(adUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
-      redirect: 'follow',
-    });
-    if (!r.ok) return null;
-    const html = await r.text();
-    const img = html.match(/https:\/\/s0\.2mdn\.net\/simgad\/\d+/);
-    const rich = html.match(/https:\/\/s0\.2mdn\.net\/creatives\/[A-Za-z0-9_\-/]+\.(?:png|jpg|jpeg|gif|webp)/i);
-    return img ? img[0] : (rich ? rich[0] : null);
-  } catch (e) {
-    return null;
-  }
-}
-
 // Screenshot a headless page region into a PNG data URI.
 async function shotToDataUri(page, w, h) {
   await new Promise((r) => setTimeout(r, 2200)); // let the creative settle to a frame
   const buf = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } });
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
+}
+
+// Capture a rendered animated creative as a self-contained, looping WebP data
+// URI. A baked <img src="data:image/webp"> animates client-side with ZERO
+// network — so the shared checkin shows the motion without ever loading the
+// real serving tag, i.e. no per-view billable impressions (the only beacon is
+// the single one fired here, server-side, at bake — same as before).
+//
+// Frames are captured by polling page.screenshot at a fixed interval, decoded
+// to raw RGBA via sharp and stacked into a multi-page WebP (pageHeight = h).
+// Identical frames → the creative is static, so a single-frame WebP is emitted
+// instead. Memory and snapshot-size are capped hard (this function has OOM/546
+// history and the data URI is embedded once per matched slot).
+async function captureAnimatedDataUri(page, w, h) {
+  const sharp = await getSharp();
+  if (!sharp) return null;
+  const INTERVAL = 200; // ms between frames (also the per-frame WebP delay)
+  // Cap transient raw memory (~w*h*4*frames) to ~20MB; floor 3, ceiling 14.
+  const maxFrames = Math.max(3, Math.min(14, Math.floor(20 * 1024 * 1024 / (w * h * 4)) || 3));
+  await new Promise((r) => setTimeout(r, 600)); // let polite/late-start animations begin
+
+  const raws = [];
+  let changedSig = null;
+  let distinct = 0;
+  for (let i = 0; i < maxFrames; i++) {
+    let png;
+    try { png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } }); }
+    catch (e) { break; }
+    let raw;
+    try { raw = await sharp(png).ensureAlpha().raw().toBuffer(); } catch (e) { break; }
+    if (raw.length !== w * h * 4) break; // dimension drift (DSF) — bail to single-shot
+    raws.push(raw);
+    // cheap motion detection on a few sampled bytes
+    const sig = `${raw[w * 2 * 4]}:${raw[(raw.length >> 1)]}:${raw[raw.length - 7]}`;
+    if (sig !== changedSig) { distinct++; changedSig = sig; }
+    if (i < maxFrames - 1) await new Promise((r) => setTimeout(r, INTERVAL));
+  }
+  if (!raws.length) return null;
+
+  // Static creative (or single frame): one WebP, no animation overhead.
+  if (raws.length === 1 || distinct <= 1) {
+    try {
+      const one = await sharp(raws[0], { raw: { width: w, height: h, channels: 4 } })
+        .webp({ quality: 80 }).toBuffer();
+      return `data:image/webp;base64,${one.toString('base64')}`;
+    } catch (e) { return null; }
+  }
+
+  const n = raws.length;
+  const delays = Array(n).fill(INTERVAL);
+  async function encode(quality) {
+    return sharp(Buffer.concat(raws), { raw: { width: w, height: h * n, channels: 4, pageHeight: h } })
+      .webp({ loop: 0, delay: delays, quality, effort: 4 }).toBuffer();
+  }
+  try {
+    let webp = await encode(55);
+    if (webp.length > 460 * 1024) webp = await encode(35);          // trim for multi-slot pages
+    if (webp.length > 750 * 1024) {                                  // still heavy → fall back to static
+      const one = await sharp(raws[0], { raw: { width: w, height: h, channels: 4 } })
+        .webp({ quality: 70 }).toBuffer();
+      return `data:image/webp;base64,${one.toString('base64')}`;
+    }
+    return `data:image/webp;base64,${webp.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
 }
 
 // Kinds that CAN carry a live layer over the frozen image. The live layer is
@@ -362,18 +406,16 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
   const w = m ? +m[1] : 300;
   const h = m ? +m[2] : 250;
 
-  // CM360 tag → resolve the real creative image (no headless render needed).
-  if (kind === 'tag' || kind === 'survey') {
-    const pm = /data-dcm-placement=['"]([^'"]+)['"]/.exec(src || '');
-    if (pm) {
-      const img = await resolveCm360Image(pm[1], w, h);
-      if (img) return creativeToDataUri(img);
-    }
-  }
+  // 3P tags and surveys are rendered live in a headless page below (and, for
+  // tags, captured as an animated WebP) — no static-image scrape. The previous
+  // resolveCm360Image() shortcut only ever matched CM360 tags, returned null for
+  // HTML5 (no flat image), and fired an extra /ddm/adi impression on the way.
 
   const p = await browser.newPage();
   try {
-    await p.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
+    // Tags are captured as an animated WebP (frame stack), so keep DSF at 1 to
+    // bound frame size / memory; other kinds keep the crisper 2x single shot.
+    await p.setViewport({ width: w, height: h, deviceScaleFactor: kind === 'tag' ? 1 : 2 });
 
     if (kind === 'video') {
       // Static snapshot can't play video (and headless Chromium lacks H.264),
@@ -415,6 +457,12 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
     } catch (e) { /* fall back to setContent */ }
     if (!injected) {
       try { await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
+    }
+    // Tag creatives: capture the animation as a looping WebP. Falls back to a
+    // single frozen frame if capture/encode yields nothing.
+    if (kind === 'tag') {
+      const anim = await captureAnimatedDataUri(p, w, h).catch(() => null);
+      if (anim) return anim;
     }
     return await shotToDataUri(p, w, h);
   } finally {
