@@ -4,7 +4,7 @@
 // WITHOUT firing impression/quartile beacons (no VAST player involved).
 // Used by the wizard's creative preview for video placements.
 
-import { resolveVastMediaFile } from './_lib/vast.js';
+import { resolveVastMediaFile, resolveVastInlineXml } from './_lib/vast.js';
 
 // Basic SSRF guard: only public https URLs, no IP literals / localhost.
 function isAllowedVastUrl(raw) {
@@ -29,6 +29,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Preflight linter path: return the resolved inline VAST XML so rule 4 can
+    // inspect MediaFile/Duration/ClickThrough. Same server-side fetch, no player.
+    if (String(req.query?.raw || '') === '1') {
+      const xml = await resolveVastInlineXml(url);
+      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+      if (!xml) {
+        return res.status(200).json({ xml: null, error: 'resolve_failed' });
+      }
+      return res.status(200).json({ xml });
+    }
+
     const mp4 = await resolveVastMediaFile(url);
     // The MP4 for a given creative is stable; cache at the edge to keep
     // repeated previews instant and spare the adserver.

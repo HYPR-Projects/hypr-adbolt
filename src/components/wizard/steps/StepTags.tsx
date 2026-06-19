@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef, useMemo } from 'react';
+import { useCallback, useState, useRef, useMemo, useEffect } from 'react';
 import { useWizardStore } from '@/stores/wizard';
 import { useUIStore } from '@/stores/ui';
 import { useColumnResize } from '@/hooks/useColumnResize';
@@ -9,6 +9,8 @@ import { StepNav } from '@/components/shared/StepNav';
 import { SectionHeader } from '@/components/shared/SectionHeader';
 import { RenameModal, FindReplaceModal, BulkTrackerModal } from '@/components/shared/BulkModals';
 import { PreviewThumb, CreativePreviewModal } from '@/components/shared/CreativePreview';
+import { PreflightPanel, type PreflightItem } from './PreflightPanel';
+import { lintPlacement } from '@/lib/adbolt-tag-linter';
 import { parseCM360 } from '@/parsers/cm360';
 import { parseGenericTags } from '@/parsers/generic';
 import { detectDocType } from '@/parsers/doc-type';
@@ -28,6 +30,7 @@ export function StepTags() {
     tagsFilterType, tagsFilterSize, tagsFilterText, setTagsFilter,
     currentStep, setStep, hasContent, hasDsp,
     setConfig,
+    selectedDsps, vastXmlCache, setVastXml,
   } = useWizardStore();
   const config = useWizardStore((s) => s.getStepConfig());
   const toast = useUIStore((s) => s.toast);
@@ -234,7 +237,68 @@ export function StepTags() {
   }, [mergeParsedData, setConfig, toast]);
 
   // ── Filtering ──
-  const allPlacements = parsedData?.placements || [];
+  const allPlacements = useMemo(() => parsedData?.placements || [], [parsedData]);
+
+  // ── Preflight (tag linter) ──
+  const dspList = useMemo(() => [...selectedDsps], [selectedDsps]);
+
+  // Lazily resolve VAST XML for video rows — reuses /api/vast-resolve (the same
+  // server-side fetch the preview uses), now with ?raw=1, so rule 4 can inspect
+  // MediaFile/Duration/ClickThrough without a new adserver fetch path or beacons.
+  useEffect(() => {
+    for (const p of allPlacements) {
+      if (p.type !== 'video') continue;
+      const url = (p.vastTag || p.jsTag || '').trim();
+      if (!/^https?:\/\//i.test(url)) continue;
+      if (p.placementId in vastXmlCache) continue; // already fetched (or null)
+      setVastXml(p.placementId, null); // mark in-flight, avoid refetch loop
+      fetch('/api/vast-resolve?raw=1&url=' + encodeURIComponent(url))
+        .then((r) => r.json())
+        .then((d: { xml?: string | null }) => setVastXml(p.placementId, d.xml ?? null))
+        .catch(() => setVastXml(p.placementId, null));
+    }
+  }, [allPlacements, vastXmlCache, setVastXml]);
+
+  const lintResults = useMemo(
+    () => allPlacements.map((p) => lintPlacement(p, dspList, vastXmlCache[p.placementId] ?? null)),
+    [allPlacements, dspList, vastXmlCache],
+  );
+
+  const preflightItems: PreflightItem[] = useMemo(() => {
+    const out: PreflightItem[] = [];
+    allPlacements.forEach((p, idx) => {
+      const r = lintResults[idx];
+      if (!r || (r.issues.length === 0 && r.flagsCM360.length === 0)) return;
+      out.push({
+        idx,
+        name: p.placementName,
+        original: p.type === 'video' ? (p.vastTag || p.jsTag) : p.jsTag,
+        result: r,
+      });
+    });
+    return out;
+  }, [allPlacements, lintResults]);
+
+  const applyFix = useCallback((idx: number) => {
+    const p = allPlacements[idx];
+    const r = lintResults[idx];
+    if (!p || !r?.tagCorrigida) return;
+    updatePlacement(idx, p.type === 'video' ? 'vastTag' : 'jsTag', r.tagCorrigida);
+    toast(`Correção aplicada: ${p.placementName}`, 'success');
+  }, [allPlacements, lintResults, updatePlacement, toast]);
+
+  const applyAllFixes = useCallback(() => {
+    let n = 0;
+    allPlacements.forEach((p, idx) => {
+      const r = lintResults[idx];
+      if (r?.tagCorrigida) {
+        updatePlacement(idx, p.type === 'video' ? 'vastTag' : 'jsTag', r.tagCorrigida);
+        n++;
+      }
+    });
+    toast(n ? `${n} correção(ões) aplicada(s)` : 'Nada para corrigir', n ? 'success' : '');
+  }, [allPlacements, lintResults, updatePlacement, toast]);
+
   const sizes = [...new Set(allPlacements.map((p) => p.dimensions))].sort((a, b) => {
     const [aw] = a.split('x').map(Number);
     const [bw] = b.split('x').map(Number);
@@ -370,6 +434,11 @@ export function StepTags() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Preflight de tags — issues, auto-fix com diff, flags CM360 */}
+      {preflightItems.length > 0 && (
+        <PreflightPanel items={preflightItems} onApplyFix={applyFix} onApplyAll={applyAllFixes} />
       )}
 
       {/* Placements table */}

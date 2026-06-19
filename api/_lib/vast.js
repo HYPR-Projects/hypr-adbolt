@@ -100,3 +100,54 @@ export async function resolveVastMediaFile(vast, hops = 0) {
     return null;
   }
 }
+
+// Resolve a VAST tag (URL or inline XML) to the INLINE ad XML — following
+// wrappers to the ad that actually carries the MediaFile/Duration/ClickThrough.
+// Used by the tag linter preflight (rule 4) to inspect VAST content without
+// running a player (no Impression/quartile beacons fired). Mirrors the hop
+// logic of resolveVastMediaFile but returns the XML string instead of the MP4.
+export async function resolveVastInlineXml(vast, hops = 0) {
+  if (!vast || hops > 4) return null;
+  let xml = String(vast).trim();
+  try {
+    if (/^https?:\/\//i.test(xml)) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 6000);
+      let r;
+      try {
+        r = await fetch(fillVastMacros(xml), {
+          redirect: 'follow',
+          signal: ctrl.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/xml,text/xml,*/*' },
+        });
+      } finally { clearTimeout(t); }
+      if (!r.ok) return null;
+      xml = await r.text();
+    }
+    if (!/<VAST|<MediaFile|<VASTAdTagURI/i.test(xml)) return null;
+    // Inline ad (has a MediaFile) → this is the content to inspect.
+    if (/<MediaFile\b/i.test(xml)) return xml;
+    // Wrapper → follow the next VASTAdTagURI.
+    const wrap = xml.match(/<VASTAdTagURI[^>]*>([\s\S]*?)<\/VASTAdTagURI>/i);
+    if (wrap) {
+      const next = wrap[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+      if (/^https?:\/\//i.test(next)) {
+        const deeper = await resolveVastInlineXml(next, hops + 1);
+        if (deeper) return deeper;
+      }
+    }
+    // VPAID-only serve (DCM): real VAST is entity-encoded in <AdParameters>.
+    const ap = xml.match(/<AdParameters[^>]*>([\s\S]*?)<\/AdParameters>/i);
+    if (ap) {
+      const inner = decodeHtmlEntities(ap[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim());
+      if (/<VAST|<MediaFile|<VASTAdTagURI/i.test(inner)) {
+        return resolveVastInlineXml(inner, hops + 1);
+      }
+    }
+    // No deeper inline found — return what we have so the linter can still
+    // flag missing MediaFile/Duration rather than silently passing.
+    return xml;
+  } catch (e) {
+    return null;
+  }
+}

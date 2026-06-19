@@ -51,6 +51,10 @@ interface WizardState {
   activating: boolean;
   activationResults: ActivationResult[];
 
+  // ── Preflight (tag linter) ──
+  /** Resolved VAST XML per placementId, cached so rule 4 runs without re-fetching. */
+  vastXmlCache: Record<string, string | null>;
+
   // ── Actions ──
   enterWizard: (mode: WizardMode) => void;
   /** Enter the wizard pre-populated from duplicated creatives (dashboard → Duplicar). */
@@ -114,6 +118,9 @@ interface WizardState {
   setActivationResults: (results: ActivationResult[]) => void;
   setGeneratedFiles: (files: Record<string, unknown>) => void;
   invalidateResults: () => void;
+
+  // Preflight
+  setVastXml: (placementId: string, xml: string | null) => void;
   /** Normalize all asset landing pages via normalizeUrl */
   normalizeAssetLandingPages: () => void;
 
@@ -153,6 +160,7 @@ const INITIAL_STATE = {
   activationDone: false,
   activating: false,
   activationResults: [] as ActivationResult[],
+  vastXmlCache: {} as Record<string, string | null>,
 };
 
 export const useWizardStore = create<WizardState>((set, get) => ({
@@ -504,6 +512,10 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     activationDone: false,
     activationResults: [],
   }),
+
+  setVastXml: (placementId, xml) => set((s) => ({
+    vastXmlCache: { ...s.vastXmlCache, [placementId]: xml },
+  })),
 
   normalizeAssetLandingPages: () => {
     set((s) => ({

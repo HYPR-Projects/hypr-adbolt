@@ -45,6 +45,50 @@ export const DSP_CAPABILITIES: Record<DspType, { template: boolean; api: boolean
 };
 
 /**
+ * Canonical platform/seat tokens that appear inside CM360 Placement Names.
+ *
+ * HYPR exports decorate the Placement Name with a token marking which platform
+ * the placement was trafficked for (e.g. `...|HYPR|...` or `...|DV360|...`).
+ * A placement designated for one platform pushed to another renders blank
+ * ("Creative Is Blank") because CM360 won't return the creative outside the
+ * platform it was cut for. The tag linter reads this map to catch that before
+ * the push.
+ *
+ * `'neutral'` = multi-platform token (HYPR house tag), routes to any DSP.
+ * A concrete DspType = the placement is bound to that DSP only.
+ *
+ * Single source of truth: extend here, never inline in the linter or UI.
+ */
+export const PLATFORM_TOKENS: Record<string, DspType | 'neutral'> = {
+  HYPR: 'neutral',
+  DV360: 'dv360',
+  DV: 'dv360',
+  DBM: 'dv360',
+  XANDR: 'xandr',
+  XN: 'xandr',
+  APPNEXUS: 'xandr',
+  AMAZON: 'amazondsp',
+  AMZ: 'amazondsp',
+  ADSP: 'amazondsp',
+  STACKADAPT: 'stackadapt',
+  SA: 'stackadapt',
+};
+
+/**
+ * Extract the platform token from a CM360 Placement Name.
+ * Splits on the usual HYPR taxonomy separators (| _ / - space) and returns the
+ * first segment that matches a known token, or null if none is present.
+ */
+export function platformToken(placementName: string): DspType | 'neutral' | null {
+  if (!placementName) return null;
+  const parts = placementName.split(/[|_/\s-]+/).map((p) => p.trim().toUpperCase()).filter(Boolean);
+  for (const p of parts) {
+    if (p in PLATFORM_TOKENS) return PLATFORM_TOKENS[p];
+  }
+  return null;
+}
+
+/**
  * True if any of the given DSPs supports direct API activation.
  * Used to decide whether the "Ativar Agora" affordance should appear.
  */

@@ -15,6 +15,7 @@ import { activateAmazonDspTags } from '@/services/activation/amazondsp-tags';
 import { activateXandrAssets } from '@/services/activation/xandr-assets';
 import { activateDV360Assets } from '@/services/activation/dv360-assets';
 import { trackerBlockReason } from '@/services/activation/billing-guard';
+import { lintPlacement } from '@/lib/adbolt-tag-linter';
 import { TrackerReviewModal, type ReviewIssue, type TrackerLocator } from '@/components/shared/TrackerReviewModal';
 import { uploadAssetToStorage, uploadThumbnail, uploadHtml5Preview } from '@/services/storage';
 import { buildSurveyIframe } from '@/services/typeform';
@@ -227,6 +228,24 @@ export function StepActivate() {
 
     if (store.activationDone) {
       if (!confirm('Criativos já foram ativados nesta sessão. Ativar novamente pode criar duplicados nas DSPs. Continuar?')) return;
+    }
+
+    // ── Preflight gate (tag linter) ──
+    // Block the push if any tag is still 'blocked' — a non-auto-fixable issue
+    // (e.g. platform mismatch) or a CM360 'bloqueia' flag (no MediaFile, bad
+    // Duration). Auto-fixable issues never gate: the user approves those diffs
+    // in the Tags step.
+    if (!isAssetMode) {
+      const dsps = [...store.selectedDsps];
+      const blocked = tagPlacements.filter(
+        (p) => lintPlacement(p, dsps, store.vastXmlCache[p.placementId] ?? null).status === 'blocked',
+      );
+      if (blocked.length) {
+        const first = blocked.slice(0, 3).map((p) => p.placementName).join(', ');
+        const extra = blocked.length > 3 ? ` +${blocked.length - 3}` : '';
+        toast(`${blocked.length} tag(s) bloqueada(s) no preflight: ${first}${extra}. Resolva na etapa de Tags.`, 'error');
+        return;
+      }
     }
 
     // ── Billing guard (deterministic) ──
