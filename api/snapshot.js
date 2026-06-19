@@ -200,6 +200,140 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
+// Kinds that CAN carry a live layer over the frozen image. The live layer is
+// only attached when resolveLive() returns a concrete embed for the creative —
+// the kind being in this set is necessary but not sufficient.
+//   • html5  → hosted bundle URL, framed live
+//   • survey → resolved embed URL (Typeform widget / generic iframe), framed live
+//   • video  → playable asset URL (mp4), native <video controls>
+//   • tag    → ONLY HYPR AdTags (data-hypr-adtag): the hosted creative URL in
+//              data-iframe-src is framed bare. hypr-adtag.js gates impressions/
+//              events behind a delivery URL param (dlv=...), so the bare share
+//              URL fires NO billable beacons — same rationale as the Typeform
+//              direct-iframe path. Other 3P adserver tags (CM360, Xandr, DV360)
+//              stay frozen: rendering a real serving tag fires billable
+//              impressions/clicks and would pollute the very delivery this
+//              preview certifies. Interactive preview for those is a follow-up
+//              that must use each DSP's non-billable preview/render endpoint.
+// 'display' is always the frozen image.
+const LIVE_KINDS = new Set(['html5', 'survey', 'video', 'tag']);
+
+// Blank page served from our own https origin. The headless 3P-tag bake
+// navigates here before injecting the tag, so https-only adserver bootstraps
+// (dcmads.js, enabler.js) see a real https origin and render. See the bake
+// branch in renderCreativeToImage.
+const BAKE_BLANK_URL = 'https://adbolt.hypr.mobi/preview/tagbake.html';
+
+// Strip the publisher's own CSP <meta> tags from the serialized HTML. They
+// survive SingleFile and would block both the injected hydrator script and the
+// live <iframe> (frame-src/script-src). Safe to drop in a static deliverable.
+function stripCspMeta(html) {
+  return html.replace(
+    /<meta[^>]*http-equiv\s*=\s*['"]?content-security-policy(?:-report-only)?['"]?[^>]*>/gi,
+    ''
+  );
+}
+
+// Resolve a survey creative (a stored embed snippet) to a single framable https
+// URL. Runs in Node, so parsing is done here once — deterministically — instead
+// of regex-sniffing inside the client hydrator (which is exactly what used to
+// silently break: a mis-escaped regex left every Typeform survey frozen).
+// Handles the three shapes a survey embed arrives in:
+//   1. <iframe src="https://…">            → use the src
+//   2. Typeform data-tf-live/-widget="ID"   → build form.typeform.com/to/ID
+//   3. a bare https://…typeform.com/to/ID   → use it directly
+// As a last resort, any https URL in the snippet. Typeform standalone /to/ URLs
+// stall on a loading screen unless told they're an embed, so the embed flag is
+// appended for any typeform.com URL.
+function resolveSurveyEmbedUrl(html) {
+  const src = String(html || '');
+  if (!src) return null;
+  let url = null;
+
+  const iframe = src.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+  if (iframe && /^https?:\/\//i.test(iframe[1])) url = iframe[1];
+
+  if (!url) {
+    const tf = src.match(/data-tf-(?:live|widget|popup|slider|popover|sidetab)\s*=\s*["']([A-Za-z0-9]+)["']/i);
+    if (tf) url = `https://form.typeform.com/to/${tf[1]}`;
+  }
+  if (!url) {
+    const direct = src.match(/https?:\/\/[^\s"'<>]*typeform\.com\/to\/[A-Za-z0-9]+/i);
+    if (direct) url = direct[0];
+  }
+  if (!url) {
+    const any = src.match(/https?:\/\/[^\s"'<>]+/i);
+    if (any) url = any[0];
+  }
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  if (/(^|\.)typeform\.com\//i.test(url) && !/[?&]typeform-embed=/.test(url)) {
+    url += (url.indexOf('?') < 0 ? '?' : '&') + 'typeform-embed=embed-widget';
+  }
+  return url;
+}
+
+// VAST → MP4 resolution lives in _lib/vast.js (shared with /api/vast-resolve).
+
+// Decide the live embed for a creative, server-side and deterministically.
+// Returns { mode, url } or null (→ stays frozen). No client-side guessing.
+//   • html5  → { mode:'iframe', url } when the hosted bundle URL is http(s)
+//   • survey → { mode:'iframe', url } from resolveSurveyEmbedUrl
+//   • video  → { mode:'video',  url }: the playable asset MP4 when provided,
+//              else the MP4 MediaFile resolved from the VAST tag
+async function resolveLive({ kind, creativeUrl, liveUrl, vastTag }) {
+  if (kind === 'html5') {
+    const u = String(creativeUrl || '').trim();
+    return /^https?:\/\//i.test(u) ? { mode: 'iframe', url: u } : null;
+  }
+  if (kind === 'survey') {
+    const u = resolveSurveyEmbedUrl(creativeUrl);
+    return u ? { mode: 'iframe', url: u } : null;
+  }
+  if (kind === 'tag') {
+    // HYPR AdTag → frame the BARE hosted-creative URL: hypr-adtag.js only counts
+    // impressions/events when the URL carries a delivery param (dlv=), so the
+    // bare URL fires no beacons.
+    const u = resolveHyprAdtagEmbedUrl(creativeUrl);
+    if (u) return { mode: 'iframe', url: u };
+    // Any other 3P serving tag (CM360/Xandr/DV360) → live interactive render via
+    // /preview/livetag.html, which document.writes the tag at our https origin
+    // so dcmads.js/enabler.js run and the piece animates and is clickable. The
+    // hydrator builds the real URL from the checkin id. NOTE (billing): renders
+    // the REAL serving tag, so each view of the shared link fires a billable
+    // impression — enabled per explicit product decision; frozen <img> backstop.
+    if (String(creativeUrl || '').trim()) return { mode: 'tag', url: 'self' };
+    return null;
+  }
+  if (kind === 'video') {
+    const u = String(liveUrl || '').trim();
+    if (/^https?:\/\//i.test(u)) return { mode: 'video', url: u };
+    const mp4 = await resolveVastMediaFile(vastTag);
+    return mp4 ? { mode: 'video', url: mp4 } : null;
+  }
+  return null;
+}
+
+// Fetch a source only if it is an image; returns a data URI or null.
+async function tryImageDataUri(src) {
+  try {
+    const r = await fetch(src, { redirect: 'follow' });
+    if (!r.ok) return null;
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    // Bail before reading the body when it's clearly not an image (e.g. a
+    // multi-MB mp4 passed as the video poster fallback) — avoids a wasteful
+    // full download and the OOM risk that comes with it.
+    if (ct && !ct.startsWith('image/')) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!buf.length || buf.length > 12 * 1024 * 1024) return null;
+    const mime = ct.startsWith('image/') && !ct.includes('octet') ? ct.split(';')[0] : sniffImageMime(buf, '');
+    if (!mime.startsWith('image/')) return null;
+    return `data:${mime};base64,${buf.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Render a creative to a self-contained image data URI. Display creatives are
 // fetched directly; HTML5, 3P tags and surveys are rendered in a headless page
