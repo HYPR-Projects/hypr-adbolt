@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex,nofollow">
+  <title>live tag</title>
+  <style>
+    *,*::before,*::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #fff; }
+    body { display: flex; align-items: center; justify-content: center; }
+    #err { font: 12px ui-monospace, monospace; color: #888; padding: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="err">Carregando…</div>
+  <script>
+    // Renders a real 3P ad tag (CM360/Xandr/DV360) LIVE so it animates and is
+    // clickable inside a shared checkin. Served from https://adbolt.hypr.mobi,
+    // so dcmads.js / enabler.js see an https top-level document and do not abort
+    // on their https-only guard. The tag is written with document.open/write/
+    // close — every <script> runs during a real parse (same pattern as the
+    // dashboard preview and test-a-tag).
+    //
+    // The tag content is read from the checkin row's creative_url by id, so no
+    // tag HTML rides in the URL.
+    (function () {
+      var SUPABASE_URL = 'https://adfnabuwzmojxbhcpdpe.supabase.co';
+      var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZm5hYnV3em1vanhiaGNwZHBlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1MTcxODcsImV4cCI6MjA5MTA5MzE4N30.sU9EZAnQ2mClIsMwfccR5__nbTYnfzkt3IvP-llxpno';
+      var q = new URLSearchParams(location.search);
+      var id = q.get('id');
+      var sz = (q.get('sz') || '').trim();
+      var m = /^(\d+)\s*[x\u00d7]\s*(\d+)$/.exec(sz);
+      var W = m ? +m[1] : 0;
+      var H = m ? +m[2] : 0;
+
+      function fail(msg) {
+        var e = document.getElementById('err');
+        if (e) e.textContent = msg || 'Tag indisponível.';
+      }
+      if (!id) return fail('Link inválido.');
+
+      fetch(SUPABASE_URL + '/rest/v1/checkins?id=eq.' + encodeURIComponent(id) + '&select=creative_url,creative_size', {
+        headers: { apikey: ANON, Authorization: 'Bearer ' + ANON },
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (rows) {
+          if (!Array.isArray(rows) || !rows.length || !rows[0].creative_url) return fail('Tag não encontrada.');
+          var tag = rows[0].creative_url;
+          if (!W || !H) {
+            var sm = /^(\d+)\s*[x\u00d7]\s*(\d+)$/.exec(String(rows[0].creative_size || '').trim());
+            if (sm) { W = +sm[1]; H = +sm[2]; }
+          }
+          var box = (W && H)
+            ? 'width:' + W + 'px;height:' + H + 'px;'
+            : 'width:100%;height:100%;';
+          var html =
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">' +
+            '<style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}' +
+            'html,body{width:100%;height:100%;overflow:hidden;background:#fff}' +
+            'body{display:flex;align-items:center;justify-content:center}' +
+            '.adbolt-tag{' + box + 'overflow:hidden;position:relative}</style></head>' +
+            '<body><div class="adbolt-tag">' + tag + '</div></body></html>';
+          // open/write/close keeps THIS document's https origin; scripts in the
+          // tag (dcmads.js, enabler.js) run during the parse and render live.
+          try {
+            document.open();
+            document.write(html);
+            document.close();
+          } catch (e) {
+            fail(String((e && e.message) || e));
+          }
+        })
+        .catch(function (e) { fail('Erro: ' + ((e && e.message) || e)); });
+    })();
+  </script>
+</body>
+</html>

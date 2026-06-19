@@ -200,200 +200,6 @@ async function shotToDataUri(page, w, h) {
   return `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
 }
 
-// Capture a rendered animated creative as a self-contained, looping WebP data
-// URI. A baked <img src="data:image/webp"> animates client-side with ZERO
-// network — so the shared checkin shows the motion without ever loading the
-// real serving tag, i.e. no per-view billable impressions (the only beacon is
-// the single one fired here, server-side, at bake — same as before).
-//
-// Frames are captured by polling page.screenshot at a fixed interval, decoded
-// to raw RGBA via sharp and stacked into a multi-page WebP (pageHeight = h).
-// Identical frames → the creative is static, so a single-frame WebP is emitted
-// instead. Memory and snapshot-size are capped hard (this function has OOM/546
-// history and the data URI is embedded once per matched slot).
-async function captureAnimatedDataUri(page, w, h) {
-  const sharp = await getSharp();
-  if (!sharp) return null;
-  const INTERVAL = 200; // ms between frames (also the per-frame WebP delay)
-  // Cap transient raw memory (~w*h*4*frames) to ~20MB; floor 3, ceiling 14.
-  const maxFrames = Math.max(3, Math.min(14, Math.floor(20 * 1024 * 1024 / (w * h * 4)) || 3));
-  await new Promise((r) => setTimeout(r, 600)); // let polite/late-start animations begin
-
-  const raws = [];
-  let changedSig = null;
-  let distinct = 0;
-  for (let i = 0; i < maxFrames; i++) {
-    let png;
-    try { png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: w, height: h } }); }
-    catch (e) { break; }
-    let raw;
-    try { raw = await sharp(png).ensureAlpha().raw().toBuffer(); } catch (e) { break; }
-    if (raw.length !== w * h * 4) break; // dimension drift (DSF) — bail to single-shot
-    raws.push(raw);
-    // cheap motion detection on a few sampled bytes
-    const sig = `${raw[w * 2 * 4]}:${raw[(raw.length >> 1)]}:${raw[raw.length - 7]}`;
-    if (sig !== changedSig) { distinct++; changedSig = sig; }
-    if (i < maxFrames - 1) await new Promise((r) => setTimeout(r, INTERVAL));
-  }
-  if (!raws.length) return null;
-
-  // Static creative (or single frame): one WebP, no animation overhead.
-  if (raws.length === 1 || distinct <= 1) {
-    try {
-      const one = await sharp(raws[0], { raw: { width: w, height: h, channels: 4 } })
-        .webp({ quality: 80 }).toBuffer();
-      return `data:image/webp;base64,${one.toString('base64')}`;
-    } catch (e) { return null; }
-  }
-
-  const n = raws.length;
-  const delays = Array(n).fill(INTERVAL);
-  async function encode(quality) {
-    return sharp(Buffer.concat(raws), { raw: { width: w, height: h * n, channels: 4, pageHeight: h } })
-      .webp({ loop: 0, delay: delays, quality, effort: 4 }).toBuffer();
-  }
-  try {
-    let webp = await encode(55);
-    if (webp.length > 460 * 1024) webp = await encode(35);          // trim for multi-slot pages
-    if (webp.length > 750 * 1024) {                                  // still heavy → fall back to static
-      const one = await sharp(raws[0], { raw: { width: w, height: h, channels: 4 } })
-        .webp({ quality: 70 }).toBuffer();
-      return `data:image/webp;base64,${one.toString('base64')}`;
-    }
-    return `data:image/webp;base64,${webp.toString('base64')}`;
-  } catch (e) {
-    return null;
-  }
-}
-
-// Kinds that CAN carry a live layer over the frozen image. The live layer is
-// only attached when resolveLive() returns a concrete embed for the creative —
-// the kind being in this set is necessary but not sufficient.
-//   • html5  → hosted bundle URL, framed live
-//   • survey → resolved embed URL (Typeform widget / generic iframe), framed live
-//   • video  → playable asset URL (mp4), native <video controls>
-//   • tag    → ONLY HYPR AdTags (data-hypr-adtag): the hosted creative URL in
-//              data-iframe-src is framed bare. hypr-adtag.js gates impressions/
-//              events behind a delivery URL param (dlv=...), so the bare share
-//              URL fires NO billable beacons — same rationale as the Typeform
-//              direct-iframe path. Other 3P adserver tags (CM360, Xandr, DV360)
-//              stay frozen: rendering a real serving tag fires billable
-//              impressions/clicks and would pollute the very delivery this
-//              preview certifies. Interactive preview for those is a follow-up
-//              that must use each DSP's non-billable preview/render endpoint.
-// 'display' is always the frozen image.
-const LIVE_KINDS = new Set(['html5', 'survey', 'video', 'tag']);
-
-// Blank page served from our own https origin. The headless 3P-tag bake
-// navigates here before injecting the tag, so https-only adserver bootstraps
-// (dcmads.js, enabler.js) see a real https origin and render. See the bake
-// branch in renderCreativeToImage.
-const BAKE_BLANK_URL = 'https://adbolt.hypr.mobi/preview/tagbake.html';
-
-// Strip the publisher's own CSP <meta> tags from the serialized HTML. They
-// survive SingleFile and would block both the injected hydrator script and the
-// live <iframe> (frame-src/script-src). Safe to drop in a static deliverable.
-function stripCspMeta(html) {
-  return html.replace(
-    /<meta[^>]*http-equiv\s*=\s*['"]?content-security-policy(?:-report-only)?['"]?[^>]*>/gi,
-    ''
-  );
-}
-
-// Resolve a survey creative (a stored embed snippet) to a single framable https
-// URL. Runs in Node, so parsing is done here once — deterministically — instead
-// of regex-sniffing inside the client hydrator (which is exactly what used to
-// silently break: a mis-escaped regex left every Typeform survey frozen).
-// Handles the three shapes a survey embed arrives in:
-//   1. <iframe src="https://…">            → use the src
-//   2. Typeform data-tf-live/-widget="ID"   → build form.typeform.com/to/ID
-//   3. a bare https://…typeform.com/to/ID   → use it directly
-// As a last resort, any https URL in the snippet. Typeform standalone /to/ URLs
-// stall on a loading screen unless told they're an embed, so the embed flag is
-// appended for any typeform.com URL.
-function resolveSurveyEmbedUrl(html) {
-  const src = String(html || '');
-  if (!src) return null;
-  let url = null;
-
-  const iframe = src.match(/<iframe[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
-  if (iframe && /^https?:\/\//i.test(iframe[1])) url = iframe[1];
-
-  if (!url) {
-    const tf = src.match(/data-tf-(?:live|widget|popup|slider|popover|sidetab)\s*=\s*["']([A-Za-z0-9]+)["']/i);
-    if (tf) url = `https://form.typeform.com/to/${tf[1]}`;
-  }
-  if (!url) {
-    const direct = src.match(/https?:\/\/[^\s"'<>]*typeform\.com\/to\/[A-Za-z0-9]+/i);
-    if (direct) url = direct[0];
-  }
-  if (!url) {
-    const any = src.match(/https?:\/\/[^\s"'<>]+/i);
-    if (any) url = any[0];
-  }
-  if (!url || !/^https?:\/\//i.test(url)) return null;
-
-  if (/(^|\.)typeform\.com\//i.test(url) && !/[?&]typeform-embed=/.test(url)) {
-    url += (url.indexOf('?') < 0 ? '?' : '&') + 'typeform-embed=embed-widget';
-  }
-  return url;
-}
-
-// VAST → MP4 resolution lives in _lib/vast.js (shared with /api/vast-resolve).
-
-// Decide the live embed for a creative, server-side and deterministically.
-// Returns { mode, url } or null (→ stays frozen). No client-side guessing.
-//   • html5  → { mode:'iframe', url } when the hosted bundle URL is http(s)
-//   • survey → { mode:'iframe', url } from resolveSurveyEmbedUrl
-//   • video  → { mode:'video',  url }: the playable asset MP4 when provided,
-//              else the MP4 MediaFile resolved from the VAST tag
-async function resolveLive({ kind, creativeUrl, liveUrl, vastTag }) {
-  if (kind === 'html5') {
-    const u = String(creativeUrl || '').trim();
-    return /^https?:\/\//i.test(u) ? { mode: 'iframe', url: u } : null;
-  }
-  if (kind === 'survey') {
-    const u = resolveSurveyEmbedUrl(creativeUrl);
-    return u ? { mode: 'iframe', url: u } : null;
-  }
-  if (kind === 'tag') {
-    // HYPR AdTag only — creativeUrl carries the tag content for kind 'tag'.
-    // Frame data-iframe-src BARE (no dlv/clicktag params): hypr-adtag.js only
-    // counts impressions/events when the URL carries a delivery param, so the
-    // bare hosted-creative URL is non-billable by design. Any other tag → null
-    // (frozen) — see LIVE_KINDS comment.
-    const u = resolveHyprAdtagEmbedUrl(creativeUrl);
-    return u ? { mode: 'iframe', url: u } : null;
-  }
-  if (kind === 'video') {
-    const u = String(liveUrl || '').trim();
-    if (/^https?:\/\//i.test(u)) return { mode: 'video', url: u };
-    const mp4 = await resolveVastMediaFile(vastTag);
-    return mp4 ? { mode: 'video', url: mp4 } : null;
-  }
-  return null;
-}
-
-// Fetch a source only if it is an image; returns a data URI or null.
-async function tryImageDataUri(src) {
-  try {
-    const r = await fetch(src, { redirect: 'follow' });
-    if (!r.ok) return null;
-    const ct = (r.headers.get('content-type') || '').toLowerCase();
-    // Bail before reading the body when it's clearly not an image (e.g. a
-    // multi-MB mp4 passed as the video poster fallback) — avoids a wasteful
-    // full download and the OOM risk that comes with it.
-    if (ct && !ct.startsWith('image/')) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (!buf.length || buf.length > 12 * 1024 * 1024) return null;
-    const mime = ct.startsWith('image/') && !ct.includes('octet') ? ct.split(';')[0] : sniffImageMime(buf, '');
-    if (!mime.startsWith('image/')) return null;
-    return `data:${mime};base64,${buf.toString('base64')}`;
-  } catch (e) {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Render a creative to a self-contained image data URI. Display creatives are
 // fetched directly; HTML5, 3P tags and surveys are rendered in a headless page
@@ -413,9 +219,7 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
 
   const p = await browser.newPage();
   try {
-    // Tags are captured as an animated WebP (frame stack), so keep DSF at 1 to
-    // bound frame size / memory; other kinds keep the crisper 2x single shot.
-    await p.setViewport({ width: w, height: h, deviceScaleFactor: kind === 'tag' ? 1 : 2 });
+    await p.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
 
     if (kind === 'video') {
       // Static snapshot can't play video (and headless Chromium lacks H.264),
@@ -458,12 +262,9 @@ async function renderCreativeToImage(browser, { kind, src, size }) {
     if (!injected) {
       try { await p.setContent(doc, { waitUntil: 'networkidle2', timeout: 30_000 }); } catch (e) { /* render what loaded */ }
     }
-    // Tag creatives: capture the animation as a looping WebP. Falls back to a
-    // single frozen frame if capture/encode yields nothing.
-    if (kind === 'tag') {
-      const anim = await captureAnimatedDataUri(p, w, h).catch(() => null);
-      if (anim) return anim;
-    }
+    // Single frozen frame as the backstop only. Animation + interactivity come
+    // from the live layer (/preview/livetag.html), not a baked capture — baking
+    // a multi-frame loop bloated the snapshot and slowed the share page.
     return await shotToDataUri(p, w, h);
   } finally {
     await p.close().catch(() => {});

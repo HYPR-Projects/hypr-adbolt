@@ -7,7 +7,7 @@ import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const FILES = ['public/preview/snapshot.html', 'public/preview/checkin.html'];
+const FILES = ['public/preview/snapshot.html', 'public/preview/checkin.html', 'public/preview/livetag.html'];
 const tmp = mkdtempSync(join(tmpdir(), 'inline-'));
 let failed = 0;
 
