@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { LoginScreen } from '@/components/LoginScreen';
 import { Topbar } from '@/components/layout/Topbar';
 import { Toast } from '@/components/layout/Toast';
+import { MigrationNotice } from '@/components/MigrationNotice';
 
 // Views are code-split so the initial bundle only ships what's needed
 // for the current view. Named-exports are wrapped in `.then(...)` to match
@@ -101,6 +102,7 @@ export function App() {
       </div>
 
       <Toast />
+      <MigrationNotice />
     </div>
   );
 }

@@ -1,0 +1,208 @@
+/* ══════════════════════════════════════════════
+   Migration notice — legacy AdBolt → HYPR Platform
+   Minimalist gradient hero, theme-aware via tokens.
+   ══════════════════════════════════════════════ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bg-overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade 0.25s ease;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 432px;
+  background: var(--bg-surface);
+  border: 1px solid rgba(68, 150, 178, 0.16);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+  animation: rise 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Close (X) ── */
+.close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  font-size: 13px;
+  color: #fff;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.close:hover {
+  background: rgba(255, 255, 255, 0.28);
+  transform: rotate(90deg);
+}
+
+/* ── Gradient hero ── */
+.hero {
+  position: relative;
+  height: 132px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(255, 255, 255, 0.22), transparent 60%),
+    linear-gradient(135deg, #4ba3c0 0%, #3397b9 32%, #2f6a93 64%, #2a3f6b 100%);
+}
+
+.ringOuter,
+.ringInner {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.ringOuter {
+  width: 220px;
+  height: 220px;
+}
+.ringInner {
+  width: 132px;
+  height: 132px;
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+.glyph {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+/* ── Body ── */
+.body {
+  padding: 26px 28px 28px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 3px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-radius: 999px;
+}
+
+.title {
+  margin: 0 0 10px;
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.text {
+  margin: 0 0 22px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-sec);
+}
+.text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 13px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-on-accent);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4ba3c0 0%, #3397b9 55%, #2f6a93 100%);
+  box-shadow: 0 6px 18px var(--brand-glow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 10px 26px var(--brand-shadow);
+}
+.cta svg {
+  transition: transform 0.15s ease;
+}
+.cta:hover svg {
+  transform: translateX(3px);
+}
+
+.secondary {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-sec);
+  background: transparent;
+  border: 1px solid rgba(139, 163, 175, 0.22);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.secondary:hover {
+  color: var(--text);
+  background: var(--accent-dim);
+  border-color: var(--accent-ring);
+}
+
+.note {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tri);
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .card { animation: none; }
+  .close:hover { transform: none; }
+  .cta:hover { transform: none; }
+}
