@@ -2,32 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import styles from './MigrationNotice.module.css';
 
 /**
- * One-time-per-session notice shown on the legacy AdBolt site announcing the
- * move to the HYPR Platform. Dismissible (X / backdrop / Esc) so users can keep
- * using this site for check-ins and the dashboard of what they've already
- * uploaded. Shows again next session as a gentle reminder.
+ * Notice shown on the legacy AdBolt site announcing the move to the HYPR
+ * Platform. Appears on every page load. Dismissible (X / backdrop / Esc) so
+ * users can keep using this site for check-ins and the dashboard of what
+ * they've already uploaded — it returns on the next reload.
  */
-const STORAGE_KEY = 'adbolt_migration_notice_v1';
 const NEW_URL = 'https://platform.hypr.mobi/adbolt';
 
 export function MigrationNotice() {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (!sessionStorage.getItem(STORAGE_KEY)) setVisible(true);
-    } catch {
-      // sessionStorage blocked (private mode) — still show the notice.
-      setVisible(true);
-    }
-  }, []);
+  const [visible, setVisible] = useState(true);
 
   const dismiss = useCallback(() => {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, '1');
-    } catch {
-      /* ignore */
-    }
     setVisible(false);
   }, []);
 
